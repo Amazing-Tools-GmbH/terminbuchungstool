@@ -1,0 +1,49 @@
+.header {
+  background: var(--tb-header-bg);
+  color: var(--tb-header-ink);
+  border-bottom: 1px solid var(--tb-header-line);
+}
+
+.inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 72px;
+  padding-block: 8px;
+  flex-wrap: wrap;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-width: 0;
+}
+
+.logo {
+  display: block;
+  height: 56px;
+  width: auto;
+}
+
+.textBrand {
+  font-family: var(--tb-font-display);
+  font-weight: 800;
+  font-size: 20px;
+  letter-spacing: -0.01em;
+}
+
+.claim {
+  font-weight: 600;
+  font-size: 15px;
+}
+
+.aside {
+  font-size: 14px;
+}
+
+.strip {
+  height: 6px;
+  background: var(--tb-accent-strip);
+}
