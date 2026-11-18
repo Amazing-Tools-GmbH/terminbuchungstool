@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Buchungsseite für Kunden</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Overpass:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:inherit}a:hover{opacity:.85}
+button,input{font-family:inherit}
+</style>
+</helmet>
+<div style="min-height: 1300px; display: flex; flex-direction: column; background: {{ t.bg }}; font-family: {{ t.fontBody }}; color: {{ t.ink }}">
+
+  <header style="background: {{ t.headerBg }}; color: {{ t.headerInk }}; border-bottom: 1px solid {{ t.headerLine }}">
+    <div style="max-width: 1120px; margin: 0 auto; padding: 10px 24px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px">
+      <div style="display: flex; align-items: center; flex-wrap: wrap; gap: 8px 18px">
+        <sc-if value="{{ t.hasLogo }}" hint-placeholder-val="{{ false }}">
+          <img src="{{ t.logoUrl }}" alt="{{ t.brand }}" style="height: 76px; width: auto; display: block">
+        </sc-if>
+        <sc-if value="{{ t.logoSlot }}" hint-placeholder-val="{{ true }}">
+          <div role="img" aria-label="Platz für das Logo von {{ t.brand }}" style="height: 48px; padding: 0 14px; border: 2px dashed {{ t.headerInk }}; border-radius: 4px; display: flex; flex-direction: column; justify-content: center; line-height: 1.1">
+            <span style="font-family: {{ t.fontDisplay }}; font-size: 15px; font-weight: 800">{{ t.brand }}</span>
+            <span style="font-size: 11px; font-weight: 600">Logo-Datei folgt</span>
+          </div>
+        </sc-if>
+        <sc-if value="{{ t.textBrand }}" hint-placeholder-val="{{ false }}">
+          <span style="font-family: {{ t.fontDisplay }}; font-size: 24px; font-weight: 800; letter-spacing: {{ t.brandTracking }}">{{ t.brand }}</span>
+        </sc-if>
+        <span style="font-size: 15px; font-weight: 600; color: {{ t.headerMuted }}">{{ t.tagline }}</span>
+      </div>
+      <div style="font-size: 14px; color: {{ t.headerMuted }}">Eingeladen: <strong style="color: {{ t.headerInk }}">Maria Muster</strong>, Muster Autohaus GmbH</div>
+    </div>
+  </header>
+
+  <sc-if value="{{ notDone }}" hint-placeholder-val="{{ true }}">
+  <section style="background: {{ t.heroBg }}; color: {{ t.heroInk }}; border-bottom: 1px solid {{ t.line }}">
+    <div style="max-width: 1120px; margin: 0 auto; padding: 64px 24px 56px; display: flex; flex-direction: column; gap: 14px">
+      <span style="font-size: 14px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: {{ t.heroEyebrow }}">Einladung · Kundenevent</span>
+      <h1 style="margin: 0; font-family: {{ t.fontDisplay }}; font-size: 52px; line-height: 1.08; font-weight: 800; letter-spacing: {{ t.displayTracking }}; text-transform: {{ t.displayCase }}">Kunden-Workshop Radiowerbung</h1>
+      <p style="margin: 0; max-width: 640px; font-size: 18px; line-height: 1.5; color: {{ t.heroSub }}">{{ c.intro }}</p>
+    </div>
+  </section>
+
+  <div style="flex: 1; width: 100%; max-width: 1120px; margin: 0 auto; box-sizing: border-box; padding: 36px 24px 56px; display: flex; flex-wrap: wrap; gap: 32px; align-items: flex-start">
+    <main style="flex: 999 1 520px; min-width: 0; display: flex; flex-direction: column; gap: 16px">
+      <h2 style="margin: 0; font-family: {{ t.fontDisplay }}; font-size: 26px; font-weight: 700; letter-spacing: {{ t.displayTracking }}; text-transform: {{ t.displayCase }}">Termine</h2>
+      <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 16px">
+        <sc-for list="{{ slots }}" as="s" hint-placeholder-count="5">
+          <button onClick="{{ s.pick }}" disabled="{{ s.full }}" aria-pressed="{{ s.selected }}" style="{{ s.cardStyle }}">
+            <span style="font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: {{ s.dayColor }}">{{ s.weekday }}</span>
+            <span style="font-family: {{ t.fontDisplay }}; font-size: 28px; font-weight: 700; line-height: 1.1">{{ s.date }}</span>
+            <span style="font-size: 15px; color: {{ t.muted }}">{{ s.time }} · {{ s.place }}</span>
+            <span style="display: flex; flex-direction: column; gap: 6px; margin-top: 10px">
+              <span style="height: 6px; border-radius: 3px; background: {{ t.line }}; overflow: hidden; display: block"><span style="{{ s.barStyle }}"></span></span>
+              <span style="font-size: 14px; font-weight: 600; color: {{ s.freeColor }}">{{ s.freeText }}</span>
+            </span>
+          </button>
+        </sc-for>
+      </div>
+    </main>
+
+    <aside aria-label="Buchung" style="flex: 1 1 320px; max-width: 400px; min-width: 0; background: {{ t.surface }}; border: 1px solid {{ t.line }}; border-radius: {{ t.radius }}; overflow: hidden; padding: 0 24px 24px; display: flex; flex-direction: column; gap: 18px">
+      <div aria-hidden="true" style="height: 6px; margin: 0 -24px 6px; background: {{ t.accentStrip }}"></div>
+      <h2 style="margin: 0; font-family: {{ t.fontDisplay }}; font-size: 24px; font-weight: 700; letter-spacing: {{ t.displayTracking }}; text-transform: {{ t.displayCase }}">{{ c.asideTitle }}</h2>
+      <sc-if value="{{ noSel }}" hint-placeholder-val="{{ false }}">
+        <p style="margin: 0; font-size: 15px; color: {{ t.muted }}">{{ c.noSel }}</p>
+      </sc-if>
+      <sc-if value="{{ hasSel }}" hint-placeholder-val="{{ true }}">
+        <div style="padding: 14px; border-radius: {{ t.radiusSm }}; background: {{ t.selBg }}; border: 1px solid {{ t.selLine }}; display: flex; flex-direction: column; gap: 2px">
+          <div style="font-size: 15px; font-weight: 700">{{ sel.weekday }}, {{ sel.date }}</div>
+          <div style="font-size: 14px; color: {{ t.muted }}">{{ sel.time }} · {{ sel.place }}</div>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 8px">
+          <div id="tn" style="font-size: 14px; font-weight: 600">Anzahl Teilnehmer</div>
+          <div role="group" aria-labelledby="tn" style="display: flex; align-items: center; gap: 12px">
+            <button onClick="{{ dec }}" aria-label="Weniger Teilnehmer" style="width: 44px; height: 44px; border-radius: {{ t.radiusSm }}; border: 1px solid {{ t.field }}; background: {{ t.surface }}; color: {{ t.ink }}; font-size: 20px; cursor: pointer">−</button>
+            <div style="min-width: 32px; text-align: center; font-size: 22px; font-weight: 700">{{ count }}</div>
+            <button onClick="{{ inc }}" aria-label="Mehr Teilnehmer" style="width: 44px; height: 44px; border-radius: {{ t.radiusSm }}; border: 1px solid {{ t.field }}; background: {{ t.surface }}; color: {{ t.ink }}; font-size: 20px; cursor: pointer">+</button>
+            <span style="font-size: 13px; color: {{ t.muted }}">max. {{ sel.free }}</span>
+          </div>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 6px">
+          <label for="nm" style="font-size: 14px; font-weight: 600">Name</label>
+          <input id="nm" value="{{ name }}" onChange="{{ setName }}" style="height: 44px; border: 1px solid {{ t.field }}; border-radius: {{ t.radiusSm }}; padding: 0 12px; font-size: 15px; color: {{ t.ink }}; background: {{ t.surface }}">
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 6px">
+          <label for="em" style="font-size: 14px; font-weight: 600">E-Mail</label>
+          <input id="em" type="email" value="{{ email }}" onChange="{{ setEmail }}" style="height: 44px; border: 1px solid {{ t.field }}; border-radius: {{ t.radiusSm }}; padding: 0 12px; font-size: 15px; color: {{ t.ink }}; background: {{ t.surface }}">
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 6px">
+          <label for="nt" style="font-size: 14px; font-weight: 600">Namen weiterer Teilnehmer (optional)</label>
+          <input id="nt" placeholder="z. B. Max Beispiel, Eva Probe" style="height: 44px; border: 1px solid {{ t.field }}; border-radius: {{ t.radiusSm }}; padding: 0 12px; font-size: 15px; color: {{ t.ink }}; background: {{ t.surface }}">
+        </div>
+        <button onClick="{{ book }}" style="height: 54px; border: 0; border-radius: {{ t.radiusSm }}; background: {{ t.primary }}; color: {{ t.onPrimary }}; font-family: {{ t.fontDisplay }}; font-size: 17px; font-weight: 700; display: flex; align-items: center; justify-content: center; gap: 8px; cursor: pointer">Verbindlich buchen<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="m9 6 6 6-6 6"></path></svg></button>
+        <p style="margin: 0; font-size: 13px; line-height: 1.5; color: {{ t.muted }}">{{ c.help }}</p>
+      </sc-if>
+    </aside>
+  </div>
+  </sc-if>
+
+  <sc-if value="{{ done }}" hint-placeholder-val="{{ false }}">
+  <div style="flex: 1; width: 100%; max-width: 680px; margin: 0 auto; box-sizing: border-box; padding: 64px 24px; display: flex; flex-direction: column; gap: 24px">
+    <div role="status" style="width: 56px; height: 56px; border-radius: 28px; background: #EAF5EE; color: #1F6B43; display: flex; align-items: center; justify-content: center"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="m5 12 5 5 9-10"></path></svg></div>
+    <h1 style="margin: 0; font-family: {{ t.fontDisplay }}; font-size: 40px; line-height: 1.1; font-weight: 800; letter-spacing: {{ t.displayTracking }}; text-transform: {{ t.displayCase }}">{{ c.doneTitle }}</h1>
+    <p style="margin: 0; font-size: 17px; color: {{ t.muted }}; line-height: 1.5">{{ c.doneText }} {{ email }}.</p>
+    <div style="background: {{ t.surface }}; border: 1px solid {{ t.line }}; border-radius: {{ t.radius }}; padding: 24px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px">
+      <div><div style="font-size: 13px; color: {{ t.muted }}">Datum</div><div style="font-size: 16px; font-weight: 700">{{ sel.weekday }}, {{ sel.date }}</div></div>
+      <div><div style="font-size: 13px; color: {{ t.muted }}">Uhrzeit</div><div style="font-size: 16px; font-weight: 700">{{ sel.time }}</div></div>
+      <div><div style="font-size: 13px; color: {{ t.muted }}">Ort</div><div style="font-size: 16px; font-weight: 700">{{ sel.place }}</div></div>
+      <div><div style="font-size: 13px; color: {{ t.muted }}">Teilnehmer</div><div style="font-size: 16px; font-weight: 700">{{ count }}</div></div>
+    </div>
+    <div style="display: flex; flex-wrap: wrap; gap: 12px">
+      <a href="{{ icsHref }}" download="{{ icsName }}" style="display: inline-flex; align-items: center; gap: 8px; height: 48px; padding: 0 20px; border-radius: {{ t.radiusSm }}; background: {{ t.primary }}; color: {{ t.onPrimary }}; font-weight: 700; text-decoration: none"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"></path></svg>Kalenderdatei (.ics)</a>
+      <a href="#" style="display: inline-flex; align-items: center; height: 48px; padding: 0 20px; border-radius: {{ t.radiusSm }}; border: 1px solid {{ t.field }}; background: {{ t.surface }}; color: {{ t.ink }}; font-weight: 600; text-decoration: none">Google Kalender</a>
+      <a href="#" style="display: inline-flex; align-items: center; height: 48px; padding: 0 20px; border-radius: {{ t.radiusSm }}; border: 1px solid {{ t.field }}; background: {{ t.surface }}; color: {{ t.ink }}; font-weight: 600; text-decoration: none">Outlook</a>
+    </div>
+    <button onClick="{{ restart }}" style="align-self: flex-start; height: 44px; padding: 0; border: 0; background: none; color: {{ t.link }}; font-size: 15px; font-weight: 700; text-decoration: underline; cursor: pointer">Buchung ändern</button>
+  </div>
+  </sc-if>
+
+  <footer style="background: {{ t.footerBg }}; color: {{ t.footerInk }}; border-top: 1px solid {{ t.line }}">
+    <div style="max-width: 1120px; margin: 0 auto; padding: 24px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 24px; font-size: 14px">
+      <span>{{ t.contact }}</span>
+      <nav aria-label="Rechtliches" style="display: flex; flex-wrap: wrap; gap: 8px 20px">
+        <sc-for list="{{ t.legal }}" as="l" hint-placeholder-count="3">
+          <a href="{{ l.href }}" style="color: {{ t.footerInk }}; text-decoration: underline">{{ l.label }}</a>
+        </sc-for>
+        <span>{{ t.copyright }}</span>
+      </nav>
+    </div>
+  </footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"mandant":{"editor":"enum","default":"ANTENNE VORARLBERG","options":["ANTENNE VORARLBERG","Standard (White-Label)"]},"$preview":{"width":1280,"height":1300}}'>
+class Component extends DCLogic {
+  constructor(p){ super(p); this.state = { sel:3, count:1, done:false, name:'Maria Muster', email:'maria.muster@muster-autohaus.at' }; }
+  renderVals() {
+    var self = this;
+    // ---- Mandanten-Themes: alles Kundenspezifische lebt hier (später: tenant.theme / tenant.texts in der DB) ----
+    var THEMES = {
+      'ANTENNE VORARLBERG': {
+        brand:'ANTENNE VORARLBERG', tagline:'Mehr Musik! Mehr Vielfalt!',
+        logoUrl:'../../seed/assets/logo-antenne-vorarlberg.svg', // ← hochgeladene Logo-Datei (SVG/PNG) des Mandanten
+        primary:'#111111', onPrimary:'#FFE500', link:'#111111', dayColor:'#A63D0A',
+        bg:'#F6F5F1', surface:'#FFFFFF', ink:'#111111', muted:'#4F5158', line:'#E4E2DC', field:'#9C9EA4',
+        headerBg:'#FFE500', headerInk:'#111111', headerMuted:'#111111', headerLine:'#FFE500',
+        heroBg:'linear-gradient(100deg, #FFE500 0%, #FFE500 30%, #FFC70F 52%, #FD8F22 74%, #F96A2D 100%)', heroInk:'#111111', heroSub:'#111111', heroEyebrow:'#111111',
+        accentStrip:'linear-gradient(90deg, #FFE500 0%, #FFC70F 40%, #FD8F22 70%, #F96A2D 100%)',
+        footerBg:'#111111', footerInk:'#F1F1F1',
+        selBg:'#FFF7BF', selLine:'#E8D24A',
+        fontBody:"'Overpass', system-ui, sans-serif", fontDisplay:"'Overpass', system-ui, sans-serif",
+        displayCase:'none', displayTracking:'0', brandTracking:'0.01em',
+        radius:'6px', radiusSm:'4px',
+        contact:'Fragen? Ruft uns an: 0800 10 36 36',
+        copyright:'© 2026 ANTENNE VORARLBERG',
+        legal:[ {label:'Impressum', href:'https://www.antennevorarlberg.at/info/impressum/'}, {label:'AGB', href:'https://www.antennevorarlberg.at/info/agb/'}, {label:'Datenschutz', href:'https://www.antennevorarlberg.at/info/datenschutz/'} ],
+        place:'Studio ANTENNE VORARLBERG', icsName:'termin-antenne-vorarlberg.ics',
+        anrede:'ihr', logoMode:'logo'
+      },
+      'Standard (White-Label)': {
+        brand:'Ihr Unternehmen', tagline:'Terminbuchung',
+        primary:'#1F4FB4', onPrimary:'#FFFFFF', link:'#1F4FB4',
+        bg:'#F6F7F9', surface:'#FFFFFF', ink:'#1B1F24', muted:'#5B6470', line:'#E3E6EA', field:'#C2C7CF',
+        headerBg:'#FFFFFF', headerInk:'#1B1F24', headerMuted:'#5B6470', headerLine:'#E3E6EA',
+        heroBg:'#FFFFFF', heroInk:'#1B1F24', heroSub:'#5B6470', heroEyebrow:'#1F4FB4',
+        footerBg:'#FFFFFF', footerInk:'#3D4550',
+        selBg:'#EEF3FC', selLine:'#BFD0F0', asideTop:'1px solid #E3E6EA',
+        fontBody:"Inter, system-ui, sans-serif", fontDisplay:"Inter, system-ui, sans-serif",
+        displayCase:'none', displayTracking:'-0.01em', brandTracking:'-0.01em',
+        radius:'12px', radiusSm:'8px',
+        contact:'Fragen? Antworten Sie einfach auf Ihre Einladungs-E-Mail.',
+        copyright:'© 2026 Ihr Unternehmen',
+        legal:[ {label:'Impressum', href:'#'}, {label:'Datenschutz', href:'#'} ],
+        place:'Veranstaltungsort', icsName:'termin.ics', dayColor:'#1F4FB4',
+        accentStrip:'#1F4FB4', logoUrl:null,
+        anrede:'sie', logoMode:'text'
+      }
+    };
+    // Texte je Anrede (Mandanten-Einstellung „du/ihr“ vs. „Sie“)
+    var COPY = {
+      ihr: { intro:'Wählt euren Wunschtermin. Bei jedem Termin seht ihr, wie viele Plätze noch frei sind.', asideTitle:'Eure Buchung', noSel:'Bitte wählt links einen Termin.', help:'Ihr bekommt sofort eine Bestätigung mit Kalenderdatei per E-Mail.', doneTitle:'Danke, euer Termin ist gebucht!', doneText:'Eure Bestätigung mit Kalenderdatei ist unterwegs an' },
+      sie: { intro:'Wählen Sie Ihren Wunschtermin. Bei jedem Termin sehen Sie, wie viele Plätze noch frei sind.', asideTitle:'Ihre Buchung', noSel:'Bitte wählen Sie links einen Termin.', help:'Sie erhalten sofort eine Bestätigung mit Kalenderdatei per E-Mail.', doneTitle:'Danke, Ihr Termin ist gebucht.', doneText:'Ihre Bestätigung mit Kalenderdatei ist unterwegs an' }
+    };
+    var t = THEMES[this.props.mandant ?? 'ANTENNE VORARLBERG'] || THEMES['ANTENNE VORARLBERG'];
+    t.hasLogo = !!t.logoUrl; t.logoSlot = !t.logoUrl && t.logoMode === 'logo'; t.textBrand = !t.logoUrl && t.logoMode === 'text';
+    var c = COPY[t.anrede];
+    var data = [
+      { id:1, weekday:'Dienstag', date:'01.12.2026', time:'09:00–11:00', cap:12, booked:9, s:'20261201T090000', e:'20261201T110000' },
+      { id:2, weekday:'Donnerstag', date:'03.12.2026', time:'14:00–16:00', cap:12, booked:12, s:'20261203T140000', e:'20261203T160000' },
+      { id:3, weekday:'Mittwoch', date:'09.12.2026', time:'10:00–12:00', cap:10, booked:4, s:'20261209T100000', e:'20261209T120000' },
+      { id:4, weekday:'Dienstag', date:'15.12.2026', time:'16:00–18:00', cap:15, booked:2, s:'20261215T160000', e:'20261215T180000' },
+      { id:5, weekday:'Donnerstag', date:'14.01.2027', time:'09:00–11:00', cap:12, booked:0, s:'20270114T090000', e:'20270114T110000' }
+    ];
+    var slots = data.map(function(d){
+      var free = d.cap - d.booked, full = free === 0, selected = self.state.sel === d.id;
+      var pct = Math.round(d.booked / d.cap * 100);
+      return {
+        id:d.id, weekday:d.weekday, date:d.date, time:d.time, place:t.place, free:free, full:full, selected:selected, s:d.s, e:d.e,
+        dayColor: full ? '#6B7380' : t.dayColor,
+        freeText: full ? 'Ausgebucht' : free + ' von ' + d.cap + ' Plätzen frei',
+        freeColor: full ? '#8E1F1A' : (free <= 3 ? '#9A4A00' : '#1F6B43'),
+        barStyle: 'display:block;height:6px;width:' + pct + '%;background:' + (full ? '#8E1F1A' : '#1F6B43'),
+        cardStyle: 'text-align:left;display:flex;flex-direction:column;gap:4px;padding:20px;border-radius:' + t.radius + ';font-family:inherit;color:' + t.ink + ';cursor:' + (full ? 'not-allowed' : 'pointer') + ';background:' + (full ? '#EEEFF1' : t.surface) + ';border:' + (selected ? '2px solid ' + t.primary : '1px solid ' + t.line) + ';box-shadow:' + (selected ? '0 0 0 4px ' + t.selBg : 'none') + ';opacity:' + (full ? '0.8' : '1'),
+        pick: function(){ if (!full) self.setState({ sel:d.id, count:1 }); }
+      };
+    });
+    var sel = slots.find(function(s){ return s.id === self.state.sel; });
+    var ics = '';
+    if (sel) {
+      ics = ['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//' + t.brand + '//Terminbuchung//DE','BEGIN:VEVENT','UID:mock-' + sel.id + '@terminbuchung','DTSTAMP:20261118T100000Z','DTSTART;TZID=Europe/Vienna:' + sel.s,'DTEND;TZID=Europe/Vienna:' + sel.e,'SUMMARY:Kunden-Workshop Radiowerbung – ' + t.brand,'LOCATION:' + t.place,'DESCRIPTION:Teilnehmer: ' + this.state.count,'END:VEVENT','END:VCALENDAR'].join('\r\n');
+    }
+    return {
+      t: t, c: c, slots: slots, sel: sel || {}, hasSel: !!sel, noSel: !sel,
+      count: this.state.count, name: this.state.name, email: this.state.email,
+      done: this.state.done, notDone: !this.state.done,
+      icsHref: 'data:text/calendar;charset=utf-8,' + encodeURIComponent(ics), icsName: t.icsName,
+      setName: function(e){ self.setState({ name:e.target.value }); },
+      setEmail: function(e){ self.setState({ email:e.target.value }); },
+      inc: function(){ if (sel && self.state.count < sel.free) self.setState({ count:self.state.count + 1 }); },
+      dec: function(){ if (self.state.count > 1) self.setState({ count:self.state.count - 1 }); },
+      book: function(){ self.setState({ done:true }); },
+      restart: function(){ self.setState({ done:false }); }
+    };
+  }
+}
+</script>
+</body>
+</html>

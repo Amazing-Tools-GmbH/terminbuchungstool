@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Admin-Backend Terminverwaltung</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+body{margin:0;font-family:Inter,system-ui,sans-serif;background:#F6F7F9}
+a{color:#B4380A}a:hover{color:#8A2A06}
+button,input,select{font-family:inherit}
+</style>
+</helmet>
+<div style="min-height: 1000px; display: flex; flex-wrap: wrap; background: #F6F7F9; font-family: Inter, system-ui, sans-serif; color: #1B1F24">
+  <nav aria-label="Admin-Navigation" style="flex: 1 1 220px; max-width: 240px; background: #1B1F24; color: #FFFFFF; padding: 24px 16px; display: flex; flex-direction: column; gap: 4px">
+    <div style="font-size: 15px; font-weight: 700; padding: 0 12px 20px">Terminbuchung · Admin</div>
+    <a href="#" style="display: flex; align-items: center; min-height: 44px; padding: 0 12px; border-radius: 8px; background: #343B45; color: #FFFFFF; text-decoration: none; font-size: 14px; font-weight: 600">Termine &amp; Kapazitäten</a>
+    <a href="#" style="display: flex; align-items: center; min-height: 44px; padding: 0 12px; border-radius: 8px; color: #D4D9E0; text-decoration: none; font-size: 14px">Buchungen</a>
+    <a href="#" style="display: flex; align-items: center; min-height: 44px; padding: 0 12px; border-radius: 8px; color: #D4D9E0; text-decoration: none; font-size: 14px">Veranstaltungsarten</a>
+    <a href="#" style="display: flex; align-items: center; min-height: 44px; padding: 0 12px; border-radius: 8px; color: #D4D9E0; text-decoration: none; font-size: 14px">E-Mail-Vorlagen</a>
+    <a href="#" style="display: flex; align-items: center; min-height: 44px; padding: 0 12px; border-radius: 8px; color: #D4D9E0; text-decoration: none; font-size: 14px">Pipedrive-Verbindung</a>
+  </nav>
+
+  <div style="flex: 999 1 560px; min-width: 0; padding: 32px; display: flex; flex-direction: column; gap: 24px">
+    <div style="display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 16px">
+      <div style="display: flex; flex-direction: column; gap: 4px">
+        <h1 style="margin: 0; font-size: 26px">Termine &amp; Kapazitäten</h1>
+        <div style="font-size: 14px; color: #5B6470">Veranstaltung: Kunden-Workshop Radiowerbung</div>
+      </div>
+      <a href="Main.dc.html" style="font-size: 14px; font-weight: 600">Zum Pipedrive-Panel</a>
+    </div>
+
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px">
+      <div style="background: #FFFFFF; border: 1px solid #E3E6EA; border-radius: 12px; padding: 16px 20px"><div style="font-size: 13px; color: #5B6470">Termine</div><div style="font-size: 28px; font-weight: 700">{{ kTermine }}</div></div>
+      <div style="background: #FFFFFF; border: 1px solid #E3E6EA; border-radius: 12px; padding: 16px 20px"><div style="font-size: 13px; color: #5B6470">Plätze gesamt</div><div style="font-size: 28px; font-weight: 700">{{ kCap }}</div></div>
+      <div style="background: #FFFFFF; border: 1px solid #E3E6EA; border-radius: 12px; padding: 16px 20px"><div style="font-size: 13px; color: #5B6470">Gebucht</div><div style="font-size: 28px; font-weight: 700">{{ kBooked }}</div></div>
+      <div style="background: #FFFFFF; border: 1px solid #E3E6EA; border-radius: 12px; padding: 16px 20px"><div style="font-size: 13px; color: #5B6470">Auslastung</div><div style="font-size: 28px; font-weight: 700">{{ kPct }}</div></div>
+    </div>
+
+    <div style="display: flex; flex-wrap: wrap; gap: 24px; align-items: flex-start">
+      <section aria-label="Terminliste" style="flex: 999 1 520px; min-width: 0; background: #FFFFFF; border: 1px solid #E3E6EA; border-radius: 12px; overflow: hidden">
+        <div style="overflow-x: auto">
+          <table style="width: 100%; border-collapse: collapse; font-size: 14px; min-width: 620px">
+            <thead>
+              <tr style="background: #FAFBFC; text-align: left; color: #5B6470; font-size: 13px">
+                <th style="padding: 12px 16px; font-weight: 600">Datum</th>
+                <th style="padding: 12px 16px; font-weight: 600">Uhrzeit</th>
+                <th style="padding: 12px 16px; font-weight: 600">Ort</th>
+                <th style="padding: 12px 16px; font-weight: 600">Belegung</th>
+                <th style="padding: 12px 16px; font-weight: 600">Status</th>
+                <th style="padding: 12px 16px; font-weight: 600"><span style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">Aktionen</span></th>
+              </tr>
+            </thead>
+            <tbody>
+              <sc-for list="{{ rows }}" as="r" hint-placeholder-count="5">
+                <tr style="{{ r.rowStyle }}">
+                  <td style="padding: 12px 16px; font-weight: 600">{{ r.date }}</td>
+                  <td style="padding: 12px 16px">{{ r.time }}</td>
+                  <td style="padding: 12px 16px; color: #3D4550">{{ r.place }}</td>
+                  <td style="padding: 12px 16px">
+                    <div style="display: flex; align-items: center; gap: 10px">
+                      <div style="width: 90px; height: 6px; border-radius: 3px; background: #E3E6EA; overflow: hidden"><div style="{{ r.barStyle }}"></div></div>
+                      <span style="font-size: 13px">{{ r.booked }} / {{ r.cap }}</span>
+                    </div>
+                  </td>
+                  <td style="padding: 12px 16px"><span style="{{ r.badgeStyle }}">{{ r.status }}</span></td>
+                  <td style="padding: 8px 16px; text-align: right; white-space: nowrap">
+                    <button onClick="{{ r.open }}" style="height: 36px; padding: 0 12px; border-radius: 6px; border: 1px solid #C9CED6; background: #FFFFFF; font-size: 13px">Buchungen</button>
+                    <button onClick="{{ r.capUp }}" aria-label="Kapazität erhöhen" style="height: 36px; width: 36px; margin-left: 4px; border-radius: 6px; border: 1px solid #C9CED6; background: #FFFFFF; font-size: 15px">+</button>
+                  </td>
+                </tr>
+              </sc-for>
+            </tbody>
+          </table>
+        </div>
+        <div style="padding: 20px; border-top: 1px solid #E3E6EA; display: flex; flex-direction: column; gap: 10px">
+          <h2 style="margin: 0; font-size: 16px">Buchungen am {{ openDate }}</h2>
+          <sc-if value="{{ noBookings }}" hint-placeholder-val="{{ false }}">
+            <div style="font-size: 14px; color: #5B6470">Noch keine Buchungen.</div>
+          </sc-if>
+          <sc-for list="{{ bookings }}" as="b" hint-placeholder-count="3">
+            <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid #E3E6EA; border-radius: 8px; font-size: 14px">
+              <span style="flex: 1 1 200px; font-weight: 600">{{ b.company }}</span>
+              <span style="flex: 1 1 160px; color: #3D4550">{{ b.person }}</span>
+              <span style="color: #3D4550">{{ b.n }} Pers.</span>
+              <span style="font-size: 12px; font-weight: 600; padding: 3px 8px; border-radius: 10px; background: #EEF1F5; color: #3D4550">Pipedrive-Deal verknüpft</span>
+            </div>
+          </sc-for>
+        </div>
+      </section>
+
+      <section aria-label="Neuen Termin anlegen" style="flex: 1 1 300px; max-width: 360px; min-width: 0; background: #FFFFFF; border: 1px solid #E3E6EA; border-radius: 12px; padding: 20px; display: flex; flex-direction: column; gap: 14px">
+        <h2 style="margin: 0; font-size: 16px">Neuen Termin anlegen</h2>
+        <div style="display: flex; flex-direction: column; gap: 6px">
+          <label for="f-evt" style="font-size: 13px; font-weight: 600">Veranstaltung</label>
+          <select id="f-evt" style="height: 44px; border: 1px solid #C9CED6; border-radius: 8px; padding: 0 10px; font-size: 14px; background: #FFFFFF">
+            <option>Kunden-Workshop Radiowerbung</option>
+            <option>Studio-Besuch &amp; Spotproduktion</option>
+          </select>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 6px">
+          <label for="f-date" style="font-size: 13px; font-weight: 600">Datum</label>
+          <input id="f-date" type="date" value="{{ fDate }}" onChange="{{ setDate }}" style="height: 44px; border: 1px solid #C9CED6; border-radius: 8px; padding: 0 10px; font-size: 14px">
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px">
+          <div style="display: flex; flex-direction: column; gap: 6px">
+            <label for="f-from" style="font-size: 13px; font-weight: 600">Von</label>
+            <input id="f-from" type="time" value="{{ fFrom }}" onChange="{{ setFrom }}" style="height: 44px; border: 1px solid #C9CED6; border-radius: 8px; padding: 0 10px; font-size: 14px">
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 6px">
+            <label for="f-to" style="font-size: 13px; font-weight: 600">Bis</label>
+            <input id="f-to" type="time" value="{{ fTo }}" onChange="{{ setTo }}" style="height: 44px; border: 1px solid #C9CED6; border-radius: 8px; padding: 0 10px; font-size: 14px">
+          </div>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 6px">
+          <label for="f-place" style="font-size: 13px; font-weight: 600">Ort</label>
+          <input id="f-place" value="{{ fPlace }}" onChange="{{ setPlace }}" style="height: 44px; border: 1px solid #C9CED6; border-radius: 8px; padding: 0 10px; font-size: 14px">
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 6px">
+          <label for="f-cap" style="font-size: 13px; font-weight: 600">Kapazität (max. Teilnehmer)</label>
+          <input id="f-cap" type="number" min="1" value="{{ fCap }}" onChange="{{ setCap }}" style="height: 44px; border: 1px solid #C9CED6; border-radius: 8px; padding: 0 10px; font-size: 14px">
+        </div>
+        <label style="display: flex; align-items: center; gap: 10px; min-height: 44px; font-size: 14px">
+          <input type="checkbox" checked style="width: 18px; height: 18px; accent-color: #B4380A">
+          Sofort für Buchungslinks freigeben
+        </label>
+        <button onClick="{{ add }}" style="height: 48px; border: 0; border-radius: 8px; background: {{accent}}; color: #FFFFFF; font-size: 15px; font-weight: 600">Termin speichern</button>
+        <sc-if value="{{ added }}" hint-placeholder-val="{{ false }}">
+          <div role="status" style="font-size: 13px; color: #14532D; background: #EAF5EE; border-radius: 8px; padding: 10px 12px">Termin angelegt und in der Liste ergänzt.</div>
+        </sc-if>
+      </section>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#B4380A","options":["#B4380A","#1F4FB4","#1B1F24"]},"$preview":{"width":1440,"height":1000}}'>
+class Component extends DCLogic {
+  constructor(p){
+    super(p);
+    this.state = {
+      open: 3, added: false,
+      fDate: '2027-01-21', fFrom: '10:00', fTo: '12:00', fPlace: 'Studio Antenne Vorarlberg', fCap: '12',
+      items: [
+        { id:1, date:'Di, 01.12.2026', time:'09:00–11:00', place:'Studio Antenne Vorarlberg', cap:12, booked:9 },
+        { id:2, date:'Do, 03.12.2026', time:'14:00–16:00', place:'Studio Antenne Vorarlberg', cap:12, booked:12 },
+        { id:3, date:'Mi, 09.12.2026', time:'10:00–12:00', place:'Studio Antenne Vorarlberg', cap:10, booked:4 },
+        { id:4, date:'Di, 15.12.2026', time:'16:00–18:00', place:'Studio Antenne Vorarlberg', cap:15, booked:2 },
+        { id:5, date:'Do, 14.01.2027', time:'09:00–11:00', place:'Studio Antenne Vorarlberg', cap:12, booked:0 }
+      ]
+    };
+  }
+  renderVals() {
+    var self = this, st = this.state;
+    var days = ['So','Mo','Di','Mi','Do','Fr','Sa'];
+    var bookingData = {
+      1: [{ company:'Beispiel Bau GmbH', person:'Lukas Beispiel', n:4 }, { company:'Café Probe', person:'Anna Probe', n:2 }, { company:'Muster Sport KG', person:'Jonas Muster', n:3 }],
+      3: [{ company:'Muster Autohaus GmbH', person:'Maria Muster', n:3 }, { company:'Probe Optik', person:'Eva Probe', n:1 }],
+      4: [{ company:'Beispiel Reisen', person:'Tom Beispiel', n:2 }]
+    };
+    var cap = 0, booked = 0;
+    var rows = st.items.map(function(it){
+      cap += it.cap; booked += it.booked;
+      var full = it.booked >= it.cap, pct = Math.round(it.booked / it.cap * 100);
+      var status = full ? 'Ausgebucht' : (it.cap - it.booked <= 3 ? 'Fast voll' : 'Buchbar');
+      var bg = full ? '#FBE9E7' : (status === 'Fast voll' ? '#FFF3E0' : '#EAF5EE');
+      var fg = full ? '#A3241E' : (status === 'Fast voll' ? '#8A4500' : '#1F6B43');
+      return {
+        date: it.date, time: it.time, place: it.place, cap: it.cap, booked: it.booked, status: status,
+        rowStyle: 'border-top:1px solid #E3E6EA;background:' + (st.open === it.id ? '#FFF8F4' : '#FFFFFF'),
+        barStyle: 'height:6px;width:' + pct + '%;background:' + fg,
+        badgeStyle: 'font-size:12px;font-weight:600;padding:4px 10px;border-radius:12px;background:' + bg + ';color:' + fg,
+        open: function(){ self.setState({ open: it.id }); },
+        capUp: function(){ self.setState({ items: self.state.items.map(function(x){ return x.id === it.id ? Object.assign({}, x, { cap: x.cap + 1 }) : x; }) }); }
+      };
+    });
+    var openItem = st.items.find(function(x){ return x.id === st.open; }) || st.items[0];
+    var bookings = bookingData[openItem.id] || [];
+    function setter(k){ return function(e){ var o = {}; o[k] = e.target.value; o.added = false; self.setState(o); }; }
+    return {
+      accent: this.props.accent ?? '#B4380A',
+      rows: rows,
+      kTermine: st.items.length, kCap: cap, kBooked: booked, kPct: (cap ? Math.round(booked / cap * 100) : 0) + ' %',
+      openDate: openItem.date, bookings: bookings, noBookings: bookings.length === 0,
+      fDate: st.fDate, fFrom: st.fFrom, fTo: st.fTo, fPlace: st.fPlace, fCap: st.fCap, added: st.added,
+      setDate: setter('fDate'), setFrom: setter('fFrom'), setTo: setter('fTo'), setPlace: setter('fPlace'), setCap: setter('fCap'),
+      add: function(){
+        var d = new Date(st.fDate + 'T12:00:00');
+        var p = st.fDate.split('-');
+        var label = (isNaN(d) ? '' : days[d.getDay()] + ', ') + p[2] + '.' + p[1] + '.' + p[0];
+        var id = Date.now();
+        self.setState({ added: true, open: id, items: st.items.concat([{ id: id, date: label, time: st.fFrom + '–' + st.fTo, place: st.fPlace, cap: parseInt(st.fCap, 10) || 1, booked: 0 }]) });
+      }
+    };
+  }
+}
+</script>
+</body>
+</html>

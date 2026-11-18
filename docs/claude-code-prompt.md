@@ -25,9 +25,15 @@ Supabase-Instanz und kein Docker.
   Supabase CLI per `npx supabase`; Migrationen als Dateien im Repo, Anwendung per
   `supabase db push`.
 - Vorschau über Vercel Preview Deployments (Region fra1)
-- E-Mail über Postmark oder Resend hinter einem eigenen Interface (Anbieter austauschbar)
+- E-Mail-Versand über das eigene Postfach des Mandanten (siehe Abschnitt "E-Mail-Versand"),
+  kein zentraler Versanddienst für Kundenmails
 - Validierung mit zod, Tests mit Vitest
 - Zeitzone Europe/Vienna, Oberfläche auf Deutsch
+
+## Design-Referenz
+Das abgenommene Mock-up liegt unter `docs/mockup/` (Lesehilfe: `docs/mockup/README.md`).
+Es ist die maßgebliche Referenz für Aufbau, Texte und Zustände aller Oberflächen.
+`docs/mockup/3-buchungsseite.dc.html` enthält zusätzlich die Theme-Werte beider Seed-Mandanten.
 
 ## Architektur
 - Jede fachliche Tabelle hat `tenant_id`; Isolation über Row Level Security in Postgres.
@@ -58,19 +64,55 @@ Supabase-Instanz und kein Docker.
 - bookings: id, tenant_id, slot_id, invitation_id, name, email, seats, extra_attendees (text[]),
   status (confirmed | cancelled), created_at, cancelled_at
 
+- mail_connections: id, tenant_id, scope (tenant | user), user_id (nullable), provider
+  (google | microsoft | smtp), sender_email, sender_name, credentials_enc, status
+  (active | error | revoked), last_error, last_verified_at
+- email_outbox: id, tenant_id, type (invitation | confirmation | …), to_email, payload (jsonb),
+  status (queued | sent | failed), attempts, next_attempt_at, sent_at, provider_message_id,
+  last_error
+
 Überbuchungsschutz: Buchen ausschließlich über eine Postgres-Funktion, die den Slot sperrt
 (SELECT … FOR UPDATE), freie Plätze prüft und die Buchung in einer Transaktion schreibt.
 Dazu ein Test, der parallele Buchungen auf den letzten Platz simuliert.
 
 Buchungslinks: zufälliges Token, in der DB nur als Hash gespeichert, mit Ablaufdatum.
 
+## E-Mail-Versand: über das Postfach des Kunden
+Jeder Mandant verbindet sein eigenes E-Mail-Postfach. Einladungen und Buchungsbestätigungen
+gehen von dort raus, liegen in dessen "Gesendet"-Ordner, und Antworten kommen direkt beim
+Kunden an. Wir betreiben keinen eigenen Absender für Kundenmails.
+
+- Interface `MailSender` mit drei Implementierungen:
+  - Google Workspace/Gmail: OAuth, Gmail API, Scope `gmail.send`
+  - Microsoft 365/Outlook: OAuth (Multi-Tenant-App), Microsoft Graph, `Mail.Send` + `offline_access`
+  - SMTP: Host, Port, Benutzer, (App-)Passwort – Fallback für alle anderen Anbieter
+  - zusätzlich eine `dev`-Implementierung, die Mails nur in der DB ablegt und unter
+    `/dev/mails` anzeigt (kein Docker, kein Mailpit)
+- Standard: ein Postfach pro Mandant (scope = tenant). Das Datenmodell erlaubt später ein
+  eigenes Postfach je Vertriebsmitarbeiter für Einladungen (scope = user).
+- Zugangsdaten und Tokens verschlüsselt speichern, Token-Refresh berücksichtigen.
+- Beim Verbinden eine Testmail an das Postfach selbst senden; erst dann status = active.
+- Versand nie direkt im Request, sondern über `email_outbox` mit Retry (Cron-Job).
+  Eine Buchung darf nie daran scheitern, dass eine Mail nicht rausgeht.
+- Ist die Verbindung gestört (Token entzogen, Passwort geändert): status = error, deutlicher
+  Hinweis im Admin-Backend und im Pipedrive-Panel, Mails bleiben in der Outbox, bis die
+  Verbindung erneuert ist. Kein stiller Wechsel auf einen anderen Absender.
+- Mail-Vorlagen folgen Theme und Anrede des Mandanten (Inhalte: `docs/mockup/2-emails.dc.html`),
+  Bestätigung mit .ics-Anhang.
+- Zu prüfen (nur recherchieren und berichten, nicht ohne Rückfrage einbauen): Ob die
+  Pipedrive-API inzwischen das Senden über das in Pipedrive verbundene Postfach erlaubt
+  (Mail-Entwürfe erstellen/senden). Vorteil wäre, dass Einladungen automatisch im Deal-Verlauf
+  erscheinen.
+
 ## Phasen (gesamt)
 1. Fundament: Projektgerüst, Supabase-Schema mit Migrationen, RLS-Policies, Mandantenauflösung,
    Theme-System, Seed-Daten
-2. Buchungsseite + Buchungs-API + Bestätigungs-E-Mail mit .ics, Google-/Outlook-Kalenderlinks
+2. Buchungsseite + Buchungs-API + Bestätigungs-E-Mail mit .ics, Google-/Outlook-Kalenderlinks;
+   E-Mail-Outbox mit `MailSender`-Interface, `dev`- und SMTP-Implementierung
 3. Admin-Backend (KPIs, Termine, Belegung, Kapazität erhöhen, Buchungen je Termin, Termin anlegen)
 4. Pipedrive-App (OAuth, Custom Panel, Einladung senden, Deal-Verlaufseintrag, Fokus-Aktivität)
-5. Onboarding-Assistent (Branding, Rechtslinks, erste Veranstaltung) in den Pipedrive-App-Einstellungen
+5. Onboarding-Assistent in den Pipedrive-App-Einstellungen: Branding, Rechtslinks,
+   E-Mail-Postfach verbinden (Google / Microsoft / SMTP inkl. Testmail), erste Veranstaltung
 
 ## Aufgabe JETZT: Phase 1 und 2
 Bitte zuerst einen kurzen Plan vorlegen (Ordnerstruktur, Migrationen, offene Fragen) und auf
