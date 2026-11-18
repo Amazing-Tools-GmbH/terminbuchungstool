@@ -23,6 +23,7 @@ export function parsePublicTenant(row: Record<string, unknown>, assetUrl: (key: 
   return {
     id: String(row.id),
     slug: String(row.slug),
+    customDomain: typeof row.custom_domain === "string" && row.custom_domain ? row.custom_domain : null,
     name: String(row.name),
     theme: parseTheme(row.theme),
     anrede: row.anrede === "ihr" ? "ihr" : "sie",

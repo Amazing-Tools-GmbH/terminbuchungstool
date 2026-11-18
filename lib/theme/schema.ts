@@ -52,6 +52,14 @@ export const DEFAULT_THEME = {
   footerInk: "#3D4550",
   radius: "12px",
   radiusSm: "8px",
+  // Statusfarben (Auslastung, Bestätigung). Defaults aus dem Mock-up;
+  // überschreibbar, falls ein Mandanten-Theme damit kollidiert.
+  success: "#1F6B43",
+  successBg: "#EAF5EE",
+  warning: "#9A4A00",
+  danger: "#8E1F1A",
+  disabledBg: "#EEEFF1",
+  disabledInk: "#555C66",
 } as const satisfies Record<string, string>;
 
 export const themeSchema = z
@@ -81,6 +89,12 @@ export const themeSchema = z
     footerInk: color(DEFAULT_THEME.footerInk),
     radius: length(DEFAULT_THEME.radius),
     radiusSm: length(DEFAULT_THEME.radiusSm),
+    success: color(DEFAULT_THEME.success),
+    successBg: color(DEFAULT_THEME.successBg),
+    warning: color(DEFAULT_THEME.warning),
+    danger: color(DEFAULT_THEME.danger),
+    disabledBg: color(DEFAULT_THEME.disabledBg),
+    disabledInk: color(DEFAULT_THEME.disabledInk),
   })
   // Felder, die im Theme fehlen, bekommen ihren Default; unbekannte werden verworfen
   .partial()

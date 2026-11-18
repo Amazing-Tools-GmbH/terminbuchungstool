@@ -56,6 +56,18 @@ Mandantenfähiges Terminbuchungstool mit Pipedrive-Integration. Auftrag und Phas
 - Sperrreihenfolge: erst `invitations`, dann `slots` (Deadlocks vermeiden).
 - Zeiten immer `timestamptz`; Anzeige in `tenants.timezone` (Standard Europe/Vienna).
 
+## Buchungsseite & Mails
+
+- Buchungsseite `/b/[token]`: Server lädt Kontext über `get_invitation_context` (als `anon`),
+  Client-Komponente `components/booking/BookingApp.tsx`; Texte als aufgelöstes Wörterbuch
+  (`resolveTexts`), Datums-Formatierung serverseitig in der Mandanten-Zeitzone.
+- API-Routen validieren mit zod, rufen `lib/booking/service.ts` und stoßen danach per
+  `after()` die Outbox an. Fehlercodes `TB:*` → `lib/booking/errors.ts`.
+- Mails: `lib/mail` – `MailSender`-Interface (`dev`, `smtp`; Google/Microsoft folgen),
+  Vorlagen in `templates.ts` (Inline-Styles, kein SVG/Verlauf), Verarbeitung in `outbox.ts`
+  (SKIP LOCKED, Backoff, Postfach-Fehler ⇒ Mail bleibt queued). Links in Mails nur über
+  `lib/links.ts`; der Buchungslink steht verschlüsselt im Outbox-Payload (`link_enc`).
+
 ## Theme & Texte
 
 - Theme-Schema: `lib/theme/schema.ts` (zod). Lesen mit `parseTheme()` (robust, Fallback auf

@@ -1,0 +1,52 @@
+.page {
+  padding: 24px;
+  font-family: system-ui, sans-serif;
+  background: #fff;
+  color: #111;
+  flex: 1;
+}
+
+.table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 14px;
+}
+
+.table th,
+.table td {
+  text-align: left;
+  padding: 8px;
+  border-bottom: 1px solid #ddd;
+  vertical-align: top;
+}
+
+.error {
+  color: #8e1f1a;
+  font-size: 12px;
+}
+
+.meta {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 16px;
+}
+
+.meta dd {
+  margin: 0;
+}
+
+.pair {
+  display: contents;
+}
+
+.frame {
+  width: 100%;
+  max-width: 760px;
+  height: 900px;
+  border: 1px solid #ddd;
+  margin-top: 16px;
+}
+
+.text {
+  white-space: pre-wrap;
+}

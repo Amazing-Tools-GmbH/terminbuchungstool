@@ -86,7 +86,7 @@ oder per Subdomain `http://demo.localhost:3000`.
 Was die Shims (`supabase/dev-shims/`) nachbilden: Schema `auth` mit `auth.users`,
 `auth.uid()`, `auth.role()`, `auth.jwt()` (aus `request.jwt.claims`), die Rollen `anon`,
 `authenticated`, `service_role` und die Supabase-Standardrechte im Schema `public`.
-Logos landen lokal unter `public/dev-assets/` (gitignored); Storage-Migration ist lokal ein No-op.
+Logos landen lokal unter `.data/dev-assets/` (gitignored, ausgeliefert über `/dev-assets/…`); Storage-Migration ist lokal ein No-op.
 
 ### Mit Supabase-Dev-Projekt
 
@@ -118,6 +118,22 @@ Logos landen lokal unter `public/dev-assets/` (gitignored); Storage-Migration is
 - Production: Wildcard-Domain `*.<APP_DOMAIN>` und ggf. eigene Kundendomains
   (`tenants.custom_domain`) im Vercel-Projekt eintragen.
 
+## Buchungsseite & E-Mails (Phase 2)
+
+- Buchungsseite: `/b/<token>` (persönlicher Link aus der Einladung). Lokal mit
+  `?tenant=<slug>`; `npm run db:reset` gibt fertige Links aus.
+- API: `POST /api/bookings` (buchen/umbuchen), `POST /api/bookings/cancel`,
+  `.ics`: `GET /b/<token>/ics`.
+- Mails laufen immer über `email_outbox`. Direkt nach einer Buchung wird die Outbox des
+  Mandanten im Hintergrund abgearbeitet (`after()`), zusätzlich per Cron
+  `GET /api/cron/outbox` (Header `Authorization: Bearer $CRON_SECRET`).
+  `vercel.json` plant alle 5 Minuten – das braucht einen Vercel-Pro-Plan
+  (Hobby erlaubt nur tägliche Cron-Jobs).
+- Versand über das Postfach des Mandanten (`mail_connections`): `dev` (nur DB, Ansicht unter
+  `/dev/mails`, braucht `DEV_TOOLS_ENABLED=true`) und `smtp`. Google/Microsoft folgen.
+- Links in Mails: `lib/links.ts` + `TENANT_BASE_URL_TEMPLATE` (Domain-Struktur noch offen).
+- Recherche Pipedrive-Mailversand: [`docs/research/pipedrive-mailversand.md`](docs/research/pipedrive-mailversand.md).
+
 ## Mandanten und Domains
 
 Der Slug eines Mandanten ist seine **Pipedrive-Unternehmensdomain**
@@ -126,6 +142,10 @@ eindeutig, damit ist es auch der Slug. Die Buchungsseite liegt dann unter
 `antennevorarlberg.<APP_DOMAIN>` oder optional unter einer eigenen Domain des Kunden.
 Der Slug wird bei der Installation der Pipedrive-App einmal gesetzt und bleibt danach
 stabil. Der Seed-Mandant `demo` hat keine Pipedrive-Verbindung.
+
+**Offen:** Unter welcher Domain die Buchungsseiten laufen (Subdomain je Kunde, Pfad
+oder eigene separate Domain) wird noch abgestimmt. Der Code hängt davon nur an zwei
+Stellen ab: `APP_DOMAIN` (Auflösung) und `TENANT_BASE_URL_TEMPLATE` (Links in Mails).
 
 ## Umgebungsvariablen
 
@@ -139,5 +159,7 @@ Siehe [`.env.example`](.env.example). Keine Secrets committen.
 | `APP_DOMAIN` | Basis-Domain für `<slug>.<APP_DOMAIN>` |
 | `APP_BASE_URL` | öffentliche Basis-URL für Links in Mails |
 | `ALLOW_TENANT_QUERY_PARAM` | `?tenant=`-Fallback (nur Dev/Preview) |
+| `TENANT_BASE_URL_TEMPLATE` | Vorlage für Mandanten-URLs in Mails, z. B. `https://{slug}.termine.example.at` |
+| `DEV_TOOLS_ENABLED` | `/dev/mails` u. Ä. (in Production immer aus) |
 | `ENCRYPTION_KEY` | 32 Byte base64, verschlüsselt Tokens/Passwörter |
 | `CRON_SECRET` | schützt den Outbox-Cron-Endpunkt |

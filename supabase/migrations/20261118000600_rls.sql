@@ -83,7 +83,7 @@ create policy slots_write on public.slots
 -- löschen nur owner/admin. token_hash ist für niemanden lesbar außer
 -- service_role (Spaltenrechte).
 -- ---------------------------------------------------------------------
-grant select (id, tenant_id, event_id, name, email, pipedrive_deal_id, pipedrive_person_id,
+grant select (id, tenant_id, event_id, name, email, organization_name, pipedrive_deal_id, pipedrive_person_id,
               allowed_slot_ids, status, expires_at, sent_at, created_by, created_at, updated_at)
   on public.invitations to authenticated;
 grant insert, update, delete on public.invitations to authenticated;

@@ -7,6 +7,7 @@ export type LegalLink = { label: string; href: string };
 export type PublicTenant = {
   id: string;
   slug: string;
+  customDomain: string | null;
   name: string;
   theme: Theme;
   anrede: Anrede;

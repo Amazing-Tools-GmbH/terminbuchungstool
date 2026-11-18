@@ -41,6 +41,12 @@ export const TEXT_PAIRS = [
   ["heroSub", "heroBg"],
   ["footerInk", "footerBg"],
   ["ink", "selectedBg"],
+  ["success", "surface"],
+  ["success", "successBg"],
+  ["warning", "surface"],
+  ["danger", "surface"],
+  ["danger", "disabledBg"],
+  ["disabledInk", "disabledBg"],
 ] as const;
 
 export type ContrastIssue = { fg: string; bg: string; ratio: number };

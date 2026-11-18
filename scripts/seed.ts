@@ -100,7 +100,7 @@ async function seedTenant(db: pg.Client, t: SeedTenant, opts: { withAuthUsers: b
          values ($1, $2, $3, $4, $5, now() + interval '90 days')`,
         [tenantId, event!.id, hashToken(token), `Seed-Kunde ${filler}`, `seed-kunde-${filler}@kunde.example`],
       );
-      await db.query("select public.book_slot($1, $2, $3, $4, $5, $6, '{}')", [
+      await db.query("select public.book_slot($1, $2, $3, $4, $5, $6, '{}', null)", [
         tenantId,
         token,
         slot!.id,
@@ -117,9 +117,9 @@ async function seedTenant(db: pg.Client, t: SeedTenant, opts: { withAuthUsers: b
   // Test-Einladung zum Ausprobieren
   const token = generateToken();
   await db.query(
-    `insert into public.invitations (tenant_id, event_id, token_hash, name, email, pipedrive_deal_id, expires_at, sent_at)
-     values ($1, $2, $3, $4, $5, $6, now() + interval '60 days', now())`,
-    [tenantId, event!.id, hashToken(token), t.invitation.name, t.invitation.email, t.invitation.pipedriveDealId],
+    `insert into public.invitations (tenant_id, event_id, token_hash, name, organization_name, email, pipedrive_deal_id, expires_at, sent_at)
+     values ($1, $2, $3, $4, $5, $6, $7, now() + interval '60 days', now())`,
+    [tenantId, event!.id, hashToken(token), t.invitation.name, t.invitation.organization, t.invitation.email, t.invitation.pipedriveDealId],
   );
 
   return { slug: t.slug, token, tenantId };

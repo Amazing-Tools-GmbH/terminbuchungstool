@@ -14,6 +14,8 @@ create table public.invitations (
   token_hash          bytea not null unique check (length(token_hash) = 32),
   name                text not null check (length(trim(name)) between 1 and 200),
   email               text not null check (email ~* '^[^@\s]+@[^@\s]+\.[^@\s]+$'),
+  -- Firma des Eingeladenen (aus Pipedrive), Anzeige im Header der Buchungsseite
+  organization_name   text,
   pipedrive_deal_id   bigint,
   pipedrive_person_id bigint,
   -- null = alle Termine der Veranstaltung buchbar

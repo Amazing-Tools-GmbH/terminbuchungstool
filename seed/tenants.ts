@@ -30,7 +30,7 @@ export type SeedTenant = {
   senderEmail: string;
   admin: { email: string };
   event: { title: string; location: string; description: string | null; slots: SeedSlot[] };
-  invitation: { name: string; email: string; pipedriveDealId: number };
+  invitation: { name: string; organization: string; email: string; pipedriveDealId: number };
 };
 
 export const SEED_TENANTS: SeedTenant[] = [
@@ -89,7 +89,7 @@ export const SEED_TENANTS: SeedTenant[] = [
         { inDays: 57, from: "09:00", to: "11:00", capacity: 12, booked: 0 },
       ],
     },
-    invitation: { name: "Maria Muster", email: "maria.muster@muster-autohaus.example", pipedriveDealId: 1001 },
+    invitation: { name: "Maria Muster", organization: "Muster Autohaus GmbH", email: "maria.muster@muster-autohaus.example", pipedriveDealId: 1001 },
   },
   {
     slug: "demo",
@@ -142,6 +142,6 @@ export const SEED_TENANTS: SeedTenant[] = [
         { inDays: 24, from: "10:00", to: "11:30", capacity: 8, booked: 0 },
       ],
     },
-    invitation: { name: "Max Beispiel", email: "max.beispiel@kunde.example", pipedriveDealId: 2001 },
+    invitation: { name: "Max Beispiel", organization: "Beispiel AG", email: "max.beispiel@kunde.example", pipedriveDealId: 2001 },
   },
 ];

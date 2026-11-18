@@ -1,7 +1,7 @@
 /**
  * Ablage für Mandanten-Assets (Logos). Bucket "tenant-assets", Schlüssel
  * "<tenant_id>/<datei>". Solange es kein Supabase-Projekt gibt, legt die
- * lokale Implementierung die Dateien unter public/dev-assets/ ab.
+ * lokale Implementierung die Dateien unter .data/dev-assets/ ab.
  */
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -14,13 +14,19 @@ export interface AssetStorage {
 }
 
 const SAFE_KEY = /^[0-9a-f-]{36}\/[A-Za-z0-9._-]{1,100}$/;
+export function isSafeAssetKey(key: string): boolean {
+  return SAFE_KEY.test(key) && !key.includes("..");
+}
 function assertKey(key: string) {
-  if (!SAFE_KEY.test(key)) throw new Error(`Ungültiger Asset-Schlüssel: ${key}`);
+  if (!isSafeAssetKey(key)) throw new Error(`Ungültiger Asset-Schlüssel: ${key}`);
 }
 
-/** Lokale Übergangslösung: Dateien unter public/dev-assets (gitignored) */
+/** Lokale Ablage (gitignored); ausgeliefert über app/dev-assets/[...key]/route.ts */
+export const LOCAL_ASSET_ROOT = path.join(process.cwd(), ".data", "dev-assets");
+
+/** Lokale Übergangslösung ohne Supabase Storage */
 export class LocalAssetStorage implements AssetStorage {
-  constructor(private readonly root = path.join(process.cwd(), "public", "dev-assets")) {}
+  constructor(private readonly root = LOCAL_ASSET_ROOT) {}
   async put(key: string, body: Buffer): Promise<void> {
     assertKey(key);
     const file = path.join(this.root, key);

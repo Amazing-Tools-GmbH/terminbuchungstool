@@ -6,6 +6,10 @@
 --   gültiges Token gibt es keine Daten.
 -- * Fehler: raise exception mit message = 'TB:<code>' (errcode P0001);
 --   die App übersetzt die Codes (lib/booking/errors.ts).
+-- * Mails: Die Outbox braucht für Links in Mails den Buchungslink. In der
+--   DB steht das Token aber nur als Hash. Die App übergibt deshalb den Link
+--   mit ENCRYPTION_KEY verschlüsselt (p_link_enc); er landet nur so im
+--   Outbox-Payload und wird erst beim Versand entschlüsselt.
 -- * Sperrreihenfolge (gegen Deadlocks, auch für spätere Funktionen):
 --   erst invitations-Zeile, dann slots-Zeile.
 -- =====================================================================
@@ -45,6 +49,7 @@ as $$
   select jsonb_build_object(
     'id', t.id,
     'slug', t.slug,
+    'custom_domain', t.custom_domain,
     'name', t.name,
     'theme', t.theme,
     'anrede', t.anrede,
@@ -136,6 +141,7 @@ begin
       'id', v_inv.id,
       'name', v_inv.name,
       'email', v_inv.email,
+      'organization_name', v_inv.organization_name,
       'status', v_inv.status,
       'expires_at', v_inv.expires_at,
       'expired', v_inv.expires_at <= now()
@@ -180,7 +186,8 @@ create or replace function public.book_slot(
   p_seats           integer,
   p_name            text,
   p_email           text,
-  p_extra_attendees text[] default '{}'
+  p_extra_attendees text[] default '{}',
+  p_link_enc        text default null
 )
 returns jsonb
 language plpgsql
@@ -295,7 +302,7 @@ begin
   insert into public.email_outbox (tenant_id, type, to_email, payload)
   values (
     v_inv.tenant_id, 'confirmation', v_email,
-    jsonb_build_object('booking_id', v_new_id, 'replaces_booking_id', v_old.id)
+    jsonb_build_object('booking_id', v_new_id, 'replaces_booking_id', v_old.id, 'link_enc', p_link_enc)
   );
 
   return jsonb_build_object(
@@ -310,7 +317,7 @@ $$;
 -- ---------------------------------------------------------------------
 -- Stornieren durch den Kunden (über seinen Buchungslink, mit Frist)
 -- ---------------------------------------------------------------------
-create or replace function public.cancel_booking(p_tenant_id uuid, p_token text)
+create or replace function public.cancel_booking(p_tenant_id uuid, p_token text, p_link_enc text default null)
 returns jsonb
 language plpgsql
 volatile
@@ -354,7 +361,8 @@ begin
   update public.invitations set status = 'cancelled' where id = v_inv.id;
 
   insert into public.email_outbox (tenant_id, type, to_email, payload)
-  values (v_inv.tenant_id, 'cancellation', v_booking.email, jsonb_build_object('booking_id', v_booking.id));
+  values (v_inv.tenant_id, 'cancellation', v_booking.email,
+          jsonb_build_object('booking_id', v_booking.id, 'link_enc', p_link_enc));
 
   return jsonb_build_object('booking_id', v_booking.id);
 end
@@ -371,9 +379,9 @@ grant execute on function app.slot_booked_seats(uuid, uuid)   to authenticated, 
 
 revoke all on function public.resolve_tenant(text, text)                                   from public;
 revoke all on function public.get_invitation_context(uuid, text)                           from public;
-revoke all on function public.book_slot(uuid, text, uuid, integer, text, text, text[])     from public;
-revoke all on function public.cancel_booking(uuid, text)                                   from public;
+revoke all on function public.book_slot(uuid, text, uuid, integer, text, text, text[], text)     from public;
+revoke all on function public.cancel_booking(uuid, text, text)                                   from public;
 grant execute on function public.resolve_tenant(text, text)                               to anon, authenticated, service_role;
 grant execute on function public.get_invitation_context(uuid, text)                       to anon, authenticated, service_role;
-grant execute on function public.book_slot(uuid, text, uuid, integer, text, text, text[]) to anon, authenticated, service_role;
-grant execute on function public.cancel_booking(uuid, text)                               to anon, authenticated, service_role;
+grant execute on function public.book_slot(uuid, text, uuid, integer, text, text, text[], text) to anon, authenticated, service_role;
+grant execute on function public.cancel_booking(uuid, text, text)                               to anon, authenticated, service_role;
