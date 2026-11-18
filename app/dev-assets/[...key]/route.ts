@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { LOCAL_ASSET_ROOT, isSafeAssetKey } from "@/lib/storage";
+import { LOCAL_ASSET_ROOT, assetStorageKind, isSafeAssetKey } from "@/lib/storage";
 
 const TYPES: Record<string, string> = {
   ".svg": "image/svg+xml",
@@ -11,11 +11,11 @@ const TYPES: Record<string, string> = {
 };
 
 /**
- * Liefert lokal abgelegte Mandanten-Assets aus (nur Übergangslösung ohne
- * Supabase Storage; mit SUPABASE_URL zeigen Logo-URLs direkt auf Storage).
+ * Liefert lokal abgelegte Mandanten-Assets aus (nur bei ASSET_STORAGE=local;
+ * mit ASSET_STORAGE=supabase zeigen Logo-URLs direkt auf Supabase Storage).
  */
 export async function GET(_req: Request, { params }: { params: Promise<{ key: string[] }> }) {
-  if (process.env.SUPABASE_URL) return new Response("Not found", { status: 404 });
+  if (assetStorageKind() !== "local") return new Response("Not found", { status: 404 });
   const key = (await params).key.join("/");
   const type = TYPES[path.extname(key).toLowerCase()];
   if (!isSafeAssetKey(key) || !type) return new Response("Not found", { status: 404 });

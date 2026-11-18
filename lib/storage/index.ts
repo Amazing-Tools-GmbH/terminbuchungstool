@@ -1,7 +1,10 @@
 /**
  * Ablage für Mandanten-Assets (Logos). Bucket "tenant-assets", Schlüssel
- * "<tenant_id>/<datei>". Solange es kein Supabase-Projekt gibt, legt die
- * lokale Implementierung die Dateien unter .data/dev-assets/ ab.
+ * "<tenant_id>/<datei>". Welche Ablage gilt, wird EXPLIZIT gewählt
+ * (ASSET_STORAGE=local|supabase), nicht aus dem bloßen Vorhandensein von
+ * SUPABASE_URL abgeleitet – lokale DB + Supabase-Storage passen nicht zusammen.
+ *   local:    .data/dev-assets/ (lokale Dev-DB, Tests)
+ *   supabase: Supabase Storage (Deployment, Seed gegen Supabase)
  */
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -51,6 +54,7 @@ export class SupabaseAssetStorage implements AssetStorage {
     const res = await fetch(`${this.url}/storage/v1/object/${ASSET_BUCKET}/${key}`, {
       method: "POST",
       headers: {
+        apikey: this.serviceRoleKey,
         authorization: `Bearer ${this.serviceRoleKey}`,
         "content-type": contentType,
         "x-upsert": "true",
@@ -65,7 +69,25 @@ export class SupabaseAssetStorage implements AssetStorage {
   }
 }
 
+export type AssetStorageKind = "local" | "supabase";
+
+/** ASSET_STORAGE auswerten (Standard: local). Unbekannte Werte sind ein Konfigurationsfehler. */
+export function assetStorageKind(env: Record<string, string | undefined> = process.env): AssetStorageKind {
+  const v = (env.ASSET_STORAGE ?? "").trim() || "local";
+  if (v !== "local" && v !== "supabase") throw new Error(`ASSET_STORAGE muss "local" oder "supabase" sein, ist "${v}"`);
+  return v;
+}
+
+export function createAssetStorage(
+  kind: AssetStorageKind,
+  env: Record<string, string | undefined> = process.env,
+): AssetStorage {
+  if (kind === "local") return new LocalAssetStorage();
+  if (!env.SUPABASE_URL) throw new Error("ASSET_STORAGE=supabase, aber SUPABASE_URL fehlt");
+  return new SupabaseAssetStorage(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY);
+}
+
+/** Ablage gemäß ASSET_STORAGE (App-Laufzeit). */
 export function assetStorage(env: Record<string, string | undefined> = process.env): AssetStorage {
-  if (env.SUPABASE_URL) return new SupabaseAssetStorage(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY);
-  return new LocalAssetStorage();
+  return createAssetStorage(assetStorageKind(env), env);
 }

@@ -6,8 +6,14 @@ import { type DbActor, withActorOn } from "@/lib/db/actor";
 export function testDbUrl(): string {
   const url = process.env.TEST_DATABASE_URL;
   if (!url) throw new Error("TEST_DATABASE_URL fehlt (siehe .env.example)");
-  if (process.env.SUPABASE_DB_URL && url === process.env.SUPABASE_DB_URL) {
-    throw new Error("TEST_DATABASE_URL darf nicht die Supabase-Datenbank sein – Tests setzen die DB zurück!");
+  // DB-Tests laufen IMMER gegen eine lokale Wegwerf-DB (mit Dev-Shims) – nie
+  // gegen Supabase, egal welche SUPABASE_*-Variablen gesetzt sind.
+  const host = new URL(url).hostname;
+  if (
+    (process.env.SUPABASE_DB_URL && url === process.env.SUPABASE_DB_URL) ||
+    /(^|\.)(supabase\.co|supabase\.com|pooler\.supabase\.com)$/.test(host)
+  ) {
+    throw new Error("TEST_DATABASE_URL darf nicht auf Supabase zeigen – Tests setzen die DB komplett zurück!");
   }
   return url;
 }

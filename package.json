@@ -16,7 +16,11 @@
     "test:db": "vitest run tests/db",
     "db:start": "bash scripts/db-dev-start.sh",
     "db:reset": "tsx scripts/db-reset.ts",
-    "db:seed": "tsx scripts/seed.ts"
+    "db:seed": "tsx scripts/seed.ts --target=local",
+    "supabase:inspect": "tsx scripts/supabase/inspect.ts",
+    "supabase:migrate": "tsx scripts/supabase/migrate.ts",
+    "supabase:seed": "tsx scripts/seed.ts --target=supabase",
+    "supabase:wipe": "tsx scripts/supabase/wipe.ts"
   },
   "dependencies": {
     "next": "^15.5.29",
