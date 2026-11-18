@@ -32,6 +32,9 @@ Mandantenfähiges Terminbuchungstool mit Pipedrive-Integration. Auftrag und Phas
 - Wird einmal bei der Pipedrive-Installation gesetzt und danach nicht automatisch geändert
   (verschickte Links bleiben gültig). Stabiler Schlüssel des Mandanten bleibt `company_id`;
   die aktuelle Domain steht in `pipedrive_connections.company_domain`.
+- Öffentliche Domain (entschieden, Variante A): Kunde wählt frei eine Subdomain seiner
+  eigenen Domain (z. B. `termine.kunde.at`) per CNAME auf die App → `tenants.custom_domain`
+  + Domain in Vercel (ab Phase 5 automatisiert mit DNS-Prüfung). Kein iframe-Embedding.
 
 ## Datenzugriff
 
@@ -47,9 +50,16 @@ Mandantenfähiges Terminbuchungstool mit Pipedrive-Integration. Auftrag und Phas
 - Migrationen: `supabase/migrations/<YYYYMMDDHHMMSS>_<name>.sql`, müssen **unverändert auf
   Supabase** laufen. Nichts verwenden, was es dort nicht gibt. Bestehende Migrationen nach
   dem Push auf Supabase nicht mehr ändern – neue Migration anlegen.
-- Übergangslösung ohne Supabase-Projekt: vorinstalliertes Postgres 16 + Shims in
-  `supabase/dev-shims/` (auth-Schema, Rollen, Supabase-Standardrechte). Shims NIE in
-  `supabase/migrations/`.
+- Lokal: vorinstalliertes Postgres 16 + Shims in `supabase/dev-shims/` (auth-Schema,
+  Rollen, Supabase-Standardrechte). Shims NIE in `supabase/migrations/` und NIE auf Supabase.
+- Supabase-Projekt `rktitpxdwajstxlurkgq`: aus der Cloud nur per HTTPS erreichbar.
+  Migrationen mit `npm run supabase:migrate` (Management API, trägt in
+  `supabase_migrations.schema_migrations` ein → kompatibel zu `supabase db push`),
+  Seed mit `npm run supabase:seed`. `SUPABASE_DB_URL` gibt es nur in Vercel.
+- Ziel lokal vs. Supabase immer explizit wählen (`--target=…`, `ASSET_STORAGE=…`),
+  nie aus dem Vorhandensein von `SUPABASE_URL` ableiten. DB-Tests laufen immer gegen
+  das lokale `TEST_DATABASE_URL`. Auf Supabase keine `auth.users` per SQL anlegen.
+- `npm run supabase:wipe` (leert das Projekt) nur auf ausdrückliche Anweisung.
 - Funktionen: `security definer` immer mit `set search_path = ''` und voll qualifizierten
   Namen; Rechte explizit (`revoke … from public` + gezieltes `grant execute`).
 - Fehler aus DB-Funktionen: `raise exception using errcode = 'P0001', message = 'TB:<code>'`.
@@ -96,8 +106,11 @@ Mandantenfähiges Terminbuchungstool mit Pipedrive-Integration. Auftrag und Phas
 ```bash
 # Der SessionStart-Hook (.claude/hooks/session-start.sh) erledigt in Cloud-Sessions
 # automatisch: npm install, .env.local, Postgres-Start, Migration+Seed bei leerer DB.
-npm run db:start   # Postgres 16 starten, DBs anlegen (Übergangsumgebung)
+npm run db:start   # Postgres 16 starten, DBs anlegen (lokal)
 npm run db:reset   # Shims + Migrationen + Seed (lokal), gibt Test-Buchungslinks aus
+npm run supabase:inspect            # Supabase-Bestand (nur lesend)
+npm run supabase:migrate [-- --dry-run]
+npm run supabase:seed
 npm test           # Unit- + DB-Tests
 npm run dev        # http://localhost:3000/?tenant=antennevorarlberg
 ```

@@ -36,12 +36,22 @@ tests/db/            RLS-Isolation (Mandant A/B/anonym), Buchungsfunktionen, par
 
 ## Entwicklung in der Cloud (Claude Code im Web)
 
-Es gibt keine lokale Supabase-Instanz und kein Docker.
+Es gibt keine lokale Supabase-Instanz und kein Docker. Es gibt zwei Ziele, die immer
+**explizit** gewählt werden (nie implizit über gesetzte `SUPABASE_*`-Variablen):
 
-### Übergangslösung: ohne Supabase-Projekt (aktueller Stand)
+| | lokal | Supabase-Projekt `rktitpxdwajstxlurkgq` |
+|---|---|---|
+| Datenbank | vorinstalliertes Postgres 16 + Dev-Shims (`DATABASE_URL`) | Management API (HTTPS) bzw. `SUPABASE_DB_URL` in Vercel |
+| Migrationen | `npm run db:reset` | `npm run supabase:migrate` |
+| Seed | `npm run db:seed` (`--target=local`) | `npm run supabase:seed` (`--target=supabase`) |
+| Logos | `.data/dev-assets/` (`ASSET_STORAGE=local`) | Bucket `tenant-assets` (`ASSET_STORAGE=supabase`) |
+| Admin-Benutzer | per SQL in den `auth.users`-Shim | keine per SQL – ab Phase 3 über die Auth-Admin-API |
+| Tests | **immer** gegen `TEST_DATABASE_URL` (lokal) | nie |
 
-Solange `SUPABASE_URL` / `SUPABASE_DB_URL` fehlen, läuft alles gegen das in der
-Cloud-Umgebung vorinstallierte PostgreSQL 16.
+### Lokale Entwicklungsdatenbank
+
+Läuft gegen das in der Cloud-Umgebung vorinstallierte PostgreSQL 16 – auch wenn die
+Supabase-Variablen gesetzt sind.
 
 In Claude-Code-Cloud-Sessions erledigt der SessionStart-Hook
 (`.claude/hooks/session-start.sh`) die folgenden Schritte automatisch: `npm install`,
@@ -88,35 +98,46 @@ Was die Shims (`supabase/dev-shims/`) nachbilden: Schema `auth` mit `auth.users`
 `authenticated`, `service_role` und die Supabase-Standardrechte im Schema `public`.
 Logos landen lokal unter `.data/dev-assets/` (gitignored, ausgeliefert über `/dev-assets/…`); Storage-Migration ist lokal ein No-op.
 
-### Mit Supabase-Dev-Projekt
+### Supabase-Projekt (`rktitpxdwajstxlurkgq`, EU)
 
-1. Projekt in Region **EU (Frankfurt)** anlegen.
-2. In den Einstellungen der Cloud-Umgebung als Umgebungsvariablen hinterlegen:
-   `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_DB_URL`
-   (Pooler-URL, Transaction-Modus) sowie `ENCRYPTION_KEY`, `APP_DOMAIN`, `APP_BASE_URL`,
-   `CRON_SECRET`. Eine neue Session übernimmt sie.
-3. Migrationen anwenden (Shims entfallen):
+Aus der Cloud-Umgebung gibt es **keine direkte DB-Verbindung** (nur HTTPS über den
+Proxy; erlaubte Hosts `rktitpxdwajstxlurkgq.supabase.co`, `api.supabase.com`). Darum
+laufen die Betriebsskripte unter `scripts/supabase/` über die Management API
+(`SUPABASE_ACCESS_TOKEN`) bzw. die Projekt-API (`SUPABASE_SERVICE_ROLE_KEY`).
+`SUPABASE_DB_URL` wird nur in Vercel gesetzt.
 
-   ```bash
-   npx supabase db push --db-url "$SUPABASE_DB_URL"
-   ```
+```bash
+npm run supabase:inspect                 # Bestandsaufnahme, nur lesend
+npm run supabase:migrate -- --dry-run    # zeigt offene Migrationen, schreibt nichts
+npm run supabase:migrate                 # wendet offene Migrationen an
+npm run supabase:seed                    # Seed-Mandanten + Logos in Bucket tenant-assets
+```
 
-4. Seed einspielen (lädt das Logo in den Bucket `tenant-assets`):
-
-   ```bash
-   npm run db:seed
-   ```
-
-5. DB-Tests laufen weiterhin gegen eine separate Testdatenbank (`TEST_DATABASE_URL`),
-   weil sie die Datenbank zurücksetzen – niemals gegen das Supabase-Projekt.
+- `supabase:migrate` wendet jede Datei aus `supabase/migrations/` zusammen mit ihrem
+  Eintrag in `supabase_migrations.schema_migrations` in **einer** Abfrage an (implizite
+  Transaktion: scheitert sie, bleibt nichts zurück). Damit ist die Historie dieselbe,
+  die die Supabase-CLI führt – `npx supabase db push --db-url "$SUPABASE_DB_URL"`
+  arbeitet später konsistent weiter. Die Dev-Shims werden **nie** angewendet.
+  Bricht ab, wenn remote Versionen eingetragen sind, die lokal fehlen, oder wenn eine
+  neue Migration älter ist als die zuletzt angewendete.
+- `supabase:seed` ist idempotent (ersetzt die Seed-Mandanten, entfernt deren alte
+  Logos) und läuft als ein atomares SQL-Skript.
+- `npm run supabase:wipe -- --confirm=<projekt-ref>` leert das Projekt vollständig
+  (public-Objekte, eigene Schemas, Migrationshistorie, Vault, Buckets, Auth-Benutzer).
+  Nicht umkehrbar – nur auf ausdrückliche Anweisung.
+- DB-Tests laufen immer gegen `TEST_DATABASE_URL` und brechen ab, wenn die URL auf
+  Supabase zeigt (sie setzen die Datenbank komplett zurück).
 
 ### Vercel
 
 - Repo mit Vercel verbinden, Function-Region **fra1**.
-- Umgebungsvariablen wie oben; für **Preview** zusätzlich `ALLOW_TENANT_QUERY_PARAM=true`,
+- Umgebungsvariablen: `SUPABASE_DB_URL` (Pooler-URL, Transaction-Modus),
+  `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`,
+  `ASSET_STORAGE=supabase`, `ENCRYPTION_KEY`, `APP_DOMAIN`, `APP_BASE_URL`, `CRON_SECRET`
+  (`SUPABASE_ACCESS_TOKEN` gehört **nicht** nach Vercel); für **Preview** zusätzlich `ALLOW_TENANT_QUERY_PARAM=true`,
   damit `?tenant=<slug>` funktioniert (in Production ist der Fallback immer aus).
-- Production: Wildcard-Domain `*.<APP_DOMAIN>` und ggf. eigene Kundendomains
-  (`tenants.custom_domain`) im Vercel-Projekt eintragen.
+- Production: Wildcard-Domain `*.<APP_DOMAIN>` und die Kundendomains
+  (`tenants.custom_domain`, siehe „Mandanten und Domains“) im Vercel-Projekt eintragen.
 
 ## Buchungsseite & E-Mails (Phase 2)
 
@@ -138,14 +159,17 @@ Logos landen lokal unter `.data/dev-assets/` (gitignored, ausgeliefert über `/d
 
 Der Slug eines Mandanten ist seine **Pipedrive-Unternehmensdomain**
 (`antennevorarlberg.pipedrive.com` → `antennevorarlberg`). Pipedrive-Domains sind
-eindeutig, damit ist es auch der Slug. Die Buchungsseite liegt dann unter
-`antennevorarlberg.<APP_DOMAIN>` oder optional unter einer eigenen Domain des Kunden.
+eindeutig, damit ist es auch der Slug. Die Buchungsseite ist intern unter
+`antennevorarlberg.<APP_DOMAIN>` erreichbar.
 Der Slug wird bei der Installation der Pipedrive-App einmal gesetzt und bleibt danach
 stabil. Der Seed-Mandant `demo` hat keine Pipedrive-Verbindung.
 
-**Offen:** Unter welcher Domain die Buchungsseiten laufen (Subdomain je Kunde, Pfad
-oder eigene separate Domain) wird noch abgestimmt. Der Code hängt davon nur an zwei
-Stellen ab: `APP_DOMAIN` (Auflösung) und `TENANT_BASE_URL_TEMPLATE` (Links in Mails).
+**Entschieden (Variante A): eigene Subdomain des Kunden.** Jeder Kunde wählt frei eine
+Subdomain seiner eigenen Domain (z. B. `termine.`, `events.`, `webinare.kunde.at`) und
+setzt einen CNAME auf unsere App. Die Domain steht in `tenants.custom_domain` und wird
+im Vercel-Projekt eingetragen; ab Phase 5 automatisiert im Onboarding (inkl. DNS-Prüfung).
+Die Mandantenauflösung über `custom_domain` gibt es bereits (`resolve_tenant`).
+Keine Einbettung per iframe (vorerst).
 
 ## Umgebungsvariablen
 
@@ -153,9 +177,12 @@ Siehe [`.env.example`](.env.example). Keine Secrets committen.
 
 | Variable | Zweck |
 |---|---|
-| `DATABASE_URL` | lokale Dev-Datenbank (Übergangslösung) |
-| `TEST_DATABASE_URL` | Testdatenbank, wird bei jedem Testlauf zurückgesetzt |
-| `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_DB_URL` | Supabase-Projekt; `SUPABASE_DB_URL` hat Vorrang vor `DATABASE_URL` |
+| `DATABASE_URL` | lokale Dev-Datenbank |
+| `TEST_DATABASE_URL` | lokale Testdatenbank, wird bei jedem Testlauf zurückgesetzt (nie Supabase) |
+| `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` | Supabase-Projekt (Service-Key nur serverseitig) |
+| `SUPABASE_DB_URL` | nur Vercel: DB-Verbindung, hat Vorrang vor `DATABASE_URL` |
+| `SUPABASE_ACCESS_TOKEN` | nur Betriebsskripte (`npm run supabase:*`), nie in Vercel |
+| `ASSET_STORAGE` | `local` (Standard) oder `supabase` – Ablage der Mandanten-Logos |
 | `APP_DOMAIN` | Basis-Domain für `<slug>.<APP_DOMAIN>` |
 | `APP_BASE_URL` | öffentliche Basis-URL für Links in Mails |
 | `ALLOW_TENANT_QUERY_PARAM` | `?tenant=`-Fallback (nur Dev/Preview) |
