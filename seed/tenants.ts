@@ -35,7 +35,7 @@ export type SeedTenant = {
 
 export const SEED_TENANTS: SeedTenant[] = [
   {
-    slug: "antenne-vorarlberg",
+    slug: "antennevorarlberg",
     name: "ANTENNE VORARLBERG",
     anrede: "ihr",
     claim: "Mehr Musik! Mehr Vielfalt!",

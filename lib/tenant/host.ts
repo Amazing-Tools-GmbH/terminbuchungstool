@@ -16,7 +16,7 @@ export const TENANT_COOKIE = "tb_tenant";
 const SLUG = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
 const HOSTNAME = /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/;
 /** Subdomains, die nie ein Mandant sind */
-const RESERVED_SUBDOMAINS = new Set(["www", "app", "api", "admin", "static"]);
+export const RESERVED_SUBDOMAINS: ReadonlySet<string> = new Set(["www", "app", "api", "admin", "static"]);
 
 export function isValidSlug(s: string): boolean {
   return SLUG.test(s);

@@ -14,7 +14,7 @@ let eventId: string;
 
 beforeAll(async () => {
   db = await setupTestDb();
-  tenantId = db.seed.find((s) => s.slug === "antenne-vorarlberg")!.tenantId;
+  tenantId = db.seed.find((s) => s.slug === "antennevorarlberg")!.tenantId;
   otherTenantId = db.seed.find((s) => s.slug === "demo")!.tenantId;
   [{ id: eventId }] = (await db.admin<{ id: string }>("select id from events where tenant_id = $1", [tenantId])) as [{ id: string }];
 });
@@ -67,7 +67,7 @@ async function expectCode(p: Promise<unknown>, code: string) {
 
 describe("get_invitation_context", () => {
   it("liefert Einladung, Veranstaltung und Termine mit Belegung (Seed)", async () => {
-    const token = db.seed.find((s) => s.slug === "antenne-vorarlberg")!.token;
+    const token = db.seed.find((s) => s.slug === "antennevorarlberg")!.token;
     const ctx = await context(token);
     expect(ctx.invitation).toMatchObject({ name: "Maria Muster", expired: false });
     expect(ctx.event.title).toBe("Kunden-Workshop Radiowerbung");

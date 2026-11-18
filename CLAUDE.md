@@ -24,6 +24,15 @@ Mandantenfähiges Terminbuchungstool mit Pipedrive-Integration. Auftrag und Phas
 7. **Secrets** (OAuth-Tokens, SMTP-Passwörter) nur verschlüsselt (`lib/crypto/secretbox.ts`)
    und für `authenticated` nicht lesbar (Spaltenrechte). Buchungslinks nur als SHA-256-Hash.
 
+## Mandanten-Slug = Pipedrive-Unternehmensdomain
+
+- Slug (Subdomain `<slug>.<APP_DOMAIN>`) = Pipedrive-Unternehmensdomain, z. B.
+  `antennevorarlberg.pipedrive.com` → `antennevorarlberg`. Ableitung nur über
+  `lib/pipedrive/domain.ts` (reservierte Subdomains bekommen `-pd`).
+- Wird einmal bei der Pipedrive-Installation gesetzt und danach nicht automatisch geändert
+  (verschickte Links bleiben gültig). Stabiler Schlüssel des Mandanten bleibt `company_id`;
+  die aktuelle Domain steht in `pipedrive_connections.company_domain`.
+
 ## Datenzugriff
 
 - Server-Code nutzt `withActor(actor, fn)` aus `lib/db` (Paket `pg`). Jede Abfrage läuft in
@@ -73,8 +82,10 @@ Mandantenfähiges Terminbuchungstool mit Pipedrive-Integration. Auftrag und Phas
 ## Häufige Befehle
 
 ```bash
+# Der SessionStart-Hook (.claude/hooks/session-start.sh) erledigt in Cloud-Sessions
+# automatisch: npm install, .env.local, Postgres-Start, Migration+Seed bei leerer DB.
 npm run db:start   # Postgres 16 starten, DBs anlegen (Übergangsumgebung)
 npm run db:reset   # Shims + Migrationen + Seed (lokal), gibt Test-Buchungslinks aus
 npm test           # Unit- + DB-Tests
-npm run dev        # http://localhost:3000/?tenant=antenne-vorarlberg
+npm run dev        # http://localhost:3000/?tenant=antennevorarlberg
 ```

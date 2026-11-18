@@ -41,7 +41,13 @@ Es gibt keine lokale Supabase-Instanz und kein Docker.
 ### Übergangslösung: ohne Supabase-Projekt (aktueller Stand)
 
 Solange `SUPABASE_URL` / `SUPABASE_DB_URL` fehlen, läuft alles gegen das in der
-Cloud-Umgebung vorinstallierte PostgreSQL 16:
+Cloud-Umgebung vorinstallierte PostgreSQL 16.
+
+In Claude-Code-Cloud-Sessions erledigt der SessionStart-Hook
+(`.claude/hooks/session-start.sh`) die folgenden Schritte automatisch: `npm install`,
+`.env.local` anlegen (mit frischem `ENCRYPTION_KEY`), Postgres starten, Datenbanken
+anlegen und – falls die Dev-Datenbank leer ist – Migrationen und Seed einspielen.
+Manuell bzw. außerhalb der Cloud:
 
 ```bash
 npm install
@@ -74,7 +80,7 @@ npm run dev
 ```
 
 `db:reset` gibt am Ende persönliche Test-Buchungslinks für beide Mandanten aus.
-Mandant lokal wählen: `http://localhost:3000/?tenant=antenne-vorarlberg` bzw. `?tenant=demo`
+Mandant lokal wählen: `http://localhost:3000/?tenant=antennevorarlberg` bzw. `?tenant=demo`
 oder per Subdomain `http://demo.localhost:3000`.
 
 Was die Shims (`supabase/dev-shims/`) nachbilden: Schema `auth` mit `auth.users`,
@@ -111,6 +117,15 @@ Logos landen lokal unter `public/dev-assets/` (gitignored); Storage-Migration is
   damit `?tenant=<slug>` funktioniert (in Production ist der Fallback immer aus).
 - Production: Wildcard-Domain `*.<APP_DOMAIN>` und ggf. eigene Kundendomains
   (`tenants.custom_domain`) im Vercel-Projekt eintragen.
+
+## Mandanten und Domains
+
+Der Slug eines Mandanten ist seine **Pipedrive-Unternehmensdomain**
+(`antennevorarlberg.pipedrive.com` → `antennevorarlberg`). Pipedrive-Domains sind
+eindeutig, damit ist es auch der Slug. Die Buchungsseite liegt dann unter
+`antennevorarlberg.<APP_DOMAIN>` oder optional unter einer eigenen Domain des Kunden.
+Der Slug wird bei der Installation der Pipedrive-App einmal gesetzt und bleibt danach
+stabil. Der Seed-Mandant `demo` hat keine Pipedrive-Verbindung.
 
 ## Umgebungsvariablen
 

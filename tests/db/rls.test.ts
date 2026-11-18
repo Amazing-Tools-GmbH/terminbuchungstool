@@ -28,7 +28,7 @@ let salesA: DbActor;
 beforeAll(async () => {
   db = await setupTestDb();
   const tenants = await db.admin<{ id: string; slug: string }>("select id, slug from tenants");
-  tenantA = tenants.find((t) => t.slug === "antenne-vorarlberg")!.id;
+  tenantA = tenants.find((t) => t.slug === "antennevorarlberg")!.id;
   tenantB = tenants.find((t) => t.slug === "demo")!.id;
   const members = await db.admin<{ tenant_id: string; user_id: string }>("select tenant_id, user_id from tenant_members");
   userA = { role: "authenticated", userId: members.find((m) => m.tenant_id === tenantA)!.user_id };
@@ -42,8 +42,8 @@ beforeAll(async () => {
   // Pipedrive-Verbindung + eine Outbox-Mail je Mandant, damit alle Tabellen Daten haben
   for (const [i, t] of [tenantA, tenantB].entries()) {
     await db.admin(
-      `insert into pipedrive_connections (tenant_id, company_id, api_domain, access_token_enc, refresh_token_enc, expires_at)
-       values ($1, $2, 'https://x.pipedrive.com', 'v1:a:b:c', 'v1:a:b:c', now() + interval '1 hour')`,
+      `insert into pipedrive_connections (tenant_id, company_id, company_domain, api_domain, access_token_enc, refresh_token_enc, expires_at)
+       values ($1, $2::bigint, 'firma' || $2::text, 'https://firma' || $2::text || '.pipedrive.com', 'v1:a:b:c', 'v1:a:b:c', now() + interval '1 hour')`,
       [t, 1000 + i],
     );
     await db.admin("insert into email_outbox (tenant_id, type, to_email) values ($1, 'test', 'x@y.example')", [t]);

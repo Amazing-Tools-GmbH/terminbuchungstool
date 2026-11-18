@@ -5,7 +5,7 @@ const base = { appDomain: "termine.example.at", allowQuery: false };
 
 describe("parseTenantKey", () => {
   it("Subdomain -> Slug", () => {
-    expect(parseTenantKey({ ...base, host: "antenne-vorarlberg.termine.example.at" })).toEqual({ kind: "slug", slug: "antenne-vorarlberg" });
+    expect(parseTenantKey({ ...base, host: "antennevorarlberg.termine.example.at" })).toEqual({ kind: "slug", slug: "antennevorarlberg" });
     expect(parseTenantKey({ ...base, host: "Demo.Termine.Example.at" })).toEqual({ kind: "slug", slug: "demo" });
   });
 

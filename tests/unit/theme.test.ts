@@ -79,7 +79,7 @@ describe("Seed-Themes", () => {
   it("ANTENNE: Header-Farbe entspricht exakt dem Logo-Hintergrund", async () => {
     const { readFile } = await import("node:fs/promises");
     const svg = await readFile("seed/assets/logo-antenne-vorarlberg.svg", "utf8");
-    const antenne = SEED_TENANTS.find((t) => t.slug === "antenne-vorarlberg")!;
+    const antenne = SEED_TENANTS.find((t) => t.slug === "antennevorarlberg")!;
     expect(svg).toContain(`fill="${antenne.theme.headerBg}"`);
   });
 });
