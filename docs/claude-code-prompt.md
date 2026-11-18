@@ -16,6 +16,26 @@ soll minimal sein.
 Entwicklung läuft vollständig in der Cloud (Claude Code im Web). Es gibt KEINE lokale
 Supabase-Instanz und kein Docker.
 
+### Übergangslösung: noch kein Supabase-Projekt
+Solange die Umgebungsvariablen SUPABASE_URL / SUPABASE_DB_URL fehlen, entwickeln wir gegen
+das in der Cloud-Umgebung vorinstallierte PostgreSQL 16:
+- Postgres in der Sitzung starten (bei Bedarf über ein Setup-Skript) und eine Datenbank
+  `terminbuchung_dev` anlegen; Verbindungs-URL in `.env.local` (nicht committen).
+- Eine Shim-Migration NUR für diese Umgebung (`supabase/dev-shims/`, nicht in
+  `supabase/migrations/`) bildet nach: Schema `auth` mit `auth.users` und `auth.uid()`
+  (liest `request.jwt.claims` aus `current_setting`), Rollen `anon`, `authenticated`,
+  `service_role`.
+- Alle regulären Migrationen müssen später unverändert auf Supabase laufen. Nichts
+  verwenden, was es dort nicht gibt.
+- RLS-Tests setzen die Rolle und `request.jwt.claims` pro Test, um Zugriffe als Mandant A,
+  Mandant B und anonym zu prüfen (Mandant A darf Daten von B nie sehen).
+- Supabase Storage ist noch nicht verfügbar: Logo-Upload im Seed hinter ein Interface legen
+  und vorerst die Datei aus `seed/assets/` referenzieren.
+- In Phase 1 Fokus auf Schema, RLS, Buchungsfunktion und Tests. Die UI aus Phase 2 nur so
+  weit bauen, wie sie ohne Vercel-Vorschau sinnvoll prüfbar ist, und mir dann Bescheid geben.
+- Sobald die Supabase-Variablen gesetzt sind: Shims weglassen, `supabase db push`, Seed
+  einspielen, Tests gegen Supabase wiederholen.
+
 ## Stack (fest)
 - Next.js (App Router, TypeScript strict), eine einzige App für Buchungsseite, Admin-Backend,
   Pipedrive-Panel und Onboarding
