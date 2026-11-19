@@ -1,0 +1,36 @@
+# /etc/systemd/system/terminbuchung.service
+# Terminbuchungstool – Next.js als Node-Prozess, nur lokal erreichbar (Caddy davor).
+[Unit]
+Description=Terminbuchungstool (Next.js)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=terminbuchung
+Group=terminbuchung
+WorkingDirectory=/opt/terminbuchung/app
+EnvironmentFile=/etc/terminbuchung/env
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/node node_modules/next/dist/bin/next start -H 127.0.0.1 -p 3003
+Restart=always
+RestartSec=5
+TimeoutStopSec=20
+
+# Härtung
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/terminbuchung/app/.next/cache
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+[Install]
+WantedBy=multi-user.target

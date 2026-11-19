@@ -1,6 +1,6 @@
 /**
  * Adressen der zentralen App (Admin-Backend, Login, OAuth-Callbacks):
- * immer unter APP_BASE_URL (z. B. https://atools.de/meetings).
+ * immer unter APP_BASE_URL (z. B. https://meetings.atools.de).
  */
 import { appBaseUrl } from "@/lib/links";
 

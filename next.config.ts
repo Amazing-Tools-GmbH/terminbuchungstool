@@ -1,7 +1,8 @@
 import type { NextConfig } from "next";
 import { basePathFrom } from "./lib/base-path";
 
-// Unterpfad aus APP_BASE_URL (z. B. https://atools.de/meetings -> /meetings).
+// Unterpfad aus APP_BASE_URL (produktiv https://meetings.atools.de -> kein Unterpfad;
+// https://atools.de/meetings ergäbe /meetings).
 // Gilt ab dem Build; nach Änderung von APP_BASE_URL neu bauen.
 const basePath = basePathFrom({ APP_BASE_URL: process.env.APP_BASE_URL });
 

@@ -1,0 +1,17 @@
+# /etc/systemd/system/terminbuchung-cron.service
+# Arbeitet Mail-Outbox und Pipedrive-Aufträge ab (ausgelöst vom Timer).
+# Das CRON_SECRET geht über stdin an curl, nicht über die Kommandozeile (ps).
+[Unit]
+Description=Terminbuchungstool – Outbox und Pipedrive-Aufträge
+After=terminbuchung.service
+
+[Service]
+Type=oneshot
+User=terminbuchung
+Group=terminbuchung
+EnvironmentFile=/etc/terminbuchung/env
+ExecStart=/bin/sh -c 'printf "Authorization: Bearer %%s\n" "$CRON_SECRET" | curl -fsS --max-time 55 -H @- http://127.0.0.1:3003/api/cron/outbox'
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true

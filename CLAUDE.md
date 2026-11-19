@@ -34,7 +34,7 @@ Mandantenfähiges Terminbuchungstool mit Pipedrive-Integration. Auftrag und Phas
   die aktuelle Domain steht in `pipedrive_connections.company_domain` und wird bei Login,
   Installation und jeder Token-Erneuerung aus der `api_domain` nachgezogen
   (`lib/pipedrive/domain-sync.ts`) – eine Adressänderung in Pipedrive bricht nichts.
-- Adressen (entschieden): alles zentral unter `APP_BASE_URL` (`https://atools.de/meetings`),
+- Adressen (entschieden): alles zentral unter `APP_BASE_URL` (`https://meetings.atools.de`, Root),
   keine Kunden-Subdomains. Buchungsseite `/b/<token>`: Mandant aus dem Token (Middleware →
   `resolve_tenant_by_token`; API-Routen aus dem Token im Body). Admin `/admin`: Mandant aus
   der Sitzung (`resolve_tenant_by_id`, nur Mitglieder). Pipedrive-Login: Mandant über die
@@ -73,13 +73,15 @@ Mandantenfähiges Terminbuchungstool mit Pipedrive-Integration. Auftrag und Phas
 - Admin-Backend `/admin` (Server Components + Server Actions, zod, `lib/admin`), Texte in
   `lib/texts/admin.ts`. Pipedrive-Benutzerliste über `lib/pipedrive/directory.ts`
   (`PIPEDRIVE_DIRECTORY=api|fake`; `fake` = Seed-Daten, nur lokal).
-- Hosting: eigener Server bei Hetzner (EU), kein Vercel. Cron per Server-Cron/systemd.
-- Unterpfad: Produktion unter `https://atools.de/meetings` (`APP_BASE_URL`) → Next.js
-  `basePath` `/meetings` (aus `APP_BASE_URL`, zur Build-Zeit, `next.config.ts`). Next ergänzt ihn
-  bei `<Link>`, `redirect()`, Server Actions; überall sonst (`href`/`action`-Attribute,
-  `fetch()` im Browser, selbst gebaute Redirect-URLs, Cookie-Pfade, Asset-URLs) IMMER
-  `withBasePath()` / `cookiePath()` aus `lib/base-path.ts`. Links in Mails über `lib/links.ts`
-  (Unterpfad gilt auch auf Kundendomains).
+- Hosting: Hetzner, kein Docker/Vercel: Node-Prozess unter systemd (eigener Benutzer
+  `terminbuchung`, `next start -H 127.0.0.1 -p 3003`), Caddy davor unter
+  `https://meetings.atools.de` (Root), Cron per systemd-Timer. Vorlagen in `deploy/`.
+  `/panel` muss im Pipedrive-iframe laufen: Einbettungs-Header setzt die App
+  (`next.config.ts`), nie im Proxy überschreiben.
+- `APP_BASE_URL` wirkt zur Build-Zeit (`basePath` in `next.config.ts`; produktiv leer, da Root).
+  Für Unterpfade gilt weiter: `href`/`action`-Attribute, `fetch()` im Browser, selbst gebaute
+  Redirect-URLs, Cookie-Pfade, Asset-URLs IMMER über `withBasePath()` / `cookiePath()` aus
+  `lib/base-path.ts`. Links in Mails über `lib/links.ts`.
 
 ## Datenbank & Migrationen
 

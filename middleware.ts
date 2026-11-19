@@ -15,13 +15,24 @@ import { cookiePath } from "@/lib/base-path";
  * Schlüssel und reicht ihn als Request-Header an die Server-Komponenten
  * weiter. Ein vom Client mitgeschickter Header wird immer verworfen.
  */
+/** Host der App: APP_DOMAIN, sonst aus APP_BASE_URL (z. B. meetings.atools.de) */
+function appDomain(): string {
+  const explicit = process.env.APP_DOMAIN?.trim();
+  if (explicit) return explicit;
+  try {
+    return new URL(process.env.APP_BASE_URL ?? "").host || "localhost:3000";
+  } catch {
+    return "localhost:3000";
+  }
+}
+
 export function middleware(req: NextRequest) {
   const allowQuery = tenantQueryAllowed(process.env);
   const queryTenant = req.nextUrl.searchParams.get(TENANT_QUERY_PARAM);
 
   const hostKey = parseTenantKey({
     host: req.headers.get("x-forwarded-host") ?? req.headers.get("host"),
-    appDomain: process.env.APP_DOMAIN ?? "localhost:3000",
+    appDomain: appDomain(),
     queryTenant,
     cookieTenant: req.cookies.get(TENANT_COOKIE)?.value,
     allowQuery,

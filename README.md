@@ -135,41 +135,61 @@ npm run supabase:seed                    # Seed-Mandanten + Logos in Bucket tena
 - DB-Tests laufen immer gegen `TEST_DATABASE_URL` und brechen ab, wenn die URL auf
   Supabase zeigt (sie setzen die Datenbank komplett zurück).
 
-### Unterpfad: `https://atools.de/meetings`
+### Adresse: `https://meetings.atools.de` (Root)
 
-Die App läuft produktiv unter einem Unterpfad: `APP_BASE_URL=https://atools.de/meetings`.
-Daraus setzt `next.config.ts` beim **Build** den Next.js-`basePath` `/meetings` (nach einer
-Änderung von `APP_BASE_URL` neu bauen).
+Produktiv: `APP_BASE_URL=https://meetings.atools.de` – die App liegt im Root, kein Unterpfad.
+`next.config.ts` liest daraus beim **Build** einen `basePath`; ohne Pfad ist er leer. (Ein
+Unterpfad wie `https://meetings.atools.de` würde weiter funktionieren – alle Links, Redirects,
+Cookies und Mail-Links laufen über `withBasePath()`/`lib/links.ts`; nach Änderung neu bauen.)
 
-- Alle Seiten und APIs liegen unter `/meetings/…` (z. B. `/meetings/admin`, `/meetings/b/<token>`).
-- **Pipedrive-Callback** (Developer Hub): `https://atools.de/meetings/api/auth/pipedrive/callback`.
+- **Pipedrive-Callback** (Developer Hub): `https://meetings.atools.de/api/auth/pipedrive/callback`.
   Google/Microsoft (nur bei `INVITE_MAIL_PROVIDER=oauth`):
-  `https://atools.de/meetings/api/mail/oauth/google/callback` bzw. `…/microsoft/callback`.
-- **Reverse Proxy:** `/meetings` *mit* Präfix an die App weiterreichen (nicht abschneiden),
-  Header `Host`/`X-Forwarded-Host` und `X-Forwarded-Proto` setzen.
-- Links in Mails, Redirects, Cookies (Pfad `/meetings`) und Logos berücksichtigen den Unterpfad;
-  geprüft im Browser-Durchlauf (Login, Navigation, Formulare, Abmelden, Pipedrive-Start,
-  Buchen, .ics, Mail-Links).
-- Lokal ohne Unterpfad (`APP_BASE_URL=http://localhost:3000`); zum Testen mit Unterpfad
-  `APP_BASE_URL=http://localhost:3000/meetings npm run dev` → `http://localhost:3000/meetings/…`.
+  `https://meetings.atools.de/api/mail/oauth/google/callback` bzw. `…/microsoft/callback`.
+- `APP_DOMAIN` ergibt sich aus `APP_BASE_URL` (`meetings.atools.de`), kann aber explizit gesetzt werden.
 
-### Hosting: eigener Server bei Hetzner (entschieden)
+### Hosting: Hetzner, Node-Prozess unter systemd, Caddy davor (kein Docker)
 
-Die App läuft als Node-Prozess (`next build` + `next start`) auf einem eigenen
-Hetzner-Server in der EU; Supabase bleibt für Datenbank, Auth und Storage. Vercel wird
-nicht verwendet (`vercel.json` ist ein Überbleibsel und entfällt mit dem Server-Setup).
-Noch umzusetzen (eigener Schritt, vor dem ersten echten Kunden):
+Vorlagen in [`deploy/`](deploy/):
 
-- Reverse Proxy mit automatischem HTTPS auch für Kundendomains (`tenants.custom_domain`),
-  z. B. Caddy mit On-Demand-TLS, das vor jedem Zertifikat bei der App nachfragt, ob die
-  Domain einem Mandanten gehört.
-- Outbox-Cron: Server-Cron/systemd-Timer ruft `GET /api/cron/outbox`
-  (Header `Authorization: Bearer $CRON_SECRET`) z. B. jede Minute auf – kein Tarif-Limit.
-- Umgebungsvariablen auf dem Server: `SUPABASE_DB_URL` (Pooler-URL, Transaction-Modus),
-  `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY`,
-  `ASSET_STORAGE=supabase`, `ENCRYPTION_KEY`, `APP_DOMAIN`, `APP_BASE_URL`, `CRON_SECRET`
-  (`SUPABASE_ACCESS_TOKEN` gehört **nicht** auf den Server).
-- Statt Vercel-Previews: eine Staging-Instanz mit `ALLOW_TENANT_QUERY_PARAM=true`.
+| Datei | Zweck |
+|---|---|
+| `deploy/systemd/terminbuchung.service` | `next start -H 127.0.0.1 -p 3003` als eigener Benutzer `terminbuchung`, gehärtet, Neustart bei Absturz |
+| `deploy/systemd/terminbuchung-cron.{service,timer}` | jede Minute `GET /api/cron/outbox` (Mails + Pipedrive-Aufträge); `CRON_SECRET` per stdin, nicht in `ps` |
+| `deploy/Caddyfile` | `meetings.atools.de` → `127.0.0.1:3003`, HTTPS automatisch |
+| `deploy/env.example` | Vorlage für `/etc/terminbuchung/env` (Laufzeit **und** Build) |
+| `deploy/deploy.sh` | Version holen, `npm ci`, Build mit derselben env |
+
+**Einrichtung (einmalig):**
+
+```bash
+sudo useradd --system --create-home --home-dir /opt/terminbuchung --shell /usr/sbin/nologin terminbuchung
+sudo -u terminbuchung git clone <repo> /opt/terminbuchung/app
+sudo install -d -m 0750 -o root -g terminbuchung /etc/terminbuchung
+sudo install -m 0640 -o root -g terminbuchung /opt/terminbuchung/app/deploy/env.example /etc/terminbuchung/env
+sudoedit /etc/terminbuchung/env            # Werte eintragen
+sudo -u terminbuchung /opt/terminbuchung/app/deploy/deploy.sh main
+sudo cp /opt/terminbuchung/app/deploy/systemd/terminbuchung* /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now terminbuchung terminbuchung-cron.timer
+# Caddy: Block aus deploy/Caddyfile in /etc/caddy/Caddyfile übernehmen
+sudo systemctl reload caddy
+```
+
+**Update:** `sudo -u terminbuchung /opt/terminbuchung/app/deploy/deploy.sh main && sudo systemctl restart terminbuchung`.
+Migrationen laufen getrennt (`npm run supabase:migrate`), vor dem Ausrollen.
+
+- Node 22 (LTS); der Pfad in `ExecStart` ist `/usr/bin/node` – bei nvm o. Ä. anpassen.
+- **Panel im Pipedrive-iframe:** Die App setzt für `/panel` selbst
+  `Content-Security-Policy: frame-ancestors 'self' https://*.pipedrive.com` und für alle
+  anderen Seiten `X-Frame-Options: SAMEORIGIN`. In Caddy darum **keine** eigenen
+  `X-Frame-Options`/`frame-ancestors`-Header setzen. Das Panel braucht keine Cookies
+  (Sitzung als Bearer-Token), Drittanbieter-Cookie-Sperren der Browser stören also nicht.
+- Port 3003 nur auf `127.0.0.1` – von außen nur über Caddy erreichbar (Firewall: 80/443).
+- `SUPABASE_ACCESS_TOKEN` gehört **nicht** auf den Server; `DEV_TOOLS_ENABLED` dort nie `true`.
+- Eigene Kundendomains (Phase 5): Caddy On-Demand-TLS mit Prüf-Endpunkt der App – im
+  `deploy/Caddyfile` auskommentiert vorbereitet.
+- Statt Vercel-Previews: eine Staging-Instanz (zweiter Dienst, anderer Port/Host) mit
+  `ALLOW_TENANT_QUERY_PARAM=true`.
 
 ## Buchungsseite & E-Mails (Phase 2)
 
@@ -188,20 +208,20 @@ Noch umzusetzen (eigener Schritt, vor dem ersten echten Kunden):
 
 ## Mandanten und Adressen (entschieden)
 
-Alles läuft **zentral unter `APP_BASE_URL`** (`https://atools.de/meetings`) – keine
+Alles läuft **zentral unter `APP_BASE_URL`** (`https://meetings.atools.de`) – keine
 Subdomain je Kunde, kein DNS-Aufwand. Wie bei der SevDesk-Schnittstelle ergibt sich der
 Kunde aus seiner Pipedrive-Identität bzw. aus dem Buchungslink:
 
 | Seite | Adresse | Mandant aus |
 |---|---|---|
-| Buchungsseite | `…/meetings/b/<token>` | dem Buchungslink (Token) |
-| Admin-Backend | `…/meetings/admin` | der Sitzung |
+| Buchungsseite | `…/b/<token>` | dem Buchungslink (Token) |
+| Admin-Backend | `…/admin` | der Sitzung |
 | Login | „Mit Pipedrive anmelden“ | der Pipedrive-Firma (`company_id`) |
-| Einstieg aus Pipedrive | `…/meetings/settings?userId=…&companyId=…&token=…` | `companyId`, abgesichert durch das signierte Token |
-| Panel im Deal | `…/meetings/panel?…&selectedIds=<deal>&token=…` | `companyId` aus dem signierten Token |
+| Einstieg aus Pipedrive | `…/settings?userId=…&companyId=…&token=…` | `companyId`, abgesichert durch das signierte Token |
+| Panel im Deal | `…/panel?…&selectedIds=<deal>&token=…` | `companyId` aus dem signierten Token |
 
-- **Pipedrive Developer Hub:** Callback-URL `https://atools.de/meetings/api/auth/pipedrive/callback`,
-  „App settings“-Seite `https://atools.de/meetings/settings`. Das Token prüft die App mit
+- **Pipedrive Developer Hub:** Callback-URL `https://meetings.atools.de/api/auth/pipedrive/callback`,
+  „App settings“-Seite `https://meetings.atools.de/settings`. Das Token prüft die App mit
   `PIPEDRIVE_JWT_SECRET` (leer = Client-Secret), es darf höchstens 15 Minuten alt sein.
 - Der Slug (= Pipedrive-Unternehmensdomain) ist nur noch eine interne Kennung.
 - **Adresse in Pipedrive geändert** (`alt.pipedrive.com` → `neu.pipedrive.com`): Der Mandant
@@ -242,10 +262,10 @@ Kunde aus seiner Pipedrive-Identität bzw. aus dem Buchungslink:
 
 | Feld | Wert |
 |---|---|
-| Callback-URL | `https://atools.de/meetings/api/auth/pipedrive/callback` |
+| Callback-URL | `https://meetings.atools.de/api/auth/pipedrive/callback` |
 | App-Deinstallation (Webhook) | dieselbe Callback-URL (Pipedrive ruft sie mit `DELETE` und Basic-Auth auf) |
-| App settings (eigene Seite) | `https://atools.de/meetings/settings` |
-| App-Erweiterung „Custom panel“, Deal-Detailansicht | `https://atools.de/meetings/panel`, JWT-Secret = `PIPEDRIVE_JWT_SECRET` (oder leer = Client-Secret) |
+| App settings (eigene Seite) | `https://meetings.atools.de/settings` |
+| App-Erweiterung „Custom panel“, Deal-Detailansicht | `https://meetings.atools.de/panel`, JWT-Secret = `PIPEDRIVE_JWT_SECRET` (oder leer = Client-Secret) |
 | Scopes | Basis, Deals (voll), Kontakte (lesen), Aktivitäten (voll), Benutzer (lesen), `mail-sending:full` |
 
 - **Installation:** Die Installation läuft über dieselbe Callback-URL (ohne `state`). Neue
@@ -277,7 +297,7 @@ Kunde aus seiner Pipedrive-Identität bzw. aus dem Buchungslink:
 
 ## Admin-Backend und Benutzer (Phase 3)
 
-- **Admin-Backend:** zentral unter `/admin` (`https://atools.de/meetings/admin`, lokal
+- **Admin-Backend:** zentral unter `/admin` (`https://meetings.atools.de/admin`, lokal
   `http://localhost:3000/admin`); der Mandant steht in der Sitzung. Termine & Kapazitäten
   (KPIs, Belegung, Kapazität +1, Buchungen je Termin mit Deal-Link, Termin anlegen) und
   Nutzerverwaltung. Weitere Bereiche (Buchungen, Veranstaltungsarten, E-Mail-Vorlagen,
@@ -314,7 +334,7 @@ Siehe [`.env.example`](.env.example). Keine Secrets committen.
 | `SUPABASE_DB_URL` | nur Produktionsserver: DB-Verbindung, hat Vorrang vor `DATABASE_URL` |
 | `SUPABASE_ACCESS_TOKEN` | nur Betriebsskripte (`npm run supabase:*`), nie auf dem Server |
 | `ASSET_STORAGE` | `local` (Standard) oder `supabase` – Ablage der Mandanten-Logos |
-| `APP_DOMAIN` | Host der App (Produktion `atools.de`) |
+| `APP_DOMAIN` | Host der App (Produktion `meetings.atools.de`; leer = aus `APP_BASE_URL`) |
 | `APP_BASE_URL` | öffentliche Basis-URL für Links in Mails |
 | `ALLOW_TENANT_QUERY_PARAM` | `?tenant=` auf der Startseite (nur Entwicklung) |
 | `PIPEDRIVE_JWT_SECRET` | prüft das Token der „App settings“-Seite (leer = Client-Secret) |

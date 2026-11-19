@@ -1,6 +1,6 @@
 /**
  * Zentrale Erzeugung öffentlicher Links (Buchungsseite, .ics) für Mails.
- * Alles liegt unter APP_BASE_URL (z. B. https://atools.de/meetings); der
+ * Alles liegt unter APP_BASE_URL (z. B. https://meetings.atools.de); der
  * Mandant ergibt sich aus dem Buchungslink selbst – keine Subdomain, kein Slug.
  *
  *   1. tenants.custom_domain gesetzt -> https://<custom_domain><Unterpfad>
