@@ -34,7 +34,7 @@ Mandantenfähiges Terminbuchungstool mit Pipedrive-Integration. Auftrag und Phas
   die aktuelle Domain steht in `pipedrive_connections.company_domain`.
 - Öffentliche Domain (entschieden, Variante A): Kunde wählt frei eine Subdomain seiner
   eigenen Domain (z. B. `termine.kunde.at`) per CNAME auf die App → `tenants.custom_domain`
-  + Domain in Vercel (ab Phase 5 automatisiert mit DNS-Prüfung). Kein iframe-Embedding.
+  + automatisches HTTPS im Reverse Proxy (ab Phase 5 automatisiert mit DNS-Prüfung). Kein iframe-Embedding.
 
 ## Datenzugriff
 
@@ -43,7 +43,9 @@ Mandantenfähiges Terminbuchungstool mit Pipedrive-Integration. Auftrag und Phas
   `request.jwt.claims` – exakt wie PostgREST bei Supabase. So gilt RLS lokal und auf Supabase
   identisch, und derselbe Code läuft unverändert gegen `SUPABASE_DB_URL`.
 - `service_role` umgeht RLS: nur für Server-Jobs (Outbox, Pipedrive-Installation, Seed).
-- `supabase-js` nur für Auth (ab Phase 3).
+- `supabase-js` nur für Auth (ab Phase 3). Benutzer lädt der Owner seiner Firma per
+  E-Mail ein (Auth-Admin-API, serverseitig); Mitgliedschaft in `tenant_members`.
+- Hosting: eigener Server bei Hetzner (EU), kein Vercel. Cron per Server-Cron/systemd.
 
 ## Datenbank & Migrationen
 
@@ -55,7 +57,7 @@ Mandantenfähiges Terminbuchungstool mit Pipedrive-Integration. Auftrag und Phas
 - Supabase-Projekt `rktitpxdwajstxlurkgq`: aus der Cloud nur per HTTPS erreichbar.
   Migrationen mit `npm run supabase:migrate` (Management API, trägt in
   `supabase_migrations.schema_migrations` ein → kompatibel zu `supabase db push`),
-  Seed mit `npm run supabase:seed`. `SUPABASE_DB_URL` gibt es nur in Vercel.
+  Seed mit `npm run supabase:seed`. `SUPABASE_DB_URL` gibt es nur auf dem Produktionsserver.
 - Ziel lokal vs. Supabase immer explizit wählen (`--target=…`, `ASSET_STORAGE=…`),
   nie aus dem Vorhandensein von `SUPABASE_URL` ableiten. DB-Tests laufen immer gegen
   das lokale `TEST_DATABASE_URL`. Auf Supabase keine `auth.users` per SQL anlegen.

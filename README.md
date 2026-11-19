@@ -9,7 +9,7 @@ Code-Kopie. Architektur und Regeln: [`CLAUDE.md`](CLAUDE.md). Auftrag und Phasen
 [`docs/claude-code-prompt.md`](docs/claude-code-prompt.md). Design: [`docs/mockup/`](docs/mockup/).
 
 **Stack:** Next.js (App Router, TypeScript strict) · Supabase (Postgres, Auth, Storage; EU) ·
-Vercel (fra1) · zod · Vitest
+eigener Server bei Hetzner (EU) · zod · Vitest
 
 ## Projektstruktur
 
@@ -41,7 +41,7 @@ Es gibt keine lokale Supabase-Instanz und kein Docker. Es gibt zwei Ziele, die i
 
 | | lokal | Supabase-Projekt `rktitpxdwajstxlurkgq` |
 |---|---|---|
-| Datenbank | vorinstalliertes Postgres 16 + Dev-Shims (`DATABASE_URL`) | Management API (HTTPS) bzw. `SUPABASE_DB_URL` in Vercel |
+| Datenbank | vorinstalliertes Postgres 16 + Dev-Shims (`DATABASE_URL`) | Management API (HTTPS) bzw. `SUPABASE_DB_URL` auf dem Server |
 | Migrationen | `npm run db:reset` | `npm run supabase:migrate` |
 | Seed | `npm run db:seed` (`--target=local`) | `npm run supabase:seed` (`--target=supabase`) |
 | Logos | `.data/dev-assets/` (`ASSET_STORAGE=local`) | Bucket `tenant-assets` (`ASSET_STORAGE=supabase`) |
@@ -104,7 +104,7 @@ Aus der Cloud-Umgebung gibt es **keine direkte DB-Verbindung** (nur HTTPS über 
 Proxy; erlaubte Hosts `rktitpxdwajstxlurkgq.supabase.co`, `api.supabase.com`). Darum
 laufen die Betriebsskripte unter `scripts/supabase/` über die Management API
 (`SUPABASE_ACCESS_TOKEN`) bzw. die Projekt-API (`SUPABASE_SERVICE_ROLE_KEY`).
-`SUPABASE_DB_URL` wird nur in Vercel gesetzt.
+`SUPABASE_DB_URL` wird nur auf dem Produktionsserver gesetzt.
 
 ```bash
 npm run supabase:inspect                 # Bestandsaufnahme, nur lesend
@@ -128,16 +128,23 @@ npm run supabase:seed                    # Seed-Mandanten + Logos in Bucket tena
 - DB-Tests laufen immer gegen `TEST_DATABASE_URL` und brechen ab, wenn die URL auf
   Supabase zeigt (sie setzen die Datenbank komplett zurück).
 
-### Vercel
+### Hosting: eigener Server bei Hetzner (entschieden)
 
-- Repo mit Vercel verbinden, Function-Region **fra1**.
-- Umgebungsvariablen: `SUPABASE_DB_URL` (Pooler-URL, Transaction-Modus),
+Die App läuft als Node-Prozess (`next build` + `next start`) auf einem eigenen
+Hetzner-Server in der EU; Supabase bleibt für Datenbank, Auth und Storage. Vercel wird
+nicht verwendet (`vercel.json` ist ein Überbleibsel und entfällt mit dem Server-Setup).
+Noch umzusetzen (eigener Schritt, vor dem ersten echten Kunden):
+
+- Reverse Proxy mit automatischem HTTPS auch für Kundendomains (`tenants.custom_domain`),
+  z. B. Caddy mit On-Demand-TLS, das vor jedem Zertifikat bei der App nachfragt, ob die
+  Domain einem Mandanten gehört.
+- Outbox-Cron: Server-Cron/systemd-Timer ruft `GET /api/cron/outbox`
+  (Header `Authorization: Bearer $CRON_SECRET`) z. B. jede Minute auf – kein Tarif-Limit.
+- Umgebungsvariablen auf dem Server: `SUPABASE_DB_URL` (Pooler-URL, Transaction-Modus),
   `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`,
   `ASSET_STORAGE=supabase`, `ENCRYPTION_KEY`, `APP_DOMAIN`, `APP_BASE_URL`, `CRON_SECRET`
-  (`SUPABASE_ACCESS_TOKEN` gehört **nicht** nach Vercel); für **Preview** zusätzlich `ALLOW_TENANT_QUERY_PARAM=true`,
-  damit `?tenant=<slug>` funktioniert (in Production ist der Fallback immer aus).
-- Production: Wildcard-Domain `*.<APP_DOMAIN>` und die Kundendomains
-  (`tenants.custom_domain`, siehe „Mandanten und Domains“) im Vercel-Projekt eintragen.
+  (`SUPABASE_ACCESS_TOKEN` gehört **nicht** auf den Server).
+- Statt Vercel-Previews: eine Staging-Instanz mit `ALLOW_TENANT_QUERY_PARAM=true`.
 
 ## Buchungsseite & E-Mails (Phase 2)
 
@@ -148,8 +155,7 @@ npm run supabase:seed                    # Seed-Mandanten + Logos in Bucket tena
 - Mails laufen immer über `email_outbox`. Direkt nach einer Buchung wird die Outbox des
   Mandanten im Hintergrund abgearbeitet (`after()`), zusätzlich per Cron
   `GET /api/cron/outbox` (Header `Authorization: Bearer $CRON_SECRET`).
-  `vercel.json` plant alle 5 Minuten – das braucht einen Vercel-Pro-Plan
-  (Hobby erlaubt nur tägliche Cron-Jobs).
+  Auf dem Hetzner-Server per Cron/systemd-Timer (siehe „Hosting“).
 - Versand über das Postfach des Mandanten (`mail_connections`): `dev` (nur DB, Ansicht unter
   `/dev/mails`, braucht `DEV_TOOLS_ENABLED=true`) und `smtp`. Google/Microsoft folgen.
 - Links in Mails: `lib/links.ts` + `TENANT_BASE_URL_TEMPLATE` (Domain-Struktur noch offen).
@@ -167,9 +173,17 @@ stabil. Der Seed-Mandant `demo` hat keine Pipedrive-Verbindung.
 **Entschieden (Variante A): eigene Subdomain des Kunden.** Jeder Kunde wählt frei eine
 Subdomain seiner eigenen Domain (z. B. `termine.`, `events.`, `webinare.kunde.at`) und
 setzt einen CNAME auf unsere App. Die Domain steht in `tenants.custom_domain` und wird
-im Vercel-Projekt eingetragen; ab Phase 5 automatisiert im Onboarding (inkl. DNS-Prüfung).
+im Reverse Proxy freigeschaltet (automatisches HTTPS); ab Phase 5 automatisiert im Onboarding (inkl. DNS-Prüfung).
 Die Mandantenauflösung über `custom_domain` gibt es bereits (`resolve_tenant`).
 Keine Einbettung per iframe (vorerst).
+
+## Benutzer (entschieden, Umsetzung Phase 3)
+
+Jede Firma verwaltet ihre Benutzer selbst: Der Owner lädt Kolleginnen und Kollegen per
+E-Mail ein (Supabase-Auth-Einladung, serverseitig mit Service-Role-Key) und vergibt die
+Rolle; die Mitgliedschaft steht in `tenant_members`. Die Trennung der Mandanten erzwingt
+RLS. Für Einladungsmails braucht Supabase Auth einen eigenen SMTP-Server (der eingebaute
+ist stark limitiert).
 
 ## Umgebungsvariablen
 
@@ -180,8 +194,8 @@ Siehe [`.env.example`](.env.example). Keine Secrets committen.
 | `DATABASE_URL` | lokale Dev-Datenbank |
 | `TEST_DATABASE_URL` | lokale Testdatenbank, wird bei jedem Testlauf zurückgesetzt (nie Supabase) |
 | `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` | Supabase-Projekt (Service-Key nur serverseitig) |
-| `SUPABASE_DB_URL` | nur Vercel: DB-Verbindung, hat Vorrang vor `DATABASE_URL` |
-| `SUPABASE_ACCESS_TOKEN` | nur Betriebsskripte (`npm run supabase:*`), nie in Vercel |
+| `SUPABASE_DB_URL` | nur Produktionsserver: DB-Verbindung, hat Vorrang vor `DATABASE_URL` |
+| `SUPABASE_ACCESS_TOKEN` | nur Betriebsskripte (`npm run supabase:*`), nie auf dem Server |
 | `ASSET_STORAGE` | `local` (Standard) oder `supabase` – Ablage der Mandanten-Logos |
 | `APP_DOMAIN` | Basis-Domain für `<slug>.<APP_DOMAIN>` |
 | `APP_BASE_URL` | öffentliche Basis-URL für Links in Mails |
