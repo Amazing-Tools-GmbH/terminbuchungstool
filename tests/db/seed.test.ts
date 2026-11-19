@@ -20,9 +20,14 @@ const asScript = (plans: ReturnType<typeof planTenant>[]) =>
   plans.flatMap((p) => p.statements.map((s) => inlineParams(s.sql, s.params) + ";")).join("\n");
 
 describe("Seed", () => {
-  it("lokaler Seed legt Admin-Mitglieder an", async () => {
-    const rows = await db.admin<{ n: number }>("select count(*)::int as n from tenant_members");
-    expect(rows[0]!.n).toBe(SEED_TENANTS.length);
+  it("lokaler Seed schaltet die vorgesehenen Pipedrive-Benutzer frei (je Mandant genau ein owner)", async () => {
+    const rows = await db.admin<{ slug: string; role: string; pipedrive_user_id: string }>(
+      `select t.slug, m.role, m.pipedrive_user_id from tenant_members m join tenants t on t.id = m.tenant_id`,
+    );
+    const expected = SEED_TENANTS.flatMap((t) => t.pipedrive.users.filter((u) => u.access).map((u) => ({ slug: t.slug, role: u.access, id: String(u.id) })));
+    expect(rows.map((r) => ({ slug: r.slug, role: r.role, id: String(r.pipedrive_user_id) }))).toEqual(expect.arrayContaining(expected));
+    expect(rows).toHaveLength(expected.length);
+    for (const t of SEED_TENANTS) expect(rows.filter((r) => r.slug === t.slug && r.role === "owner")).toHaveLength(1);
   });
 
   it("Supabase-Plan läuft als ein Skript, ohne auth.users anzufassen", async () => {

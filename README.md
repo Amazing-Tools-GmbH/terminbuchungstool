@@ -14,13 +14,16 @@ eigener Server bei Hetzner (EU) · zod · Vitest
 ## Projektstruktur
 
 ```
-app/                 Next.js-Routen (Buchungsseite, später Admin, Pipedrive-Panel, Onboarding)
+app/                 Next.js-Routen (Buchungsseite, Admin /admin, Login /api/auth/*, später Panel/Onboarding)
 components/          UI-Komponenten (nutzen nur Theme-Variablen --tb-*)
 lib/
   db/                Datenzugriff mit RLS (withActor), lokaler Migrations-Runner
   tenant/            Mandantenauflösung (Host / custom_domain / ?tenant=)
   theme/             Theme-Schema (zod), CSS-Variablen, Schriften-Allowlist, Kontrastprüfung
   texts/             Texte je Anrede (Sie/Ihr) + Overrides
+  auth/              Sitzung (versiegeltes Cookie), Pipedrive-Login, auth-Benutzer anlegen
+  admin/             Admin-Backend: Termine/Kapazitäten, Nutzerverwaltung (Datenzugriff + Logik)
+  pipedrive/         OAuth/API-Client, Verbindung (Token-Refresh), Benutzerverzeichnis, Slug
   booking/           Buchungslink-Tokens
   crypto/            AES-256-GCM für gespeicherte Zugangsdaten
   storage/           Asset-Ablage (lokal bzw. Supabase Storage)
@@ -45,7 +48,7 @@ Es gibt keine lokale Supabase-Instanz und kein Docker. Es gibt zwei Ziele, die i
 | Migrationen | `npm run db:reset` | `npm run supabase:migrate` |
 | Seed | `npm run db:seed` (`--target=local`) | `npm run supabase:seed` (`--target=supabase`) |
 | Logos | `.data/dev-assets/` (`ASSET_STORAGE=local`) | Bucket `tenant-assets` (`ASSET_STORAGE=supabase`) |
-| Admin-Benutzer | per SQL in den `auth.users`-Shim | keine per SQL – ab Phase 3 über die Auth-Admin-API |
+| Benutzer | Seed per SQL in den `auth.users`-Shim (`AUTH_ADMIN=local`) | nie per SQL – beim Freischalten über die Auth-Admin-API (`AUTH_ADMIN=supabase`) |
 | Tests | **immer** gegen `TEST_DATABASE_URL` (lokal) | nie |
 
 ### Lokale Entwicklungsdatenbank
@@ -177,13 +180,33 @@ im Reverse Proxy freigeschaltet (automatisches HTTPS); ab Phase 5 automatisiert 
 Die Mandantenauflösung über `custom_domain` gibt es bereits (`resolve_tenant`).
 Keine Einbettung per iframe (vorerst).
 
-## Benutzer (entschieden, Umsetzung Phase 3)
+## Admin-Backend und Benutzer (Phase 3)
 
-Jede Firma verwaltet ihre Benutzer selbst: Der Owner lädt Kolleginnen und Kollegen per
-E-Mail ein (Supabase-Auth-Einladung, serverseitig mit Service-Role-Key) und vergibt die
-Rolle; die Mitgliedschaft steht in `tenant_members`. Die Trennung der Mandanten erzwingt
-RLS. Für Einladungsmails braucht Supabase Auth einen eigenen SMTP-Server (der eingebaute
-ist stark limitiert).
+- **Admin-Backend:** `/admin` auf der Adresse des Mandanten (`<slug>.<APP_DOMAIN>/admin`,
+  lokal `http://localhost:3000/admin?tenant=antennevorarlberg`). Termine & Kapazitäten
+  (KPIs, Belegung, Kapazität +1, Buchungen je Termin mit Deal-Link, Termin anlegen) und
+  Nutzerverwaltung. Weitere Bereiche (Buchungen, Veranstaltungsarten, E-Mail-Vorlagen,
+  Pipedrive-Verbindung) folgen.
+- **Anmeldung nur über Pipedrive** („Mit Pipedrive anmelden“, OAuth). Ablauf: Start auf der
+  Mandanten-Adresse (Nonce-Cookie) → Pipedrive → zentraler Callback
+  `<APP_BASE_URL>/api/auth/pipedrive/callback` → Einmal-Ticket zurück auf die
+  Mandanten-Adresse → Sitzungs-Cookie (12 h). Keine Passwörter, keine Einladungsmails –
+  darum braucht Supabase Auth auch **keinen eigenen SMTP-Server**.
+- **Nutzerverwaltung** (`/admin/benutzer`): zeigt alle Benutzer der Pipedrive-Firma. Neue
+  Benutzer haben keinen Zugriff, bis ein Owner oder Admin sie freischaltet und eine Rolle
+  vergibt (Owner / Admin / Vertrieb). Admins verwalten alle außer Owner; es bleibt immer
+  mindestens ein aktiver Owner. Gesperrte Benutzer verlieren sofort jeden Zugriff (RLS).
+  Wer die Pipedrive-App installiert, wird Owner (Phase 4). Dieselbe Verwaltung kommt
+  später zusätzlich in die Einstellungen der Pipedrive-App (eingebettet, Anmeldung dort
+  über das Pipedrive-JWT statt Cookie).
+- **Lokal ohne OAuth-App:** Die Login-Seite bietet mit `DEV_TOOLS_ENABLED=true` einen
+  Dev-Login als freigeschaltetes Mitglied; die Pipedrive-Benutzer kommen aus dem Seed
+  (`PIPEDRIVE_DIRECTORY=fake`). Seed: je Mandant ein Owner, bei ANTENNE VORARLBERG
+  zusätzlich ein Vertriebsmitarbeiter und zwei Benutzer ohne Zugriff.
+- **Für den echten Login nötig:** OAuth-App im Pipedrive Developer Hub
+  (`PIPEDRIVE_CLIENT_ID`, `PIPEDRIVE_CLIENT_SECRET`, Callback-URL siehe oben) und eine
+  Pipedrive-Verbindung des Mandanten (`pipedrive_connections`, entsteht bei der Installation
+  in Phase 4).
 
 ## Umgebungsvariablen
 
@@ -204,3 +227,6 @@ Siehe [`.env.example`](.env.example). Keine Secrets committen.
 | `DEV_TOOLS_ENABLED` | `/dev/mails` u. Ä. (in Production immer aus) |
 | `ENCRYPTION_KEY` | 32 Byte base64, verschlüsselt Tokens/Passwörter |
 | `CRON_SECRET` | schützt den Outbox-Cron-Endpunkt |
+| `AUTH_ADMIN` | `local` (Shim per SQL) oder `supabase` (Auth-Admin-API) – Anlegen von Benutzern beim Freischalten |
+| `PIPEDRIVE_CLIENT_ID`, `PIPEDRIVE_CLIENT_SECRET` | OAuth-App aus dem Pipedrive Developer Hub (Login, Installation) |
+| `PIPEDRIVE_DIRECTORY` | `api` (Pipedrive, Server) oder `fake` (Seed-Benutzer, nur lokal) – Benutzerliste der Nutzerverwaltung |

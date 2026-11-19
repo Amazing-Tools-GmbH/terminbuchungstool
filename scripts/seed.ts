@@ -58,18 +58,22 @@ export function planTenant(t: SeedTenant, target: SeedTarget): TenantPlan {
     params: [tenantId, t.slug, t.name, t.anrede, theme, t.claim, t.contactLine, JSON.stringify(t.legalLinks), TZ, logo?.key ?? null],
   });
 
-  // Admin-Benutzer nur lokal (auth.users ist dort ein Shim). Auf Supabase
-  // entstehen Benutzer ausschließlich über die Auth-Admin-API (Phase 3).
+  // Freigeschaltete Benutzer nur lokal (auth.users ist dort ein Shim). Auf
+  // Supabase entstehen Benutzer ausschließlich über die Auth-Admin-API
+  // (Nutzerverwaltung im Admin-Backend bzw. Pipedrive-Installation).
   if (target === "local") {
-    s.push({
-      sql: `insert into auth.users (email) values ($1) on conflict (email) do nothing`,
-      params: [t.admin.email],
-    });
-    s.push({
-      sql: `insert into public.tenant_members (tenant_id, user_id, role)
-            select $1, id, 'owner' from auth.users where email = $2`,
-      params: [tenantId, t.admin.email],
-    });
+    for (const u of t.pipedrive.users) {
+      if (!u.access) continue;
+      s.push({
+        sql: `insert into auth.users (email) values ($1) on conflict (email) do nothing`,
+        params: [u.email.toLowerCase()],
+      });
+      s.push({
+        sql: `insert into public.tenant_members (tenant_id, user_id, role, pipedrive_user_id, display_name, email)
+              select $1, id, $3, $4, $5, $2 from auth.users where email = $2`,
+        params: [tenantId, u.email.toLowerCase(), u.access, u.id, u.name],
+      });
+    }
   }
 
   // Postfach: die dev-Implementierung (Mails landen nur in der DB)

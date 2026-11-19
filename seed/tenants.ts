@@ -6,6 +6,20 @@
 import type { Anrede } from "@/lib/texts";
 import type { LegalLink } from "@/lib/tenant/types";
 
+/**
+ * Benutzer der Pipedrive-Firma des Mandanten. Ersetzt lokal die Pipedrive-API
+ * (PIPEDRIVE_DIRECTORY=fake), bis die OAuth-App existiert. `access` = im Seed
+ * bereits freigeschaltet (Mitglied mit dieser Rolle), sonst kein Zugriff.
+ */
+export type SeedPipedriveUser = {
+  id: number;
+  name: string;
+  email: string;
+  isAdmin: boolean;
+  active: boolean;
+  access?: "owner" | "admin" | "sales";
+};
+
 export type SeedSlot = {
   /** Tage ab heute */
   inDays: number;
@@ -28,7 +42,8 @@ export type SeedTenant = {
   logoFile: string | null;
   theme: Record<string, string>;
   senderEmail: string;
-  admin: { email: string };
+  /** Pipedrive-Firma (fiktiv) und ihre Benutzer; genau einer hat access = "owner" */
+  pipedrive: { companyId: number; users: SeedPipedriveUser[] };
   event: { title: string; location: string; description: string | null; slots: SeedSlot[] };
   invitation: { name: string; organization: string; email: string; pipedriveDealId: number };
 };
@@ -75,7 +90,16 @@ export const SEED_TENANTS: SeedTenant[] = [
       radiusSm: "4px",
     },
     senderEmail: "termine@antenne-vorarlberg.example",
-    admin: { email: "admin@antenne-vorarlberg.example" },
+    pipedrive: {
+      companyId: 7100001,
+      users: [
+        { id: 7200001, name: "Sabine Leitner", email: "admin@antenne-vorarlberg.example", isAdmin: true, active: true, access: "owner" },
+        { id: 7200002, name: "Markus Fink", email: "markus.fink@antenne-vorarlberg.example", isAdmin: false, active: true, access: "sales" },
+        { id: 7200003, name: "Julia Bechter", email: "julia.bechter@antenne-vorarlberg.example", isAdmin: true, active: true },
+        { id: 7200004, name: "Thomas Moosbrugger", email: "thomas.moosbrugger@antenne-vorarlberg.example", isAdmin: false, active: true },
+        { id: 7200005, name: "Ehemaliger Mitarbeiter", email: "ehemalig@antenne-vorarlberg.example", isAdmin: false, active: false },
+      ],
+    },
     event: {
       title: "Kunden-Workshop Radiowerbung",
       location: "Studio ANTENNE VORARLBERG",
@@ -131,7 +155,13 @@ export const SEED_TENANTS: SeedTenant[] = [
       radiusSm: "8px",
     },
     senderEmail: "termine@demo.example",
-    admin: { email: "admin@demo.example" },
+    pipedrive: {
+      companyId: 7100002,
+      users: [
+        { id: 7300001, name: "Dora Demo", email: "admin@demo.example", isAdmin: true, active: true, access: "owner" },
+        { id: 7300002, name: "Victor Vertrieb", email: "vertrieb@demo.example", isAdmin: false, active: true },
+      ],
+    },
     event: {
       title: "Produktvorstellung 2027",
       location: "Showroom Demo GmbH",

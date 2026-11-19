@@ -43,8 +43,20 @@ Mandantenfähiges Terminbuchungstool mit Pipedrive-Integration. Auftrag und Phas
   `request.jwt.claims` – exakt wie PostgREST bei Supabase. So gilt RLS lokal und auf Supabase
   identisch, und derselbe Code läuft unverändert gegen `SUPABASE_DB_URL`.
 - `service_role` umgeht RLS: nur für Server-Jobs (Outbox, Pipedrive-Installation, Seed).
-- `supabase-js` nur für Auth (ab Phase 3). Benutzer lädt der Owner seiner Firma per
-  E-Mail ein (Auth-Admin-API, serverseitig); Mitgliedschaft in `tenant_members`.
+- Anmeldung nur über Pipedrive (OAuth, eine zentrale Callback-URL) – keine Passwörter, keine
+  Einladungsmails, kein `supabase-js`. Sitzung = versiegeltes Cookie (`lib/auth/session.ts`,
+  je Zweck eigener HKDF-Schlüssel), gilt nur für den Mandanten des Hosts; Mitgliedschaft und
+  Rolle werden pro Request frisch gelesen (`lib/auth/admin.ts`). Login prüft: richtige
+  Pipedrive-Firma, freigeschaltet (`tenant_members.status = active`), E-Mail = auth-Benutzer.
+- Nutzerverwaltung (`/admin/benutzer`, später auch in den Pipedrive-App-Einstellungen): listet
+  die Pipedrive-Benutzer der Firma; neue Benutzer haben keinen Zugriff, bis owner/admin sie
+  freischalten. owner verwaltet alle, admin alle außer owner, sales nichts (RLS). Immer
+  mindestens ein aktiver owner (Trigger, `TB:last_owner`). Pipedrive-Admins werden nicht
+  automatisch Admin. auth-Benutzer entstehen beim Freischalten (`lib/auth/users.ts`,
+  `AUTH_ADMIN=local|supabase`), ohne Mail.
+- Admin-Backend `/admin` (Server Components + Server Actions, zod, `lib/admin`), Texte in
+  `lib/texts/admin.ts`. Pipedrive-Benutzerliste über `lib/pipedrive/directory.ts`
+  (`PIPEDRIVE_DIRECTORY=api|fake`; `fake` = Seed-Daten, nur lokal).
 - Hosting: eigener Server bei Hetzner (EU), kein Vercel. Cron per Server-Cron/systemd.
 
 ## Datenbank & Migrationen
