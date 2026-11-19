@@ -7,10 +7,20 @@
 import pg from "pg";
 import { requireEnv } from "../env";
 
-export function projectRef(): string {
+/**
+ * Projekt-Ref aus SUPABASE_URL – muss mit SUPABASE_PROJECT_REF übereinstimmen.
+ * Schutz davor, dass Migration/Seed/Wipe ein falsches Projekt treffen, wenn
+ * Zugangsdaten eines anderen Projekts in der Umgebung stehen.
+ */
+export function projectRef(env: Record<string, string | undefined> = process.env): string {
   const url = new URL(requireEnv("SUPABASE_URL"));
   const ref = url.hostname.split(".")[0];
   if (!ref || !/^[a-z0-9]{20}$/.test(ref)) throw new Error("Projekt-Ref aus SUPABASE_URL nicht ableitbar");
+  const expected = env.SUPABASE_PROJECT_REF?.trim();
+  if (!expected) throw new Error("SUPABASE_PROJECT_REF fehlt (siehe .env.example)");
+  if (ref !== expected) {
+    throw new Error(`SUPABASE_URL zeigt auf Projekt ${ref}, erwartet ist ${expected} – Abbruch, nichts ausgeführt.`);
+  }
   return ref;
 }
 
@@ -56,6 +66,7 @@ export function inlineParams(sql: string, params: readonly unknown[] = []): stri
 
 /** Aufruf der Projekt-API (Storage, Auth-Admin) mit Service-Role-Key. */
 export async function projectApi<T = unknown>(pathname: string, init: RequestInit = {}): Promise<T> {
+  projectRef(); // gleiche Projektprüfung wie bei SQL
   const key = requireEnv("SUPABASE_SERVICE_ROLE_KEY");
   const res = await fetch(`${requireEnv("SUPABASE_URL")}${pathname}`, {
     ...init,

@@ -42,7 +42,7 @@ tests/db/            RLS-Isolation (Mandant A/B/anonym), Buchungsfunktionen, par
 Es gibt keine lokale Supabase-Instanz und kein Docker. Es gibt zwei Ziele, die immer
 **explizit** gewählt werden (nie implizit über gesetzte `SUPABASE_*`-Variablen):
 
-| | lokal | Supabase-Projekt `rktitpxdwajstxlurkgq` |
+| | lokal | Supabase-Projekt `pkegcsgnyicdxzivnijw` |
 |---|---|---|
 | Datenbank | vorinstalliertes Postgres 16 + Dev-Shims (`DATABASE_URL`) | Management API (HTTPS) bzw. `SUPABASE_DB_URL` auf dem Server |
 | Migrationen | `npm run db:reset` | `npm run supabase:migrate` |
@@ -101,10 +101,10 @@ Was die Shims (`supabase/dev-shims/`) nachbilden: Schema `auth` mit `auth.users`
 `authenticated`, `service_role` und die Supabase-Standardrechte im Schema `public`.
 Logos landen lokal unter `.data/dev-assets/` (gitignored, ausgeliefert über `/dev-assets/…`); Storage-Migration ist lokal ein No-op.
 
-### Supabase-Projekt (`rktitpxdwajstxlurkgq`, EU)
+### Supabase-Projekt (`pkegcsgnyicdxzivnijw`, EU)
 
 Aus der Cloud-Umgebung gibt es **keine direkte DB-Verbindung** (nur HTTPS über den
-Proxy; erlaubte Hosts `rktitpxdwajstxlurkgq.supabase.co`, `api.supabase.com`). Darum
+Proxy; erlaubte Hosts `pkegcsgnyicdxzivnijw.supabase.co`, `api.supabase.com`). Darum
 laufen die Betriebsskripte unter `scripts/supabase/` über die Management API
 (`SUPABASE_ACCESS_TOKEN`) bzw. die Projekt-API (`SUPABASE_SERVICE_ROLE_KEY`).
 `SUPABASE_DB_URL` wird nur auf dem Produktionsserver gesetzt.

@@ -66,7 +66,7 @@ Mandantenfähiges Terminbuchungstool mit Pipedrive-Integration. Auftrag und Phas
   dem Push auf Supabase nicht mehr ändern – neue Migration anlegen.
 - Lokal: vorinstalliertes Postgres 16 + Shims in `supabase/dev-shims/` (auth-Schema,
   Rollen, Supabase-Standardrechte). Shims NIE in `supabase/migrations/` und NIE auf Supabase.
-- Supabase-Projekt `rktitpxdwajstxlurkgq`: aus der Cloud nur per HTTPS erreichbar.
+- Supabase-Projekt `pkegcsgnyicdxzivnijw`: aus der Cloud nur per HTTPS erreichbar.
   Migrationen mit `npm run supabase:migrate` (Management API, trägt in
   `supabase_migrations.schema_migrations` ein → kompatibel zu `supabase db push`),
   Seed mit `npm run supabase:seed`. `SUPABASE_DB_URL` gibt es nur auf dem Produktionsserver.
