@@ -230,8 +230,8 @@ describe("Konfiguration und Texte", () => {
   });
 
   it("Login, Admin und Callbacks liegen zentral unter APP_BASE_URL", () => {
-    expect(appUrl("/admin/login", { error: "no_access" }, { APP_BASE_URL: "https://atools.de/meetings/" })).toBe(
-      "https://atools.de/meetings/admin/login?error=no_access",
+    expect(appUrl("/admin/login", { error: "no_access" }, { APP_BASE_URL: "https://meetings.atools.de/" })).toBe(
+      "https://meetings.atools.de/admin/login?error=no_access",
     );
     expect(appUrl("/admin", {}, { APP_BASE_URL: "http://localhost:3000" })).toBe("http://localhost:3000/admin");
   });

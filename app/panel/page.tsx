@@ -5,7 +5,6 @@ import { startPanelSession } from "@/lib/panel/session";
 import { loadPanelContext } from "@/lib/panel/context";
 import { tenantForMember } from "@/lib/tenant/current";
 import { at, panelTexts, type PanelErrorCode } from "@/lib/texts/admin";
-import { withBasePath } from "@/lib/base-path";
 import { PanelApp } from "@/components/panel/PanelApp";
 import styles from "@/components/panel/Panel.module.css";
 
@@ -52,8 +51,8 @@ export default async function PanelPage({ searchParams }: { searchParams: Search
       identity={{ userId: v.entry.userId, companyId: v.entry.companyId, dealId: v.entry.dealId }}
       texts={panelTexts()}
       theme={theme}
-      adminUrl={withBasePath("/admin")}
-      apiBase={withBasePath("/api/panel")}
+      adminUrl="/admin"
+      apiBase="/api/panel"
     />
   );
 }

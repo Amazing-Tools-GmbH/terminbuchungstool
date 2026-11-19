@@ -6,7 +6,6 @@ import { getAdminContext } from "@/lib/auth/admin";
 import { at, loginErrorText } from "@/lib/texts/admin";
 import styles from "@/components/admin/Admin.module.css";
 import { devLoginAction } from "./actions";
-import { withBasePath } from "@/lib/base-path";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Anmelden", robots: { index: false, follow: false } };
@@ -53,7 +52,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Search
             </p>
           )}
           <p style={{ margin: 0 }}>{at("login.intro")}</p>
-          <a className={`${styles.btn} ${styles.btnLarge}`} href={withBasePath("/api/auth/pipedrive/start")}>
+          <a className={`${styles.btn} ${styles.btnLarge}`} href="/api/auth/pipedrive/start">
             {at("login.pipedrive")}
           </a>
 

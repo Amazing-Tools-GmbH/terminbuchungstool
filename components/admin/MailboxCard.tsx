@@ -3,7 +3,6 @@ import { formatDateTime } from "@/lib/datetime";
 import type { MailboxView, MailScope } from "@/lib/mail/connect";
 import { devConnectAction, disconnectAction, saveSmtpAction, sendTestAction } from "@/app/admin/(app)/postfach/actions";
 import styles from "./Admin.module.css";
-import { withBasePath } from "@/lib/base-path";
 
 type Props = {
   scope: MailScope;
@@ -49,7 +48,7 @@ export function MailboxCard({ scope, mailbox, providers, dev, timezone, showSmtp
         {(["google", "microsoft"] as const)
           .filter((prov) => providers[prov])
           .map((prov) => (
-            <a key={prov} className={mailbox ? styles.btnGhost : styles.btn} href={withBasePath(`/api/mail/oauth/${prov}/start?scope=${scope}`)}>
+            <a key={prov} className={mailbox ? styles.btnGhost : styles.btn} href={`/api/mail/oauth/${prov}/start?scope=${scope}`}>
               {mailbox?.provider === prov ? at("mailbox.reconnect") : at(prov === "google" ? "mailbox.connectGoogle" : "mailbox.connectMicrosoft")}
             </a>
           ))}

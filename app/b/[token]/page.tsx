@@ -11,7 +11,6 @@ import { TenantHeader } from "@/components/tenant/TenantHeader";
 import { TenantFooter } from "@/components/tenant/TenantFooter";
 import { BookingApp, type BookingDisplay, type SlotDisplay } from "@/components/booking/BookingApp";
 import styles from "@/components/booking/Booking.module.css";
-import { withBasePath } from "@/lib/base-path";
 
 export const dynamic = "force-dynamic";
 
@@ -75,7 +74,7 @@ export default async function BookingPage({ params }: { params: Promise<{ token:
       extraAttendees: b.extra_attendees,
       changeUntil: formatDateTime(b.change_until, tz),
       canChange: b.changeable && !ctx.invitation.expired,
-      icsUrl: withBasePath(`/b/${encodeURIComponent(token)}/ics`),
+      icsUrl: `/b/${encodeURIComponent(token)}/ics`,
       googleUrl: googleCalendarUrl(calendar),
       outlookUrl: outlookCalendarUrl(calendar),
     };

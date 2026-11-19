@@ -6,7 +6,6 @@ import { adminErrorText, at } from "@/lib/texts/admin";
 import { formatDate } from "@/lib/datetime";
 import styles from "@/components/admin/Admin.module.css";
 import { createEventAction, createSlotAction, increaseCapacityAction } from "./actions";
-import { withBasePath } from "@/lib/base-path";
 
 type Search = Promise<Record<string, string | string[] | undefined>>;
 const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
@@ -57,7 +56,7 @@ export default async function SlotsPage({ searchParams }: { searchParams: Search
           )}
         </div>
         {events.length > 1 && (
-          <form method="get" action={withBasePath("/admin")} className={styles.actions}>
+          <form method="get" action="/admin" className={styles.actions}>
             <label className={styles.visuallyHidden} htmlFor="event-switch">
               {at("slots.event")}
             </label>

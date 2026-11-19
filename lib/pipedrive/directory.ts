@@ -7,6 +7,7 @@ import "server-only";
  *   PIPEDRIVE_DIRECTORY=fake  Beispiel-Benutzer aus seed/tenants.ts – nur für die
  *                             lokale Entwicklung, solange es keine OAuth-App gibt
  */
+import { isProduction } from "@/lib/env-mode";
 import { SEED_TENANTS } from "@/seed/tenants";
 import { listUsers, type PipedriveUser } from "./client";
 import { pipedriveAccess } from "./connection";
@@ -21,7 +22,7 @@ export function directorySource(env: Record<string, string | undefined> = proces
   const v = env.PIPEDRIVE_DIRECTORY?.trim();
   if (!v || v === "api") return "api";
   if (v === "fake") {
-    if (env.NODE_ENV === "production" && env.ALLOW_FAKE_PIPEDRIVE !== "true") {
+    if (isProduction(env) && env.ALLOW_FAKE_PIPEDRIVE !== "true") {
       throw new Error("PIPEDRIVE_DIRECTORY=fake ist in Produktion nicht erlaubt");
     }
     return "fake";

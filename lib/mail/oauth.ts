@@ -10,6 +10,7 @@
  *   <APP_BASE_URL>/api/mail/oauth/microsoft/callback
  */
 import { z } from "zod";
+import { appBaseUrl } from "@/lib/links";
 import { MailSendError } from "./types";
 
 type Fetch = typeof fetch;
@@ -25,7 +26,7 @@ export function mailOAuthConfig(provider: MailOAuthProviderId, env: Env = proces
   const clientId = env[`${prefix}_CLIENT_ID`]?.trim();
   const clientSecret = env[`${prefix}_CLIENT_SECRET`]?.trim();
   if (!clientId || !clientSecret) return null;
-  const base = (env.APP_BASE_URL ?? "http://localhost:3000").replace(/\/$/, "");
+  const base = appBaseUrl(env);
   return { clientId, clientSecret, redirectUri: `${base}/api/mail/oauth/${provider}/callback` };
 }
 

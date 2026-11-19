@@ -1,3 +1,4 @@
+import { devToolsEnabled } from "@/lib/dev-tools";
 import { describe, expect, it } from "vitest";
 import { decodeTenantKey, encodeTenantKey, parseTenantKey, tenantQueryAllowed } from "@/lib/tenant/host";
 
@@ -35,10 +36,20 @@ describe("parseTenantKey", () => {
   });
 });
 
+describe("Entwickler-Werkzeuge", () => {
+  it("nie in Produktion", () => {
+    expect(devToolsEnabled({ DEV_TOOLS_ENABLED: "true" })).toBe(true);
+    expect(devToolsEnabled({ DEV_TOOLS_ENABLED: "true", NODE_ENV: "production" })).toBe(false);
+    expect(devToolsEnabled({ DEV_TOOLS_ENABLED: "true", APP_ENV: "production" })).toBe(false);
+    expect(devToolsEnabled({ DEV_TOOLS_ENABLED: "true", NODE_ENV: "production", APP_ENV: "staging" })).toBe(true);
+  });
+});
+
 describe("tenantQueryAllowed", () => {
   it("nie in Produktion", () => {
-    expect(tenantQueryAllowed({ VERCEL_ENV: "production", ALLOW_TENANT_QUERY_PARAM: "true" })).toBe(false);
-    expect(tenantQueryAllowed({ VERCEL_ENV: "preview", ALLOW_TENANT_QUERY_PARAM: "true" })).toBe(true);
+    expect(tenantQueryAllowed({ APP_ENV: "production", ALLOW_TENANT_QUERY_PARAM: "true" })).toBe(false);
+    expect(tenantQueryAllowed({ NODE_ENV: "production", ALLOW_TENANT_QUERY_PARAM: "true" })).toBe(false);
+    expect(tenantQueryAllowed({ NODE_ENV: "production", APP_ENV: "staging", ALLOW_TENANT_QUERY_PARAM: "true" })).toBe(true);
     expect(tenantQueryAllowed({ ALLOW_TENANT_QUERY_PARAM: "true" })).toBe(true);
     expect(tenantQueryAllowed({})).toBe(false);
   });

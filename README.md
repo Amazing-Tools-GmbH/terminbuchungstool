@@ -135,61 +135,88 @@ npm run supabase:seed                    # Seed-Mandanten + Logos in Bucket tena
 - DB-Tests laufen immer gegen `TEST_DATABASE_URL` und brechen ab, wenn die URL auf
   Supabase zeigt (sie setzen die Datenbank komplett zurück).
 
-### Adresse: `https://meetings.atools.de` (Root)
+### Adresse: `https://meetings.atools.de` (Root, kein Unterpfad)
 
-Produktiv: `APP_BASE_URL=https://meetings.atools.de` – die App liegt im Root, kein Unterpfad.
-`next.config.ts` liest daraus beim **Build** einen `basePath`; ohne Pfad ist er leer. (Ein
-Unterpfad wie `https://meetings.atools.de` würde weiter funktionieren – alle Links, Redirects,
-Cookies und Mail-Links laufen über `withBasePath()`/`lib/links.ts`; nach Änderung neu bauen.)
+`APP_BASE_URL=https://meetings.atools.de`. Die App hat **keinen basePath**; enthält
+`APP_BASE_URL` einen Pfad, bricht der Build ab. Alle Links (Mails, Redirects, OAuth) bauen auf
+dem Origin von `APP_BASE_URL` auf (`lib/links.ts`, `lib/auth/urls.ts`).
 
-- **Pipedrive-Callback** (Developer Hub): `https://meetings.atools.de/api/auth/pipedrive/callback`.
-  Google/Microsoft (nur bei `INVITE_MAIL_PROVIDER=oauth`):
-  `https://meetings.atools.de/api/mail/oauth/google/callback` bzw. `…/microsoft/callback`.
-- `APP_DOMAIN` ergibt sich aus `APP_BASE_URL` (`meetings.atools.de`), kann aber explizit gesetzt werden.
+| Was | Adresse |
+|---|---|
+| Admin-Backend | `https://meetings.atools.de/admin` |
+| Buchungsseite | `https://meetings.atools.de/b/<token>` |
+| Pipedrive-Callback (Login, Installation, Deinstallation) | `https://meetings.atools.de/api/auth/pipedrive/callback` |
+| Pipedrive „App settings“ | `https://meetings.atools.de/settings` |
+| **Pipedrive-Panel (Custom Panel im Deal)** | **`https://meetings.atools.de/panel`** |
+| Google/Microsoft (nur `INVITE_MAIL_PROVIDER=oauth`) | `https://meetings.atools.de/api/mail/oauth/google/callback` bzw. `…/microsoft/callback` |
+| Health-Check (nur lokal abfragen) | `http://127.0.0.1:3003/api/health` |
 
-### Hosting: Hetzner, Node-Prozess unter systemd, Caddy davor (kein Docker)
+### Hosting: Hetzner, Node unter systemd, Caddy davor (kein Docker)
+
+Gleiches Muster wie die anderen Panels: Benutzer `meetings`, Code unter
+`/srv/meetings/current` (Symlink auf ein Release), Konfiguration in `/etc/meetings/env`,
+Bau direkt aus GitHub (Branch `main`) auf dem Server.
+
+```
+/srv/meetings/
+  repo.git/                 Spiegel des GitHub-Repos (Deploy-Key des Benutzers meetings)
+  releases/<zeit>-<commit>/ gebaute Releases (die letzten 5 bleiben)
+  current -> releases/…     aktives Release (WorkingDirectory der Unit)
+/etc/meetings/env           Umgebungsvariablen (root:meetings, 0640), Vorlage: .env.example
+/var/cache/meetings/        Next.js-Laufzeit-Cache (einzig beschreibbar, von systemd angelegt)
+```
 
 Vorlagen in [`deploy/`](deploy/):
 
 | Datei | Zweck |
 |---|---|
-| `deploy/systemd/terminbuchung.service` | `next start -H 127.0.0.1 -p 3003` als eigener Benutzer `terminbuchung`, gehärtet, Neustart bei Absturz |
-| `deploy/systemd/terminbuchung-cron.{service,timer}` | jede Minute `GET /api/cron/outbox` (Mails + Pipedrive-Aufträge); `CRON_SECRET` per stdin, nicht in `ps` |
-| `deploy/Caddyfile` | `meetings.atools.de` → `127.0.0.1:3003`, HTTPS automatisch |
-| `deploy/env.example` | Vorlage für `/etc/terminbuchung/env` (Laufzeit **und** Build) |
-| `deploy/deploy.sh` | Version holen, `npm ci`, Build mit derselben env |
+| `systemd/meetings.service` | `next start --hostname 127.0.0.1 --port 3003`, `ProtectSystem=strict`, `CacheDirectory=meetings`, weitere Härtung |
+| `systemd/meetings-cron.{service,timer}` | jede Minute `/api/cron/outbox` (Mails + Pipedrive-Aufträge); `CRON_SECRET` per stdin |
+| `Caddyfile` | `meetings.atools.de` → `127.0.0.1:3003` |
+| `deploy.sh` | Release aus `main` bauen, umschalten, neu starten, Health-Check, bei Fehler zurück |
+| `sudoers.meetings` | erlaubt `meetings` nur `systemctl restart meetings` |
 
-**Einrichtung (einmalig):**
+**Einrichtung (einmalig, als root/sudo):**
 
 ```bash
-sudo useradd --system --create-home --home-dir /opt/terminbuchung --shell /usr/sbin/nologin terminbuchung
-sudo -u terminbuchung git clone <repo> /opt/terminbuchung/app
-sudo install -d -m 0750 -o root -g terminbuchung /etc/terminbuchung
-sudo install -m 0640 -o root -g terminbuchung /opt/terminbuchung/app/deploy/env.example /etc/terminbuchung/env
-sudoedit /etc/terminbuchung/env            # Werte eintragen
-sudo -u terminbuchung /opt/terminbuchung/app/deploy/deploy.sh main
-sudo cp /opt/terminbuchung/app/deploy/systemd/terminbuchung* /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable --now terminbuchung terminbuchung-cron.timer
-# Caddy: Block aus deploy/Caddyfile in /etc/caddy/Caddyfile übernehmen
-sudo systemctl reload caddy
+useradd --system --home-dir /srv/meetings --create-home --shell /usr/sbin/nologin meetings
+install -d -o meetings -g meetings -m 0750 /srv/meetings/releases
+install -d -o root -g meetings -m 0750 /etc/meetings
+# Deploy-Key: Schlüssel für meetings erzeugen, öffentlichen Teil im GitHub-Repo als
+# "Deploy key" (nur lesen) eintragen
+sudo -u meetings ssh-keygen -t ed25519 -N "" -f /srv/meetings/.ssh/id_ed25519
+sudo -u meetings ssh -T git@github.com     # Fingerprint bestätigen
+# Konfiguration: Vorlage aus dem Repo (.env.example), Werte nach den "Produktion:"-Hinweisen
+install -o root -g meetings -m 0640 .env.example /etc/meetings/env && sudoedit /etc/meetings/env
+cp deploy/systemd/meetings* /etc/systemd/system/ && systemctl daemon-reload
+visudo -f /etc/sudoers.d/meetings          # Inhalt aus deploy/sudoers.meetings
+systemctl enable meetings meetings-cron.timer
+# erstes Release (Skript direkt aus GitHub bzw. aus einem Checkout):
+sudo -u meetings bash deploy/deploy.sh main
+systemctl start meetings-cron.timer
+# Caddy: Block aus deploy/Caddyfile übernehmen
+systemctl reload caddy
 ```
 
-**Update:** `sudo -u terminbuchung /opt/terminbuchung/app/deploy/deploy.sh main && sudo systemctl restart terminbuchung`.
-Migrationen laufen getrennt (`npm run supabase:migrate`), vor dem Ausrollen.
+**Update:** Migrationen vorher anwenden (`npm run supabase:migrate`, nicht auf dem Server),
+dann `sudo -u meetings /srv/meetings/current/deploy/deploy.sh`.
 
-- Node 22 (LTS); der Pfad in `ExecStart` ist `/usr/bin/node` – bei nvm o. Ä. anpassen.
-- **Panel im Pipedrive-iframe:** Die App setzt für `/panel` selbst
-  `Content-Security-Policy: frame-ancestors 'self' https://*.pipedrive.com` und für alle
-  anderen Seiten `X-Frame-Options: SAMEORIGIN`. In Caddy darum **keine** eigenen
-  `X-Frame-Options`/`frame-ancestors`-Header setzen. Das Panel braucht keine Cookies
-  (Sitzung als Bearer-Token), Drittanbieter-Cookie-Sperren der Browser stören also nicht.
-- Port 3003 nur auf `127.0.0.1` – von außen nur über Caddy erreichbar (Firewall: 80/443).
-- `SUPABASE_ACCESS_TOKEN` gehört **nicht** auf den Server; `DEV_TOOLS_ENABLED` dort nie `true`.
-- Eigene Kundendomains (Phase 5): Caddy On-Demand-TLS mit Prüf-Endpunkt der App – im
-  `deploy/Caddyfile` auskommentiert vorbereitet.
-- Statt Vercel-Previews: eine Staging-Instanz (zweiter Dienst, anderer Port/Host) mit
-  `ALLOW_TENANT_QUERY_PARAM=true`.
+Hinweise:
+- Node 22 LTS unter `/usr/bin/node` (sonst Pfad in `meetings.service` anpassen), `git`, `curl`.
+  Der Build lädt die Schriften einmalig von Google Fonts (ausgehendes HTTPS nötig);
+  zur Laufzeit gibt es keine Anfragen an Google.
+- `ProtectSystem=strict`: Das Release ist zur Laufzeit schreibgeschützt; `.next/cache` ist ein
+  Symlink auf `/var/cache/meetings`. Sonst schreibt die App nichts auf die Platte (Logos liegen
+  in Supabase Storage, `ASSET_STORAGE=supabase`).
+- Port 3003 lauscht nur auf `127.0.0.1`; von außen nur über Caddy (Firewall: 80/443).
+- **Panel im Pipedrive-iframe:** Die App setzt für `/panel`
+  `Content-Security-Policy: frame-ancestors 'self' https://*.pipedrive.com`, für alle anderen
+  Seiten `X-Frame-Options: SAMEORIGIN`. In Caddy darum **keine** eigenen `X-Frame-Options`-
+  oder CSP-Header (auch nicht über gemeinsame Snippets der anderen Panels). Das Panel braucht
+  keine Cookies (Sitzung als Bearer-Token) – Drittanbieter-Cookie-Sperren stören nicht.
+- `SUPABASE_ACCESS_TOKEN` gehört **nicht** auf den Server; Dev-Werkzeuge sind in Produktion
+  (`APP_ENV=production`, setzt die Unit) immer aus.
+- Eigene Kundendomains (Phase 5) brauchen später Caddy On-Demand-TLS mit Prüf-Endpunkt der App.
 
 ## Buchungsseite & E-Mails (Phase 2)
 
@@ -203,7 +230,7 @@ Migrationen laufen getrennt (`npm run supabase:migrate`), vor dem Ausrollen.
   Auf dem Hetzner-Server per Cron/systemd-Timer (siehe „Hosting“).
 - Versandwege siehe „Mailversand“. Mit `SYSTEM_MAIL_TRANSPORT=dev` landen Mails nur in der
   DB (Ansicht unter `/dev/mails`, braucht `DEV_TOOLS_ENABLED=true`).
-- Links in Mails: `lib/links.ts` – `APP_BASE_URL` bzw. eigene Kundendomain, jeweils mit Unterpfad.
+- Links in Mails: `lib/links.ts` – `APP_BASE_URL` bzw. eigene Kundendomain.
 - Recherche Pipedrive-Mailversand: [`docs/research/pipedrive-mailversand.md`](docs/research/pipedrive-mailversand.md).
 
 ## Mandanten und Adressen (entschieden)
@@ -229,7 +256,7 @@ Kunde aus seiner Pipedrive-Identität bzw. aus dem Buchungslink:
   Adresse (für Deal-Links) zieht die App bei Login, Installation und jeder Token-Erneuerung
   (etwa stündlich) aus der `api_domain` nach.
 - **Optional eigene Domain** des Kunden (`tenants.custom_domain`, z. B.
-  `termine.kunde.at/meetings` per CNAME) für Buchungsseiten; Links in Mails nutzen sie dann.
+  `termine.kunde.at` per CNAME) für Buchungsseiten; Links in Mails nutzen sie dann.
   Einrichtung in den Pipedrive-App-Einstellungen (Phase 5, mit DNS-Prüfung und HTTPS).
   Keine Einbettung per iframe.
 

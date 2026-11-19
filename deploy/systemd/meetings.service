@@ -1,0 +1,51 @@
+# /etc/systemd/system/meetings.service
+# Terminbuchungstool (Next.js) – Node-Prozess, nur lokal erreichbar; Caddy davor.
+# Code: /srv/meetings/current (Symlink auf das aktuelle Release), Konfiguration: /etc/meetings/env
+[Unit]
+Description=Meetings – Terminbuchungstool (Next.js)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=meetings
+Group=meetings
+WorkingDirectory=/srv/meetings/current
+EnvironmentFile=/etc/meetings/env
+Environment=NODE_ENV=production
+Environment=APP_ENV=production
+Environment=NEXT_TELEMETRY_DISABLED=1
+ExecStart=/usr/bin/node /srv/meetings/current/node_modules/next/dist/bin/next start --hostname 127.0.0.1 --port 3003
+Restart=always
+RestartSec=5
+TimeoutStopSec=20
+
+# Dateisystem: alles schreibgeschützt; einzig beschreibbar ist der Next.js-Cache
+# (/var/cache/meetings, von systemd angelegt; .next/cache im Release zeigt dorthin)
+ProtectSystem=strict
+CacheDirectory=meetings
+CacheDirectoryMode=0750
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+UMask=0027
+
+# Härtung
+NoNewPrivileges=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+RestrictNamespaces=true
+LockPersonality=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+SystemCallArchitectures=native
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+[Install]
+WantedBy=multi-user.target

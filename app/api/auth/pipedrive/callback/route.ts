@@ -10,9 +10,11 @@ import { LOGIN_NONCE_COOKIE, loginStateSchema, unseal } from "@/lib/auth/session
 import { sessionCookie } from "@/lib/auth/admin";
 import { appUrl } from "@/lib/auth/urls";
 import { syncCompanyDomain, installFromOAuth, uninstallCompany } from "@/lib/pipedrive/install";
-import { cookiePath } from "@/lib/base-path";
 
 export const dynamic = "force-dynamic";
+
+/** Abbruch durch den Benutzer (Pipedrive: user_denied; OAuth-Standard: access_denied) */
+const OAUTH_CANCELLED = new Set(["user_denied", "access_denied"]);
 
 function sameNonce(a: string, b: string | undefined): boolean {
   if (!b) return false;
@@ -34,16 +36,20 @@ export async function GET(req: NextRequest) {
   const params = req.nextUrl.searchParams;
   const fail = (error: string) => {
     const res = NextResponse.redirect(appUrl("/admin/login", { error }));
-    res.cookies.set(LOGIN_NONCE_COOKIE, "", { path: cookiePath("/api/auth"), maxAge: 0 });
+    res.cookies.set(LOGIN_NONCE_COOKIE, "", { path: "/api/auth", maxAge: 0 });
     return res;
   };
+  // Pipedrive meldet Abbruch/Fehler als ?error=… (z. B. user_denied, wenn die Freigabe
+  // verweigert wurde) – bei Login UND Installation; nie Tokens anfragen
+  const oauthError = params.get("error");
+  if (oauthError) return fail(OAUTH_CANCELLED.has(oauthError) ? "cancelled" : "oauth_failed");
   if (!params.has("state")) return install(params.get("code"), fail);
   const state = unseal("login-state", params.get("state"), loginStateSchema);
   if (!state || !sameNonce(state.nonce, req.cookies.get(LOGIN_NONCE_COOKIE)?.value)) return fail("expired");
   const cfg = oauthConfig();
   if (!cfg) return fail("not_configured");
   const code = params.get("code");
-  if (!code) return fail("cancelled"); // in Pipedrive abgebrochen (error=access_denied) o. Ä.
+  if (!code) return fail("cancelled");
 
   const result = await completePipedriveLogin(code, {
     exchangeCode: (c) => exchangeCode(cfg, c),
@@ -76,7 +82,7 @@ export async function GET(req: NextRequest) {
 
   const res = NextResponse.redirect(appUrl("/admin"));
   res.cookies.set(sessionCookie(result.session));
-  res.cookies.set(LOGIN_NONCE_COOKIE, "", { path: cookiePath("/api/auth"), maxAge: 0 });
+  res.cookies.set(LOGIN_NONCE_COOKIE, "", { path: "/api/auth", maxAge: 0 });
   return res;
 }
 

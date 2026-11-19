@@ -8,6 +8,7 @@
  *     System-Absender für Bestätigungen (und Einladungen bei "smtp").
  *     dev = nur in der DB ablegen (/dev/mails).
  */
+import { isProduction } from "@/lib/env-mode";
 import { z } from "zod";
 import { smtpCredentialsSchema, type SmtpCredentials } from "./senders/smtp";
 
@@ -42,7 +43,7 @@ export function systemMailConfig(env: Env = process.env): SystemMailConfig | nul
   const fromName = env.SYSTEM_MAIL_FROM_NAME?.trim() || null;
   const transport = env.SYSTEM_MAIL_TRANSPORT?.trim() || "smtp";
   if (transport === "dev") {
-    if (env.NODE_ENV === "production") return null; // nie in Produktion
+    if (isProduction(env)) return null; // nie in Produktion
     return { transport: "dev", fromEmail, fromName };
   }
   if (transport !== "smtp") return null;

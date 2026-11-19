@@ -1,8 +1,9 @@
-# Ausschnitt für /etc/caddy/Caddyfile
+# Block für /etc/caddy/Caddyfile
 # Die App setzt die Einbettungs-Regeln selbst:
-#   /panel  -> Content-Security-Policy: frame-ancestors 'self' https://*.pipedrive.com
-#   sonst   -> X-Frame-Options: SAMEORIGIN
-# Darum hier KEIN X-Frame-Options / frame-ancestors setzen – sonst lädt das Panel in Pipedrive nicht.
+#   /panel -> Content-Security-Policy: frame-ancestors 'self' https://*.pipedrive.com
+#   sonst  -> X-Frame-Options: SAMEORIGIN
+# Darum hier KEIN X-Frame-Options / Content-Security-Policy setzen (auch nicht über ein
+# gemeinsames Snippet der anderen Panels) – sonst lädt das Panel nicht im Pipedrive-iframe.
 meetings.atools.de {
 	encode zstd gzip
 
@@ -13,22 +14,6 @@ meetings.atools.de {
 		-Server
 	}
 
-	# Host, X-Forwarded-Host/-Proto/-For setzt Caddy automatisch
+	# Host, X-Forwarded-For/-Proto/-Host setzt Caddy automatisch
 	reverse_proxy 127.0.0.1:3003
 }
-
-# Phase 5 (eigene Kundendomains, z. B. termine.kunde.at per CNAME auf meetings.atools.de):
-# On-Demand-TLS, das vor jedem Zertifikat bei der App nachfragt. Der Prüf-Endpunkt
-# entsteht in Phase 5 – bis dahin auskommentiert lassen.
-#
-# {
-# 	on_demand_tls {
-# 		ask http://127.0.0.1:3003/api/tls/allowed
-# 	}
-# }
-# https:// {
-# 	tls {
-# 		on_demand
-# 	}
-# 	reverse_proxy 127.0.0.1:3003
-# }

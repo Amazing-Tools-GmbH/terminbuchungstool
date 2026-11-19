@@ -7,6 +7,7 @@
  *       https://developers.pipedrive.com/docs/api/v1/Users
  */
 import { z } from "zod";
+import { appBaseUrl } from "@/lib/links";
 
 export const PIPEDRIVE_OAUTH_BASE = "https://oauth.pipedrive.com";
 
@@ -21,8 +22,7 @@ export function oauthConfig(env: Env = process.env): OAuthConfig | null {
   const clientSecret = env.PIPEDRIVE_CLIENT_SECRET?.trim();
   if (!clientId || !clientSecret) return null;
   // EINE Callback-URL für alle Mandanten (so im Developer Hub eingetragen)
-  const base = (env.APP_BASE_URL ?? "http://localhost:3000").replace(/\/$/, "");
-  return { clientId, clientSecret, redirectUri: `${base}/api/auth/pipedrive/callback` };
+  return { clientId, clientSecret, redirectUri: `${appBaseUrl(env)}/api/auth/pipedrive/callback` };
 }
 
 export function authorizeUrl(cfg: OAuthConfig, state: string): string {

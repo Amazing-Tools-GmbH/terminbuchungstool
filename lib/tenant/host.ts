@@ -6,6 +6,7 @@
  *   3. Host als hinterlegte custom_domain
  * Die eigentliche DB-Abfrage passiert serverseitig (lib/tenant/current.ts).
  */
+import { isProduction } from "@/lib/env-mode";
 
 export type TenantKey =
   | { kind: "slug"; slug: string }
@@ -39,11 +40,11 @@ function stripPort(host: string): string {
 }
 
 /**
- * Der Query-Fallback ist für Vercel-Vorschauen gedacht. In Produktion
- * (VERCEL_ENV=production) ist er IMMER aus, egal was konfiguriert ist.
+ * Der Query-Fallback ist für Entwicklung/Staging gedacht. In Produktion
+ * (siehe lib/env-mode.ts) ist er IMMER aus, egal was konfiguriert ist.
  */
 export function tenantQueryAllowed(env: Record<string, string | undefined>): boolean {
-  if (env.VERCEL_ENV === "production") return false;
+  if (isProduction(env)) return false;
   return env.ALLOW_TENANT_QUERY_PARAM === "true";
 }
 

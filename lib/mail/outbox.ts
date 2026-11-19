@@ -16,6 +16,7 @@
  *   Versand über Pipedrive – dort legt Pipedrive die Mail selbst ab).
  * - Vorübergehende Fehler -> Retry mit Backoff, nach MAX_ATTEMPTS -> failed.
  */
+import { appBaseUrl } from "@/lib/links";
 import type pg from "pg";
 import { withActorOn } from "@/lib/db/actor";
 import { decryptSecret } from "@/lib/crypto/secretbox";
@@ -461,7 +462,7 @@ function toMailTenant(t: TenantRow): MailTenant {
   if (t.logo_path && /\.(png|jpe?g)$/i.test(t.logo_path)) {
     const url = storage.publicUrl(t.logo_path);
     // relative URL enthält den Unterpfad bereits -> nur den Origin davorsetzen
-    logoUrl = url.startsWith("http") ? url : `${new URL(process.env.APP_BASE_URL ?? "http://localhost:3000").origin}${url}`;
+    logoUrl = url.startsWith("http") ? url : `${appBaseUrl()}${url}`;
   }
   return {
     name: t.name,

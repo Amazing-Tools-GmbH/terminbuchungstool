@@ -4,7 +4,6 @@ import { authorizeUrl, oauthConfig } from "@/lib/pipedrive/client";
 import { LOGIN_NONCE_COOKIE, LOGIN_STATE_TTL_SECONDS, seal } from "@/lib/auth/session";
 import { secureCookies } from "@/lib/auth/admin";
 import { appOrigin, appUrl } from "@/lib/auth/urls";
-import { cookiePath } from "@/lib/base-path";
 
 export const dynamic = "force-dynamic";
 
@@ -26,7 +25,7 @@ export async function GET(req: NextRequest) {
     httpOnly: true,
     sameSite: "lax",
     secure: secureCookies(),
-    path: cookiePath("/api/auth"),
+    path: "/api/auth",
     maxAge: LOGIN_STATE_TTL_SECONDS,
   });
   return res;

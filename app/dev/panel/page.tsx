@@ -3,7 +3,6 @@ import { createHmac } from "node:crypto";
 import { withActor } from "@/lib/db";
 import { devToolsEnabled } from "@/lib/dev-tools";
 import { settingsJwtSecret } from "@/lib/pipedrive/settings-token";
-import { withBasePath } from "@/lib/base-path";
 import { SEED_TENANTS } from "@/seed/tenants";
 
 export const dynamic = "force-dynamic";
@@ -45,8 +44,7 @@ export default async function DevPanelPage({ searchParams }: { searchParams: Sea
   const theme = one(sp.theme) === "dark" ? "dark" : "light";
   const src =
     secret && sel && dealId
-      ? withBasePath(
-          `/panel?${new URLSearchParams({
+      ? `/panel?${new URLSearchParams({
             resource: "deal",
             view: "details",
             userId: sel.pd,
@@ -54,8 +52,7 @@ export default async function DevPanelPage({ searchParams }: { searchParams: Sea
             selectedIds: String(dealId),
             theme,
             token: signedToken(secret, Number(sel.pd), sel.companyId),
-          })}`,
-        )
+          })}`
       : null;
 
   return (
