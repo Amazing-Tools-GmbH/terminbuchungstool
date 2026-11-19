@@ -15,6 +15,13 @@ NAME="${1:?Release-Name (Zeitstempel) fehlt}"
 case "$NAME" in *[!0-9A-Za-z_-]*) echo "Ungültiger Release-Name: $NAME" >&2; exit 2;; esac
 REL="$ROOT/releases/$NAME"
 [ -f "$REL/server.js" ] || { echo "Kein Release unter $REL (server.js fehlt)" >&2; exit 2; }
+# Der Dienst läuft als meetings: alles im Release muss der Gruppe meetings gehören und für sie
+# lesbar sein (Setgid auf /srv/meetings/releases sorgt für die Gruppe, umask 027 für die Rechte)
+BAD=$(find "$REL" -not -type l \( ! -group meetings -o ! -perm -g=r \) -print -quit)
+if [ -n "$BAD" ]; then
+  echo "Release nicht für die Gruppe meetings lesbar (z. B. $BAD). Ist /srv/meetings/releases setgid (chmod 2750)?" >&2
+  exit 2
+fi
 
 switch_to() {
   ln -sfn "$1" "$ROOT/current.new"

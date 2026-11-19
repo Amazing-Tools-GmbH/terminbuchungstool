@@ -196,7 +196,7 @@ Vorlagen in [`deploy/`](deploy/): `systemd/meetings.service`, `systemd/meetings-
 ```bash
 useradd --system --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin meetings
 useradd --create-home --shell /bin/bash deploy-meetings
-install -d -o deploy-meetings -g meetings -m 2750 /srv/meetings /srv/meetings/releases
+install -d -o deploy-meetings -g meetings -m 2750 /srv/meetings /srv/meetings/releases   # 2 = setgid: Uploads erben die Gruppe meetings
 install -d -o root -g meetings -m 0750 /etc/meetings
 install -o root -g meetings -m 0640 /dev/null /etc/meetings/env && sudoedit /etc/meetings/env
 # Deploy-Schlüssel: öffentlichen Teil eintragen (privaten als Secret DEPLOY_SSH_KEY in GitHub)
