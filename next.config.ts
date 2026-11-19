@@ -1,0 +1,31 @@
+import type { NextConfig } from "next";
+
+// Die App läuft im Root ihrer Adresse (produktiv https://meetings.atools.de), ohne basePath.
+// Ein Unterpfad in APP_BASE_URL wäre ein Konfigurationsfehler -> Build bricht ab.
+const appBase = process.env.APP_BASE_URL;
+if (appBase) {
+  let path = "/";
+  try {
+    path = new URL(appBase).pathname;
+  } catch {
+    throw new Error(`APP_BASE_URL ist keine gültige URL: ${appBase}`);
+  }
+  if (path !== "/" && path !== "") throw new Error(`APP_BASE_URL darf keinen Pfad enthalten (die App läuft im Root): ${appBase}`);
+}
+
+const nextConfig: NextConfig = {
+  reactStrictMode: true,
+  // pg ist ein Node-Modul und soll nicht gebündelt werden
+  serverExternalPackages: ["pg"],
+  poweredByHeader: false,
+  async headers() {
+    return [
+      // Das Vertriebs-Panel läuft als iframe in Pipedrive – nur dort (und lokal auf der Dev-Seite) einbettbar
+      { source: "/panel", headers: [{ key: "Content-Security-Policy", value: "frame-ancestors 'self' https://*.pipedrive.com" }] },
+      // alles andere nie einbetten (Clickjacking)
+      { source: "/((?!panel$).*)", headers: [{ key: "X-Frame-Options", value: "SAMEORIGIN" }] },
+    ];
+  },
+};
+
+export default nextConfig;

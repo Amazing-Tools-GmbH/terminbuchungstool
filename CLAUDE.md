@@ -1,0 +1,173 @@
+# CLAUDE.md – Terminbuchungstool
+
+Mandantenfähiges Terminbuchungstool mit Pipedrive-Integration. Auftrag und Phasen:
+`docs/claude-code-prompt.md`. Maßgebliches Design: `docs/mockup/` (Lesehilfe: `docs/mockup/README.md`).
+
+## Architekturprinzipien (nicht verhandelbar)
+
+1. **Eine Installation für alle Kunden.** Ein neuer Kunde ist ein Datensatz in `tenants`,
+   niemals eine Code-Kopie, ein Branch oder ein `if (slug === "…")`.
+2. **Kein kundenspezifischer Code.** Individualisierung ausschließlich über Einstellungen:
+   `tenants.theme` (Theme-JSON), `anrede`, `text_overrides`, `legal_links`, `claim`,
+   `contact_line`, Logo im Storage. Kundennamen/-farben stehen nur in `seed/` und in der DB.
+3. **Isolation über `tenant_id` + RLS.** Jede fachliche Tabelle hat `tenant_id` (mit FK auf
+   `tenants`). Zugriff wird in Postgres per Row Level Security erzwungen – App-Code darf sich
+   NIE allein auf `where tenant_id = …` verlassen. Neue Tabelle ⇒ RLS + Policies + Test in
+   `tests/db/rls.test.ts` im selben Commit.
+4. **Öffentliche Zugriffe nur token-gebunden.** `anon` hat keinen Tabellenzugriff; die
+   Buchungsseite nutzt ausschließlich `SECURITY DEFINER`-Funktionen, die Mandant + Token
+   verlangen (`resolve_tenant`, `get_invitation_context`, `book_slot`, `cancel_booking`).
+5. **Buchen nur über `public.book_slot()`** (Slot-Sperre `FOR UPDATE`, Prüfung, Schreiben in
+   einer Transaktion). Kein direktes `insert into bookings` – auch nicht im Admin.
+6. **Mails nur über `email_outbox`**, nie direkt im Request. Eine Buchung scheitert nie an
+   einer Mail. Versand über das Postfach des Mandanten; kein stiller Absenderwechsel.
+7. **Secrets** (OAuth-Tokens, SMTP-Passwörter) nur verschlüsselt (`lib/crypto/secretbox.ts`)
+   und für `authenticated` nicht lesbar (Spaltenrechte). Buchungslinks nur als SHA-256-Hash.
+
+## Mandanten-Slug = Pipedrive-Unternehmensdomain
+
+- Slug = Pipedrive-Unternehmensdomain, z. B. `antennevorarlberg.pipedrive.com` →
+  `antennevorarlberg`. Ableitung nur über `lib/pipedrive/domain.ts`. Der Slug ist eine
+  interne Kennung (Dateinamen, Seed) – er steht in KEINER öffentlichen Adresse.
+- Wird einmal bei der Pipedrive-Installation gesetzt und danach nicht automatisch geändert
+  (verschickte Links bleiben gültig). Stabiler Schlüssel des Mandanten bleibt `company_id`;
+  die aktuelle Domain steht in `pipedrive_connections.company_domain` und wird bei Login,
+  Installation und jeder Token-Erneuerung aus der `api_domain` nachgezogen
+  (`lib/pipedrive/domain-sync.ts`) – eine Adressänderung in Pipedrive bricht nichts.
+- Adressen (entschieden): alles zentral unter `APP_BASE_URL` (`https://meetings.atools.de`, Root, kein basePath),
+  keine Kunden-Subdomains. Buchungsseite `/b/<token>`: Mandant aus dem Token (Middleware →
+  `resolve_tenant_by_token`; API-Routen aus dem Token im Body). Admin `/admin`: Mandant aus
+  der Sitzung (`resolve_tenant_by_id`, nur Mitglieder). Pipedrive-Login: Mandant über die
+  `company_id` der Pipedrive-Firma. Einstieg aus den Pipedrive-App-Einstellungen:
+  `/settings?userId&companyId&token` (JWT HS256, `lib/pipedrive/settings-token.ts`,
+  Geheimnis `PIPEDRIVE_JWT_SECRET` bzw. Client-Secret, max. 15 Min. alt).
+- Optional eigene Domain des Kunden (`tenants.custom_domain`, z. B. `termine.kunde.at` per
+  CNAME) – nur für Buchungsseiten; Einrichtung später in den
+  Pipedrive-App-Einstellungen (Phase 5, DNS-Prüfung, automatisches HTTPS). Kein iframe.
+
+## Datenzugriff
+
+- Server-Code nutzt `withActor(actor, fn)` aus `lib/db` (Paket `pg`). Jede Abfrage läuft in
+  einer Transaktion mit `SET LOCAL ROLE anon|authenticated|service_role` und
+  `request.jwt.claims` – exakt wie PostgREST bei Supabase. So gilt RLS lokal und auf Supabase
+  identisch, und derselbe Code läuft unverändert gegen `SUPABASE_DB_URL`.
+- `service_role` umgeht RLS: nur für Server-Jobs (Outbox, Pipedrive-Installation, Seed).
+- Anmeldung nur über Pipedrive (OAuth, eine zentrale Callback-URL) oder per Einstieg aus den
+  Pipedrive-App-Einstellungen (`/settings`, signiertes Token) – keine Passwörter, keine
+  Einladungsmails, kein `supabase-js`. Sitzung = versiegeltes Cookie (`lib/auth/session.ts`,
+  je Zweck eigener HKDF-Schlüssel) mit Benutzer + Mandant; Mitgliedschaft und Rolle werden pro
+  Request frisch gelesen (`lib/auth/admin.ts`). Login prüft: Mandant zur Pipedrive-Firma
+  (`company_id`), freigeschaltet (`tenant_members.status = active`), E-Mail = auth-Benutzer.
+- Nutzerverwaltung (`/admin/benutzer`, später auch in den Pipedrive-App-Einstellungen): listet
+  die Pipedrive-Benutzer der Firma; neue Benutzer haben keinen Zugriff, bis owner/admin sie
+  freischalten. owner verwaltet alle, admin alle außer owner, sales nichts (RLS). Immer
+  mindestens ein aktiver owner (Trigger, `TB:last_owner`). Pipedrive-Admins werden nicht
+  automatisch Admin. auth-Benutzer entstehen beim Freischalten (`lib/auth/users.ts`,
+  `AUTH_ADMIN=local|supabase`), ohne Mail.
+- Pipedrive-App: Installation/Deinstallation über die Callback-Route (`lib/pipedrive/install.ts`;
+  Installierende:r = owner, Deinstallation ⇒ `pipedrive_connections.status = revoked`, Daten
+  bleiben; ein vorbereiteter Mandant mit gleichem Slug, der nie verbunden war, wird übernommen). Panel im Deal `/panel` (JWT wie `/settings`, Panel-Sitzung als Bearer, Zweck
+  `panel`; `lib/panel`, `components/panel`), Einladungen nur über `public.create_invitation`.
+  Einträge in Pipedrive (Aktivität, Notizen) nur über die Warteschlange `pipedrive_jobs`
+  (`lib/pipedrive/jobs.ts`, `crm.ts`), nie im Request.
+- Admin-Backend `/admin` (Server Components + Server Actions, zod, `lib/admin`), Texte in
+  `lib/texts/admin.ts`. Pipedrive-Benutzerliste über `lib/pipedrive/directory.ts`
+  (`PIPEDRIVE_DIRECTORY=api|fake`; `fake` = Seed-Daten, nur lokal).
+- Hosting: Hetzner, kein Docker/Vercel: Node-Prozess unter systemd (Benutzer `meetings`,
+  `/srv/meetings/current` = Symlink auf Release, Konfiguration `/etc/meetings/env`,
+  `next start --hostname 127.0.0.1 --port 3003`, `ProtectSystem=strict`, nur
+  `/var/cache/meetings` beschreibbar), Caddy davor unter `https://meetings.atools.de`, Bau aus
+  GitHub `main` per `deploy/deploy.sh`, Cron per systemd-Timer. Vorlagen in `deploy/`.
+  `/panel` muss im Pipedrive-iframe laufen: Einbettungs-Header setzt die App
+  (`next.config.ts`), nie im Proxy überschreiben. Zur Laufzeit nichts ins Release schreiben.
+- Kein basePath: die App läuft im Root (`APP_BASE_URL` ohne Pfad, sonst bricht der Build ab).
+  Absolute Links nur über `lib/links.ts` (`appBaseUrl`, `bookingUrl`) bzw. `lib/auth/urls.ts`.
+  Nie `req.nextUrl.origin` verwenden (hinter Caddy = http://127.0.0.1:3003): Redirects über
+  `appUrl()`, Herkunft der Anfrage über `requestOrigin()`/`isAppOrigin()` (X-Forwarded-*).
+- Produktionsmodus: `lib/env-mode.ts` (`APP_ENV`, sonst `NODE_ENV`) – dort sind Dev-Login,
+  `/dev/*`, `?tenant=` und Dev-Mailversand immer aus.
+
+## Datenbank & Migrationen
+
+- Migrationen: `supabase/migrations/<YYYYMMDDHHMMSS>_<name>.sql`, müssen **unverändert auf
+  Supabase** laufen. Nichts verwenden, was es dort nicht gibt. Bestehende Migrationen nach
+  dem Push auf Supabase nicht mehr ändern – neue Migration anlegen.
+- Lokal: vorinstalliertes Postgres 16 + Shims in `supabase/dev-shims/` (auth-Schema,
+  Rollen, Supabase-Standardrechte). Shims NIE in `supabase/migrations/` und NIE auf Supabase.
+- Supabase-Projekt `pkegcsgnyicdxzivnijw`: aus der Cloud nur per HTTPS erreichbar.
+  Migrationen mit `npm run supabase:migrate` (Management API, trägt in
+  `supabase_migrations.schema_migrations` ein → kompatibel zu `supabase db push`),
+  Seed mit `npm run supabase:seed`. `SUPABASE_DB_URL` gibt es nur auf dem Produktionsserver.
+- Ziel lokal vs. Supabase immer explizit wählen (`--target=…`, `ASSET_STORAGE=…`),
+  nie aus dem Vorhandensein von `SUPABASE_URL` ableiten. DB-Tests laufen immer gegen
+  das lokale `TEST_DATABASE_URL`. Auf Supabase keine `auth.users` per SQL anlegen.
+- `npm run supabase:wipe` (leert das Projekt) nur auf ausdrückliche Anweisung.
+- Funktionen: `security definer` immer mit `set search_path = ''` und voll qualifizierten
+  Namen; Rechte explizit (`revoke … from public` + gezieltes `grant execute`).
+- Fehler aus DB-Funktionen: `raise exception using errcode = 'P0001', message = 'TB:<code>'`.
+- Sperrreihenfolge: erst `invitations`, dann `slots` (Deadlocks vermeiden).
+- Zeiten immer `timestamptz`; Anzeige in `tenants.timezone` (Standard Europe/Vienna).
+
+## Buchungsseite & Mails
+
+- Buchungsseite `/b/[token]`: Server lädt Kontext über `get_invitation_context` (als `anon`),
+  Client-Komponente `components/booking/BookingApp.tsx`; Texte als aufgelöstes Wörterbuch
+  (`resolveTexts`), Datums-Formatierung serverseitig in der Mandanten-Zeitzone.
+- API-Routen validieren mit zod, rufen `lib/booking/service.ts` und stoßen danach per
+  `after()` die Outbox an. Fehlercodes `TB:*` → `lib/booking/errors.ts`.
+- Mails: `lib/mail` – `MailSender`-Interface (`dev`, `smtp`, `google` = Gmail API,
+  `microsoft` = Graph; OAuth nur mit Sende-Recht, `lib/mail/oauth.ts`),
+  Vorlagen in `templates.ts` (Inline-Styles, kein SVG/Verlauf), Verarbeitung in `outbox.ts`
+  (SKIP LOCKED, Backoff, Postfach-Fehler ⇒ Mail bleibt queued). Links in Mails nur über
+  `lib/links.ts`; der Buchungslink steht verschlüsselt im Outbox-Payload (`link_enc`).
+- Versandwege (`lib/mail/routing.ts`, Konfiguration `lib/mail/config.ts`):
+  Einladung über `INVITE_MAIL_PROVIDER` = `pipedrive` (Standard; Postfach des Mitarbeiters in
+  Pipedrive, OAuth-Token aus seinem Login in `pipedrive_user_connections`, Scope
+  `mail-sending:full`, `lib/pipedrive/mail.ts` über MCP oder REST) | `oauth` (eigenes
+  Google/Microsoft-Postfach, Buttons nur dann sichtbar) | `smtp` (System-Adresse, Anzeigename +
+  Reply-To = Mitarbeiter). Bestätigung/Stornierung immer System-SMTP (`SYSTEM_MAIL_*`),
+  Reply-To = einladender Mitarbeiter. Fällt der Weg aus: `email_outbox.error_code` + Meldung,
+  NIE ein stiller Wechsel des Weges. Smart BCC (`tenants.smart_bcc_email`, nur
+  `@pipedrivemail.com`) für alle Kundenmails außer Pipedrive-Versand. Signatur je Mitarbeiter
+  (`tenant_members.mail_signature`, Klartext) unter Einladungen.
+- Postfach verbinden (nur Weg `oauth`, `/admin/postfach`): Speichern über
+  `public.save_mail_connection` (Status `pending`), aktiv erst nach zugestellter Testmail.
+  OAuth wie der Login: Start auf Mandanten-Host (Nonce), zentraler Callback →
+  `mail_oauth_pending` (nur service_role) → Abschluss mit Sitzung + Nonce.
+
+## Theme & Texte
+
+- Theme-Schema: `lib/theme/schema.ts` (zod). Lesen mit `parseTheme()` (robust, Fallback auf
+  Defaults), Speichern mit `themeInputSchema` (streng). Werte sind auf sichere Muster
+  beschränkt (Hex, `linear-gradient` aus Hex, px/rem) – Schutz gegen CSS-Injection.
+- Zur Laufzeit als CSS-Variablen `--tb-*` (`lib/theme/css.ts`). Komponenten-CSS nutzt nur
+  diese Variablen, keine festen Mandantenfarben.
+- Schriften nur aus der Allowlist (`lib/theme/font-names.ts` + `fonts.ts`, selbst gehostet
+  über next/font – keine Laufzeit-Anfragen an Google).
+- Texte: `lib/texts` mit Varianten `sie`/`ihr`; Mandanten können einzelne Schlüssel über
+  `text_overrides` ersetzen. Neue UI-Texte immer dort anlegen, nie hart im JSX.
+- Barrierefreiheit: echte Buttons/Labels, Kontrast ≥ 4.5:1 (`lib/theme/contrast.ts`,
+  Seed-Themes werden in Tests geprüft), responsiv bis 320 px.
+
+## Konventionen
+
+- TypeScript strict, zod für alle Eingaben an Systemgrenzen, Oberfläche auf Deutsch.
+- Tests: Vitest. `npm test` (alles), `npm run test:unit`, `npm run test:db`.
+  DB-Tests setzen `TEST_DATABASE_URL` komplett zurück.
+- Vor neuen Abhängigkeiten oder Abweichungen vom Stack kurz beim Auftraggeber nachfragen.
+- Keine Secrets committen; neue Umgebungsvariablen in `.env.example` dokumentieren.
+- Commits/PRs auf Deutsch oder Englisch, kleine nachvollziehbare Schritte.
+
+## Häufige Befehle
+
+```bash
+# Der SessionStart-Hook (.claude/hooks/session-start.sh) erledigt in Cloud-Sessions
+# automatisch: npm install, .env.local, Postgres-Start, Migration+Seed bei leerer DB.
+npm run db:start   # Postgres 16 starten, DBs anlegen (lokal)
+npm run db:reset   # Shims + Migrationen + Seed (lokal), gibt Test-Buchungslinks aus
+npm run supabase:inspect            # Supabase-Bestand (nur lesend)
+npm run supabase:migrate [-- --dry-run]
+npm run supabase:seed
+npm test           # Unit- + DB-Tests
+npm run dev        # http://localhost:3000/admin (Dev-Login), Buchungslinks gibt db:reset aus
+```

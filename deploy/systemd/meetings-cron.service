@@ -1,0 +1,18 @@
+# /etc/systemd/system/meetings-cron.service
+# Arbeitet Mail-Outbox und Pipedrive-Aufträge ab (ausgelöst von meetings-cron.timer).
+# CRON_SECRET geht per stdin an curl, nicht über die Kommandozeile (ps).
+[Unit]
+Description=Meetings – Outbox und Pipedrive-Aufträge
+After=meetings.service
+Requisite=meetings.service
+
+[Service]
+Type=oneshot
+User=meetings
+Group=meetings
+EnvironmentFile=/etc/meetings/env
+ExecStart=/bin/sh -c 'printf "Authorization: Bearer %%s\n" "$CRON_SECRET" | curl -fsS --max-time 55 -o /dev/null -H @- http://127.0.0.1:3003/api/cron/outbox'
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+NoNewPrivileges=true

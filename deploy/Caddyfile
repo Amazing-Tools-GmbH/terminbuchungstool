@@ -1,0 +1,20 @@
+# Block für /etc/caddy/Caddyfile
+# Die App setzt die Einbettungs-Regeln selbst:
+#   /panel -> Content-Security-Policy: frame-ancestors 'self' https://*.pipedrive.com
+#   sonst  -> X-Frame-Options: SAMEORIGIN
+# Darum hier KEIN X-Frame-Options / Content-Security-Policy setzen (auch nicht über ein
+# gemeinsames Snippet der anderen Panels) – sonst lädt das Panel nicht im Pipedrive-iframe.
+meetings.atools.de {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+
+	# Host, X-Forwarded-For/-Proto/-Host setzt Caddy automatisch – die App braucht sie
+	# (sie sieht sonst nur http://127.0.0.1:3003). Nicht mit header_up überschreiben.
+	reverse_proxy 127.0.0.1:3003
+}

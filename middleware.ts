@@ -1,0 +1,58 @@
+import { NextResponse, type NextRequest } from "next/server";
+import {
+  TENANT_COOKIE,
+  TENANT_HEADER,
+  TENANT_QUERY_PARAM,
+  bookingTokenFromPath,
+  encodeTenantKey,
+  parseTenantKey,
+  tenantQueryAllowed,
+} from "@/lib/tenant/host";
+
+/**
+ * Ermittelt aus Host (bzw. in Vorschauen aus ?tenant=) den Mandanten-
+ * Schlüssel und reicht ihn als Request-Header an die Server-Komponenten
+ * weiter. Ein vom Client mitgeschickter Header wird immer verworfen.
+ */
+/** Host der App: APP_DOMAIN, sonst aus APP_BASE_URL (z. B. meetings.atools.de) */
+function appDomain(): string {
+  const explicit = process.env.APP_DOMAIN?.trim();
+  if (explicit) return explicit;
+  try {
+    return new URL(process.env.APP_BASE_URL ?? "").host || "localhost:3000";
+  } catch {
+    return "localhost:3000";
+  }
+}
+
+export function middleware(req: NextRequest) {
+  const allowQuery = tenantQueryAllowed(process.env);
+  const queryTenant = req.nextUrl.searchParams.get(TENANT_QUERY_PARAM);
+
+  const hostKey = parseTenantKey({
+    host: req.headers.get("x-forwarded-host") ?? req.headers.get("host"),
+    appDomain: appDomain(),
+    queryTenant,
+    cookieTenant: req.cookies.get(TENANT_COOKIE)?.value,
+    allowQuery,
+  });
+  // Buchungslink: der Mandant ergibt sich aus dem Token (Pfad ohne Unterpfad);
+  // auf einer eigenen Kundendomain muss er zu dieser Domain gehören
+  const token = bookingTokenFromPath(req.nextUrl.pathname);
+  const key = token ? { kind: "token" as const, token, domain: hostKey?.kind === "domain" ? hostKey.domain : null } : hostKey;
+
+  const headers = new Headers(req.headers);
+  headers.delete(TENANT_HEADER);
+  if (key) headers.set(TENANT_HEADER, encodeTenantKey(key));
+
+  const res = NextResponse.next({ request: { headers } });
+  // Vorschau-Fallback merken, damit Folgeseiten ohne ?tenant= funktionieren
+  if (allowQuery && queryTenant && hostKey?.kind === "slug") {
+    res.cookies.set(TENANT_COOKIE, hostKey.slug, { path: "/", sameSite: "lax", httpOnly: true });
+  }
+  return res;
+}
+
+export const config = {
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|dev-assets/).*)"],
+};

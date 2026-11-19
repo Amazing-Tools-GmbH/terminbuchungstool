@@ -1,0 +1,45 @@
+{
+  "name": "terminbuchungstool",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:unit": "vitest run tests/unit",
+    "test:db": "vitest run tests/db",
+    "db:start": "bash scripts/db-dev-start.sh",
+    "db:reset": "tsx scripts/db-reset.ts",
+    "db:seed": "tsx scripts/seed.ts --target=local",
+    "supabase:inspect": "tsx scripts/supabase/inspect.ts",
+    "supabase:migrate": "tsx scripts/supabase/migrate.ts",
+    "supabase:seed": "tsx scripts/seed.ts --target=supabase",
+    "supabase:wipe": "tsx scripts/supabase/wipe.ts"
+  },
+  "dependencies": {
+    "@pipedrive/app-extensions-sdk": "^0.16.1",
+    "next": "^15.5.29",
+    "nodemailer": "^6.10.1",
+    "pg": "^8.23.1",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "server-only": "^0.0.1",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "@types/nodemailer": "^6.4.24",
+    "@types/pg": "^8.23.1",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.7"
+  }
+}

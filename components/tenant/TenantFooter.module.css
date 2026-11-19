@@ -1,0 +1,26 @@
+.footer {
+  margin-top: auto;
+  background: var(--tb-footer-bg);
+  color: var(--tb-footer-ink);
+  font-size: 14px;
+}
+
+.inner {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px 24px;
+  flex-wrap: wrap;
+  padding-block: 20px;
+}
+
+.nav {
+  display: flex;
+  gap: 8px 20px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.nav a {
+  color: inherit;
+}

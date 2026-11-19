@@ -1,0 +1,28 @@
+import "server-only";
+/**
+ * Panel-Sitzung aus einem geprüften Pipedrive-Einstieg: Mandant über die
+ * companyId, nur freigeschaltete Mitglieder. Ergebnis ist ein versiegelter
+ * Wert (Zweck "panel"), den der Browser als Bearer-Token mitschickt.
+ */
+import { withActor } from "@/lib/db";
+import { PANEL_TTL_SECONDS, seal, type PanelSession } from "@/lib/auth/session";
+import { tenantIdForPipedriveCompany } from "@/lib/pipedrive/runtime";
+import type { PanelEntry } from "./token";
+
+export type PanelStart = { ok: true; session: PanelSession; bearer: string } | { ok: false; error: "not_connected" | "no_access" | "disabled" };
+
+export async function startPanelSession(entry: PanelEntry): Promise<PanelStart> {
+  const tid = await tenantIdForPipedriveCompany(entry.companyId);
+  if (!tid) return { ok: false, error: "not_connected" };
+  const member = await withActor({ role: "service_role" }, async (db) => {
+    const { rows } = await db.query<{ user_id: string; status: "active" | "disabled" }>(
+      "select user_id, status from public.member_login_lookup($1, $2)",
+      [tid, entry.userId],
+    );
+    return rows[0] ?? null;
+  });
+  if (!member) return { ok: false, error: "no_access" };
+  if (member.status !== "active") return { ok: false, error: "disabled" };
+  const session: PanelSession = { uid: member.user_id, tid, pd: entry.userId, deal: entry.dealId };
+  return { ok: true, session, bearer: seal("panel", session, PANEL_TTL_SECONDS) };
+}
