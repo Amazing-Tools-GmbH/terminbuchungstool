@@ -109,3 +109,31 @@ schon) würde nur für Weg C/D gebraucht. Bei A/B bleibt der .ics-Anhang möglic
 Quellen (Nachtrag): https://developers.pipedrive.com/docs/api/v1/Mailbox ·
 https://developers.pipedrive.com/changelog ·
 https://pipedrive.readme.io/docs/marketplace-scopes-and-permissions-explanations
+
+---
+
+## Nachtrag 19.11.2026 (2): Prüfung mit Sandbox-Zugang
+
+Zugang: API-Token des Benutzers „Stephan Steinbach“ (Admin) in der Sandbox-Firma
+„PD Experts - Entwicklung“ (`pdx-sandbox`, company_id 5537516). Nur lesend geprüft.
+
+- **Offizielle OpenAPI-Spezifikation (v1 und v2, von developers.pipedrive.com geladen):**
+  Mailbox-Endpunkte nur `GET`/`PUT`/`DELETE` auf `mailThreads` bzw. `GET` auf
+  `mailMessages`; **kein POST** zum Anlegen/Senden, keine Entwurfs-Endpunkte. Scopes nur
+  `mail:read` und `mail:full`. Damit ist der Befund endgültig: über die öffentliche API
+  lassen sich keine Mails senden – weder mit API-Token noch mit OAuth.
+- **Smart BCC ist offiziell dokumentiert** (Beschreibung des Mailbox-Bereichs in der
+  Spezifikation): „1-way sync: SmartBCC feature which stores the copies of email messages to
+  Pipedrive by adding the SmartBCC specific address to mail recipients.“ Mails, die so
+  entstehen, tragen `smart_bcc_flag = 1`. Weg A aus dem vorigen Nachtrag ist also ein von
+  Pipedrive vorgesehener Weg, kein Workaround.
+- **Sandbox-Zustand:** Beim Benutzer ist ein Postfach verbunden (2-Wege-Sync,
+  `connection_type = private`). Testkontakt „Stephan Test“ (Person 53, Adresse des
+  Auftraggebers) hängt an Deal 501 „Bonn Deal“; bisher keine Mails.
+- **Claude-Pipedrive-Connector:** weiterhin ohne Mail-Berechtigung (Entwürfe nicht testbar).
+
+### Offener Live-Test Smart BCC
+Eine Mail an die Adresse von Person 53 mit der Smart-BCC-Adresse der Sandbox in BCC senden
+(Absender egal – genau das täte unser `MailSender`), danach per API prüfen: erscheint sie
+bei Person 53 / Deal 501, mit `smart_bcc_flag = 1`, und kommt sie ohne Anhang-Verlust an
+(.ics)? Dafür fehlt in der Cloud-Umgebung ein Postfach zum Senden (SMTP o. Ä.).
