@@ -82,6 +82,8 @@ Mandantenfähiges Terminbuchungstool mit Pipedrive-Integration. Auftrag und Phas
   (`next.config.ts`), nie im Proxy überschreiben. Zur Laufzeit nichts ins Release schreiben.
 - Kein basePath: die App läuft im Root (`APP_BASE_URL` ohne Pfad, sonst bricht der Build ab).
   Absolute Links nur über `lib/links.ts` (`appBaseUrl`, `bookingUrl`) bzw. `lib/auth/urls.ts`.
+  Nie `req.nextUrl.origin` verwenden (hinter Caddy = http://127.0.0.1:3003): Redirects über
+  `appUrl()`, Herkunft der Anfrage über `requestOrigin()`/`isAppOrigin()` (X-Forwarded-*).
 - Produktionsmodus: `lib/env-mode.ts` (`APP_ENV`, sonst `NODE_ENV`) – dort sind Dev-Login,
   `/dev/*`, `?tenant=` und Dev-Mailversand immer aus.
 

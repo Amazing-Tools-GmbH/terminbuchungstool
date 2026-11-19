@@ -209,6 +209,8 @@ Hinweise:
   Symlink auf `/var/cache/meetings`. Sonst schreibt die App nichts auf die Platte (Logos liegen
   in Supabase Storage, `ASSET_STORAGE=supabase`).
 - Port 3003 lauscht nur auf `127.0.0.1`; von außen nur über Caddy (Firewall: 80/443).
+  Die App wertet `X-Forwarded-Proto`/`X-Forwarded-Host` aus (setzt Caddy standardmäßig),
+  um zu erkennen, dass eine Anfrage über `https://meetings.atools.de` kam.
 - **Panel im Pipedrive-iframe:** Die App setzt für `/panel`
   `Content-Security-Policy: frame-ancestors 'self' https://*.pipedrive.com`, für alle anderen
   Seiten `X-Frame-Options: SAMEORIGIN`. In Caddy darum **keine** eigenen `X-Frame-Options`-
