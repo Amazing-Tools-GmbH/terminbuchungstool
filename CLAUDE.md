@@ -62,6 +62,12 @@ Mandantenfähiges Terminbuchungstool mit Pipedrive-Integration. Auftrag und Phas
   mindestens ein aktiver owner (Trigger, `TB:last_owner`). Pipedrive-Admins werden nicht
   automatisch Admin. auth-Benutzer entstehen beim Freischalten (`lib/auth/users.ts`,
   `AUTH_ADMIN=local|supabase`), ohne Mail.
+- Pipedrive-App: Installation/Deinstallation über die Callback-Route (`lib/pipedrive/install.ts`;
+  Installierende:r = owner, Deinstallation ⇒ `pipedrive_connections.status = revoked`, Daten
+  bleiben). Panel im Deal `/panel` (JWT wie `/settings`, Panel-Sitzung als Bearer, Zweck
+  `panel`; `lib/panel`, `components/panel`), Einladungen nur über `public.create_invitation`.
+  Einträge in Pipedrive (Aktivität, Notizen) nur über die Warteschlange `pipedrive_jobs`
+  (`lib/pipedrive/jobs.ts`, `crm.ts`), nie im Request.
 - Admin-Backend `/admin` (Server Components + Server Actions, zod, `lib/admin`), Texte in
   `lib/texts/admin.ts`. Pipedrive-Benutzerliste über `lib/pipedrive/directory.ts`
   (`PIPEDRIVE_DIRECTORY=api|fake`; `fake` = Seed-Daten, nur lokal).

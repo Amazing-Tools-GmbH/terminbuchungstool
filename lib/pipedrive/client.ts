@@ -108,10 +108,12 @@ const userSchema = z.object({
 const meSchema = userSchema.extend({
   company_id: z.number().int().positive(),
   company_domain: z.string().min(1),
+  company_name: z.string().optional(),
+  timezone_name: z.string().optional(),
 });
 
 export type PipedriveUser = { id: number; name: string; email: string; isAdmin: boolean; active: boolean };
-export type PipedriveMe = PipedriveUser & { companyId: number; companyDomain: string };
+export type PipedriveMe = PipedriveUser & { companyId: number; companyDomain: string; companyName?: string; timezone?: string };
 
 async function apiGet(apiDomain: string, accessToken: string, path: string, f: Fetch): Promise<unknown> {
   const res = await f(`${apiDomain.replace(/\/$/, "")}${path}`, {
@@ -135,7 +137,13 @@ const toUser = (u: z.infer<typeof userSchema>): PipedriveUser => ({
 export async function getMe(apiDomain: string, accessToken: string, f: Fetch = fetch): Promise<PipedriveMe> {
   const parsed = meSchema.safeParse(await apiGet(apiDomain, accessToken, "/api/v1/users/me", f));
   if (!parsed.success) throw new PipedriveError("api", "Unerwartete Antwort von /users/me");
-  return { ...toUser(parsed.data), companyId: parsed.data.company_id, companyDomain: parsed.data.company_domain.toLowerCase() };
+  return {
+    ...toUser(parsed.data),
+    companyId: parsed.data.company_id,
+    companyDomain: parsed.data.company_domain.toLowerCase(),
+    companyName: parsed.data.company_name,
+    timezone: parsed.data.timezone_name,
+  };
 }
 
 /** Alle Benutzer der Firma (ungültige Einträge werden übersprungen) */

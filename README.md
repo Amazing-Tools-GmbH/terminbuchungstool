@@ -198,6 +198,7 @@ Kunde aus seiner Pipedrive-Identität bzw. aus dem Buchungslink:
 | Admin-Backend | `…/meetings/admin` | der Sitzung |
 | Login | „Mit Pipedrive anmelden“ | der Pipedrive-Firma (`company_id`) |
 | Einstieg aus Pipedrive | `…/meetings/settings?userId=…&companyId=…&token=…` | `companyId`, abgesichert durch das signierte Token |
+| Panel im Deal | `…/meetings/panel?…&selectedIds=<deal>&token=…` | `companyId` aus dem signierten Token |
 
 - **Pipedrive Developer Hub:** Callback-URL `https://atools.de/meetings/api/auth/pipedrive/callback`,
   „App settings“-Seite `https://atools.de/meetings/settings`. Das Token prüft die App mit
@@ -231,6 +232,41 @@ Kunde aus seiner Pipedrive-Identität bzw. aus dem Buchungslink:
   Adresse je Pipedrive-Firma), Versandstatus im Team, nicht versendete Einladungen.
 - Lokal: `SYSTEM_MAIL_TRANSPORT=dev` – Mails landen unter `/dev/mails`.
 
+## Pipedrive-App (Phase 4)
+
+**Einrichtung im Developer Hub** (eine App für alle Kunden):
+
+| Feld | Wert |
+|---|---|
+| Callback-URL | `https://atools.de/meetings/api/auth/pipedrive/callback` |
+| App-Deinstallation (Webhook) | dieselbe Callback-URL (Pipedrive ruft sie mit `DELETE` und Basic-Auth auf) |
+| App settings (eigene Seite) | `https://atools.de/meetings/settings` |
+| App-Erweiterung „Custom panel“, Deal-Detailansicht | `https://atools.de/meetings/panel`, JWT-Secret = `PIPEDRIVE_JWT_SECRET` (oder leer = Client-Secret) |
+| Scopes | Basis, Deals (voll), Kontakte (lesen), Aktivitäten (voll), Benutzer (lesen), `mail-sending:full` |
+
+- **Installation:** Die Installation läuft über dieselbe Callback-URL (ohne `state`). Neue
+  Pipedrive-Firma ⇒ Mandant (Slug = Unternehmensdomain, Name/Zeitzone aus Pipedrive),
+  Verbindung, Installierende:r wird Owner und ist gleich angemeldet (`/admin?installed=1`,
+  dort „Veranstaltung anlegen“). Erneute Installation erneuert nur die Tokens.
+  Deinstallation setzt die Verbindung auf `revoked` – Daten bleiben erhalten.
+- **Panel im Deal** (`/panel`): Pipedrive lädt die Seite im iframe mit signiertem Token
+  (wie `/settings`, max. 15 Min. alt). Daraus entsteht eine Panel-Sitzung (versiegelt, 2 h,
+  kein Cookie – Drittanbieter-Cookies sind in iframes unzuverlässig); läuft sie ab, holt das
+  Panel über das SDK (`@pipedrive/app-extensions-sdk`) ein frisches Token. Nur
+  freigeschaltete Mitglieder. Inhalt nach Mock-up: Kontakt mit Status (offen, gesendet,
+  Versandfehler mit Grund, gebucht, storniert), Veranstaltung, Wochenansicht, Senden
+  (Standard ein Termin; unter ▾ mehrere oder alle), persönlicher Link mit „Kopieren“,
+  freie Plätze, Link zum Admin. Kontaktdaten kommen immer aus Pipedrive, nie aus dem
+  Browser. Erneut senden macht den alten Link ungültig. `/panel` darf nur von
+  `*.pipedrive.com` eingebettet werden (CSP `frame-ancestors`), alle anderen Seiten gar nicht.
+- **Einträge im Deal** (Warteschlange `pipedrive_jobs`, abgearbeitet nach jeder Buchung
+  und per Cron, mit Backoff): Notiz „Link gesendet“ beim Versand (außer beim Versand über
+  Pipedrive – der steht dort ohnehin im Verlauf), Aktivität „Meeting“ bei Buchung
+  (Besitzer = einladender Mitarbeiter, Teilnehmer = Kontakt), Umbuchung ändert dieselbe
+  Aktivität, Stornierung löscht sie und legt eine Notiz an.
+- **Lokal:** `/dev/panel` (mit `DEV_TOOLS_ENABLED=true`) simuliert den Aufruf aus einem Deal
+  mit Seed-Benutzern und -Deals (`PIPEDRIVE_DIRECTORY=fake`).
+
 ## Admin-Backend und Benutzer (Phase 3)
 
 - **Admin-Backend:** zentral unter `/admin` (`https://atools.de/meetings/admin`, lokal
@@ -247,7 +283,7 @@ Kunde aus seiner Pipedrive-Identität bzw. aus dem Buchungslink:
   Benutzer haben keinen Zugriff, bis ein Owner oder Admin sie freischaltet und eine Rolle
   vergibt (Owner / Admin / Vertrieb). Admins verwalten alle außer Owner; es bleibt immer
   mindestens ein aktiver Owner. Gesperrte Benutzer verlieren sofort jeden Zugriff (RLS).
-  Wer die Pipedrive-App installiert, wird Owner (Phase 4). Dieselbe Verwaltung kommt
+  Wer die Pipedrive-App installiert, wird Owner. Dieselbe Verwaltung kommt
   später zusätzlich in die Einstellungen der Pipedrive-App (eingebettet, Anmeldung dort
   über das Pipedrive-JWT statt Cookie).
 - **Lokal ohne OAuth-App:** Die Login-Seite bietet mit `DEV_TOOLS_ENABLED=true` einen
@@ -256,8 +292,7 @@ Kunde aus seiner Pipedrive-Identität bzw. aus dem Buchungslink:
   zusätzlich ein Vertriebsmitarbeiter und zwei Benutzer ohne Zugriff.
 - **Für den echten Login nötig:** OAuth-App im Pipedrive Developer Hub
   (`PIPEDRIVE_CLIENT_ID`, `PIPEDRIVE_CLIENT_SECRET`, Callback-URL siehe oben) und eine
-  Pipedrive-Verbindung des Mandanten (`pipedrive_connections`, entsteht bei der Installation
-  in Phase 4).
+  Pipedrive-Verbindung des Mandanten (`pipedrive_connections`, entsteht bei der Installation).
 
 ## Umgebungsvariablen
 

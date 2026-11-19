@@ -158,6 +158,13 @@ async function processOne(pool: pg.Pool, row: OutboxRow, env: Env): Promise<keyo
           where id = $1`,
         [row.id, messageId, plan.connection?.id ?? null, plan.storeRendered, JSON.stringify(message), plan.channel],
       );
+      // Einladung nicht über Pipedrive versendet -> Notiz "Link gesendet" im Deal
+      if (row.type === "invitation" && plan.channel !== "pipedrive" && ctx.invitation?.pipedrive_deal_id) {
+        await c.query(
+          "insert into public.pipedrive_jobs (tenant_id, type, payload) values ($1, 'invitation_note', $2)",
+          [row.tenant_id, { invitation_id: ctx.invitation.id, outbox_id: row.id }],
+        );
+      }
       if (row.type === "test" && plan.connection) {
         await c.query(
           `update public.mail_connections set status = 'active', last_error = null, last_verified_at = now()

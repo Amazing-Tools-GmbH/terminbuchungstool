@@ -13,7 +13,7 @@ import { hkdfSync } from "node:crypto";
 import { z } from "zod";
 import { decryptSecret, encryptSecret } from "@/lib/crypto/secretbox";
 
-export type SealPurpose = "session" | "login-state" | "mail-state";
+export type SealPurpose = "session" | "login-state" | "mail-state" | "panel";
 
 function purposeKey(purpose: SealPurpose, rawKey: string | undefined): string {
   if (!rawKey) throw new Error("ENCRYPTION_KEY fehlt");
@@ -91,3 +91,12 @@ export const mailStateSchema = z.object({
   nonce: z.string().min(16).max(128),
 });
 export type MailState = z.infer<typeof mailStateSchema>;
+
+/**
+ * Sitzung des Vertriebs-Panels (eingebettet in Pipedrive): kein Cookie
+ * (Drittanbieter-Cookies sind in iframes unzuverlässig), sondern ein
+ * versiegelter Wert, den der Browser als Bearer-Token mitschickt.
+ */
+export const PANEL_TTL_SECONDS = 2 * 60 * 60;
+export const panelSessionSchema = sessionSchema.extend({ deal: z.number().int().positive() });
+export type PanelSession = z.infer<typeof panelSessionSchema>;

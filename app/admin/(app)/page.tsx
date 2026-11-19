@@ -5,7 +5,7 @@ import { isAdminErrorCode } from "@/lib/admin/errors";
 import { adminErrorText, at } from "@/lib/texts/admin";
 import { formatDate } from "@/lib/datetime";
 import styles from "@/components/admin/Admin.module.css";
-import { createSlotAction, increaseCapacityAction } from "./actions";
+import { createEventAction, createSlotAction, increaseCapacityAction } from "./actions";
 import { withBasePath } from "@/lib/base-path";
 
 type Search = Promise<Record<string, string | string[] | undefined>>;
@@ -82,12 +82,21 @@ export default async function SlotsPage({ searchParams }: { searchParams: Search
       )}
       {ok && (
         <p role="status" className={styles.notice}>
-          {ok === "slot" ? at("form.saved") : at("capacity.saved")}
+          {ok === "slot" ? at("form.saved") : ok === "event" ? at("event.form.saved") : at("capacity.saved")}
         </p>
       )}
 
+      {one(sp.installed) && (
+        <section className={styles.info} role="status">
+          <strong>{at("installed.title")}</strong> {at("installed.text")}
+        </section>
+      )}
+
       {!event ? (
-        <p className={styles.card}>{at("slots.noEvents")}</p>
+        <>
+          <p className={styles.card}>{at("slots.noEvents")}</p>
+          {manage && <EventForm open />}
+        </>
       ) : (
         <>
           <dl className={styles.kpis}>
@@ -264,8 +273,37 @@ export default async function SlotsPage({ searchParams }: { searchParams: Search
               <p className={styles.muted}>{at("form.readOnly")}</p>
             )}
           </section>
+          {manage && <EventForm open={false} />}
         </>
       )}
     </>
+  );
+}
+
+/** Neue Veranstaltung (owner/admin); bei leerem Mandanten offen */
+function EventForm({ open }: { open: boolean }) {
+  return (
+    <details className={`${styles.card} ${styles.details}`} open={open}>
+      <summary>{at("event.form.title")}</summary>
+      <form action={createEventAction} className={styles.form}>
+        <div className={`${styles.field} ${styles.full}`}>
+          <label htmlFor="ev-title">{at("event.form.name")}</label>
+          <input id="ev-title" name="title" type="text" required maxLength={200} />
+        </div>
+        <div className={`${styles.field} ${styles.full}`}>
+          <label htmlFor="ev-location">{at("event.form.location")}</label>
+          <input id="ev-location" name="location" type="text" maxLength={200} />
+        </div>
+        <div className={`${styles.field} ${styles.full}`}>
+          <label htmlFor="ev-description">{at("event.form.description")}</label>
+          <textarea id="ev-description" name="description" rows={3} maxLength={2000} className={styles.textarea} />
+        </div>
+        <div className={styles.full}>
+          <button type="submit" className={styles.btn}>
+            {at("event.form.submit")}
+          </button>
+        </div>
+      </form>
+    </details>
   );
 }

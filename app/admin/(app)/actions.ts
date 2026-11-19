@@ -8,8 +8,8 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { requireAdmin } from "@/lib/auth/admin";
 import { toAdminError } from "@/lib/admin/errors";
-import { capacitySchema, createSlotSchema, enableMemberSchema, updateMemberSchema } from "@/lib/admin/input";
-import { createSlot, increaseCapacity } from "@/lib/admin/slots";
+import { capacitySchema, createEventSchema, createSlotSchema, enableMemberSchema, updateMemberSchema } from "@/lib/admin/input";
+import { createEvent, createSlot, increaseCapacity } from "@/lib/admin/slots";
 import { enableMember, updateMember } from "@/lib/admin/members";
 
 function back(path: string, params: Record<string, string | undefined>): never {
@@ -85,3 +85,16 @@ export async function updateMemberAction(form: FormData) {
   back("/admin/benutzer", { error, ok: error ? undefined : "saved" });
 }
 
+
+export async function createEventAction(form: FormData) {
+  const ctx = await requireAdmin(["owner", "admin"]);
+  const parsed = createEventSchema.safeParse({ title: str(form, "title"), location: str(form, "location") ?? "", description: str(form, "description") ?? "" });
+  let id: string | undefined;
+  const error = parsed.success
+    ? await run(async () => {
+        id = await createEvent(ctx, parsed.data);
+      })
+    : "invalid_input";
+  revalidatePath("/admin");
+  back("/admin", { event: id, error, ok: error ? undefined : "event" });
+}

@@ -11,6 +11,14 @@ const nextConfig: NextConfig = {
   serverExternalPackages: ["pg"],
   ...(basePath ? { basePath } : {}),
   env: { NEXT_PUBLIC_BASE_PATH: basePath },
+  async headers() {
+    return [
+      // Das Vertriebs-Panel läuft als iframe in Pipedrive – nur dort (und lokal auf der Dev-Seite) einbettbar
+      { source: "/panel", headers: [{ key: "Content-Security-Policy", value: "frame-ancestors 'self' https://*.pipedrive.com" }] },
+      // alles andere nie einbetten (Clickjacking)
+      { source: "/((?!panel$).*)", headers: [{ key: "X-Frame-Options", value: "SAMEORIGIN" }] },
+    ];
+  },
 };
 
 export default nextConfig;

@@ -26,7 +26,7 @@ export async function pipedriveAccess(tenantId: string): Promise<PipedriveAccess
     // FOR UPDATE: zwei gleichzeitige Anfragen erneuern das Token nicht doppelt
     const { rows } = await db.query<Row>(
       `select api_domain, access_token_enc, refresh_token_enc, expires_at, company_id::text, company_domain
-         from public.pipedrive_connections where tenant_id = $1 for update`,
+         from public.pipedrive_connections where tenant_id = $1 and status = 'active' for update`,
       [tenantId],
     );
     const row = rows[0];
@@ -63,7 +63,7 @@ export async function connectedCompanyId(tenantId: string): Promise<number | nul
 /** Mandant zur Pipedrive-Firma (Login, Einstieg aus den App-Einstellungen) */
 export async function tenantIdForCompany(companyId: number): Promise<string | null> {
   return withActor({ role: "service_role" }, async (db) => {
-    const { rows } = await db.query<{ tenant_id: string }>("select tenant_id from public.pipedrive_connections where company_id = $1", [
+    const { rows } = await db.query<{ tenant_id: string }>("select tenant_id from public.pipedrive_connections where company_id = $1 and status = 'active'", [
       companyId,
     ]);
     return rows[0]?.tenant_id ?? null;

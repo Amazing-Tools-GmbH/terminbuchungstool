@@ -9,6 +9,7 @@ import { completePipedriveLogin } from "@/lib/auth/pipedrive-login";
 import { LOGIN_NONCE_COOKIE, loginStateSchema, unseal } from "@/lib/auth/session";
 import { sessionCookie } from "@/lib/auth/admin";
 import { appUrl } from "@/lib/auth/urls";
+import { syncCompanyDomain, installFromOAuth, uninstallCompany } from "@/lib/pipedrive/install";
 import { cookiePath } from "@/lib/base-path";
 
 export const dynamic = "force-dynamic";
@@ -22,9 +23,12 @@ function sameNonce(a: string, b: string | undefined): boolean {
 
 /**
  * Zentraler OAuth-Callback (EINE Callback-URL für alle Mandanten:
- * <APP_BASE_URL>/api/auth/pipedrive/callback). Prüft State + Nonce-Cookie,
- * ermittelt den Mandanten über die Pipedrive-Firma und setzt die Sitzung.
- * Die Installation der App (Phase 4) läuft später ebenfalls hier an.
+ * <APP_BASE_URL>/api/auth/pipedrive/callback).
+ *   - mit unserem State: "Mit Pipedrive anmelden" (State + Nonce-Cookie prüfen,
+ *     Mandant über die Pipedrive-Firma, Sitzung setzen)
+ *   - ohne State: Installation über den Installationslink der Pipedrive-App
+ *     (Mandant anlegen bzw. Verbindung erneuern, Installierender = owner)
+ *   - DELETE: Deinstallation (Pipedrive, Basic-Auth mit Client-ID/Secret)
  */
 export async function GET(req: NextRequest) {
   const params = req.nextUrl.searchParams;
@@ -33,6 +37,7 @@ export async function GET(req: NextRequest) {
     res.cookies.set(LOGIN_NONCE_COOKIE, "", { path: cookiePath("/api/auth"), maxAge: 0 });
     return res;
   };
+  if (!params.has("state")) return install(params.get("code"), fail);
   const state = unseal("login-state", params.get("state"), loginStateSchema);
   if (!state || !sameNonce(state.nonce, req.cookies.get(LOGIN_NONCE_COOKIE)?.value)) return fail("expired");
   const cfg = oauthConfig();
@@ -62,7 +67,10 @@ export async function GET(req: NextRequest) {
           me.email,
         ]);
       }),
-    storeUserTokens: (tid, uid, me, tokens) => storeUserTokens(getPool(), tid, uid, me, tokens),
+    storeUserTokens: async (tid, uid, me, tokens) => {
+      await storeUserTokens(getPool(), tid, uid, me, tokens);
+      await syncCompanyDomain(me.companyId, me.companyDomain).catch((err) => console.error("Pipedrive-Domain nicht aktualisiert", err));
+    },
   });
   if (!result.ok) return fail(result.error);
 
@@ -70,4 +78,44 @@ export async function GET(req: NextRequest) {
   res.cookies.set(sessionCookie(result.session));
   res.cookies.set(LOGIN_NONCE_COOKIE, "", { path: cookiePath("/api/auth"), maxAge: 0 });
   return res;
+}
+
+/** Installation über den Installationslink (ohne unseren State) */
+async function install(code: string | null, fail: (e: string) => NextResponse) {
+  const cfg = oauthConfig();
+  if (!cfg) return fail("not_configured");
+  if (!code) return fail("cancelled");
+  let result;
+  try {
+    const tokens = await exchangeCode(cfg, code);
+    const me = await getMe(tokens.apiDomain, tokens.accessToken);
+    result = await installFromOAuth(me, tokens);
+  } catch (err) {
+    console.error("Installation der Pipedrive-App fehlgeschlagen:", (err as Error).message);
+    return fail("install_failed");
+  }
+  if (!result.ok) return fail(result.error);
+  const res = NextResponse.redirect(appUrl("/admin", result.created ? { installed: "1" } : {}));
+  res.cookies.set(sessionCookie(result.session));
+  return res;
+}
+
+/**
+ * Deinstallation: Pipedrive ruft die Callback-URL per DELETE auf, mit
+ * Basic-Auth (Client-ID:Client-Secret) und { company_id, user_id } im Body.
+ * Die Verbindung wird deaktiviert, die Daten bleiben erhalten.
+ */
+export async function DELETE(req: NextRequest) {
+  const cfg = oauthConfig();
+  if (!cfg) return new NextResponse(null, { status: 503 });
+  const expected = `Basic ${Buffer.from(`${cfg.clientId}:${cfg.clientSecret}`).toString("base64")}`;
+  const got = req.headers.get("authorization") ?? "";
+  if (got.length !== expected.length || !timingSafeEqual(Buffer.from(got), Buffer.from(expected))) {
+    return new NextResponse(null, { status: 401 });
+  }
+  const body = (await req.json().catch(() => null)) as { company_id?: unknown } | null;
+  const companyId = Number(body?.company_id);
+  if (!Number.isInteger(companyId) || companyId <= 0) return new NextResponse(null, { status: 400 });
+  await uninstallCompany(companyId);
+  return NextResponse.json({ ok: true });
 }

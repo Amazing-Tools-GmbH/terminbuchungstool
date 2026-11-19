@@ -17,10 +17,11 @@ const TABLES = [
   "mail_connections",
   "email_outbox",
   "mail_oauth_pending",
+  "pipedrive_jobs",
 ] as const;
 
 /** Nur service_role (Tokens/Zugangsdaten): für Mitglieder gar nicht lesbar */
-const SERVICE_ONLY: readonly string[] = ["pipedrive_connections", "mail_oauth_pending"];
+const SERVICE_ONLY: readonly string[] = ["pipedrive_connections", "mail_oauth_pending", "pipedrive_jobs"];
 
 let db: TestDb;
 let tenantA: string;

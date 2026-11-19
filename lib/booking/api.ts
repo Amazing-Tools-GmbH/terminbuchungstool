@@ -3,19 +3,25 @@ import { after } from "next/server";
 import { ANON, withActor } from "@/lib/db";
 import { getPool } from "@/lib/db/pool";
 import { processOutbox } from "@/lib/mail/outbox";
+import { runPipedriveJobs } from "@/lib/pipedrive/runtime";
 import { createTranslator } from "@/lib/texts";
 import type { PublicTenant } from "@/lib/tenant/types";
 import { BookingError, httpStatusFor, messageKeyFor } from "./errors";
 
 export const runAnon = <T,>(fn: Parameters<typeof withActor<T>>[1]) => withActor(ANON, fn);
 
-/** Nach der Antwort: fällige Mails des Mandanten gleich verschicken (Cron ist das Netz) */
+/** Nach der Antwort: fällige Mails und Pipedrive-Aufträge des Mandanten gleich erledigen (Cron ist das Netz) */
 export function sendMailsSoon(tenantId: string) {
   after(async () => {
     try {
       await processOutbox(getPool(), { tenantId, limit: 5 });
     } catch (err) {
       console.error("Outbox-Verarbeitung nach Buchung fehlgeschlagen", err);
+    }
+    try {
+      await runPipedriveJobs({ tenantId, limit: 5 });
+    } catch (err) {
+      console.error("Pipedrive-Aufträge nach Buchung fehlgeschlagen", err);
     }
   });
 }

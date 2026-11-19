@@ -31,6 +31,9 @@ export type SeedSlot = {
   booked: number;
 };
 
+/** Beispiel-Deal für das Dev-Panel (PIPEDRIVE_DIRECTORY=fake) */
+export type SeedDeal = { id: number; title: string; person: { id: number; name: string; email: string } | null; org: string | null };
+
 export type SeedTenant = {
   slug: string;
   name: string;
@@ -43,7 +46,7 @@ export type SeedTenant = {
   theme: Record<string, string>;
   senderEmail: string;
   /** Pipedrive-Firma (fiktiv) und ihre Benutzer; genau einer hat access = "owner" */
-  pipedrive: { companyId: number; users: SeedPipedriveUser[] };
+  pipedrive: { companyId: number; users: SeedPipedriveUser[]; deals?: SeedDeal[] };
   event: { title: string; location: string; description: string | null; slots: SeedSlot[] };
   invitation: { name: string; organization: string; email: string; pipedriveDealId: number };
 };
@@ -98,6 +101,11 @@ export const SEED_TENANTS: SeedTenant[] = [
         { id: 7200003, name: "Julia Bechter", email: "julia.bechter@antenne-vorarlberg.example", isAdmin: true, active: true },
         { id: 7200004, name: "Thomas Moosbrugger", email: "thomas.moosbrugger@antenne-vorarlberg.example", isAdmin: false, active: true },
         { id: 7200005, name: "Ehemaliger Mitarbeiter", email: "ehemalig@antenne-vorarlberg.example", isAdmin: false, active: false },
+      ],
+      deals: [
+        { id: 1001, title: "Muster Autohaus GmbH – Frühjahrskampagne 2027", person: { id: 5001, name: "Maria Muster", email: "maria.muster@muster-autohaus.example" }, org: "Muster Autohaus GmbH" },
+        { id: 1002, title: "Café Probe – Weihnachtsspot", person: { id: 5002, name: "Anna Probe", email: "anna.probe@cafe-probe.example" }, org: "Café Probe" },
+        { id: 1003, title: "Ohne Kontakt – Rahmenvertrag", person: null, org: null },
       ],
     },
     event: {
@@ -161,6 +169,7 @@ export const SEED_TENANTS: SeedTenant[] = [
         { id: 7300001, name: "Dora Demo", email: "admin@demo.example", isAdmin: true, active: true, access: "owner" },
         { id: 7300002, name: "Victor Vertrieb", email: "vertrieb@demo.example", isAdmin: false, active: true },
       ],
+      deals: [{ id: 2001, title: "Beispiel AG – Produktvorstellung", person: { id: 6001, name: "Max Beispiel", email: "max.beispiel@kunde.example" }, org: "Beispiel AG" }],
     },
     event: {
       title: "Produktvorstellung 2027",

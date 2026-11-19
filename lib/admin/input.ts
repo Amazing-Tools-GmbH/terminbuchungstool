@@ -74,3 +74,18 @@ export const smartBccSchema = z
 
 /** Signatur für Einladungen (Klartext) */
 export const signatureSchema = z.string().max(2000).transform((v) => v.replace(/\r\n/g, "\n"));
+
+/** Neue Veranstaltung */
+export const createEventSchema = z.object({
+  title: z.string().trim().min(1).max(200),
+  location: z
+    .string()
+    .trim()
+    .max(200)
+    .transform((v) => (v === "" ? null : v)),
+  description: z
+    .string()
+    .trim()
+    .max(2000)
+    .transform((v) => (v === "" ? null : v)),
+});

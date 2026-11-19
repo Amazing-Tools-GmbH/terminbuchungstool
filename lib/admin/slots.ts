@@ -158,3 +158,18 @@ export async function createSlot(ctx: AdminContext, input: CreateSlotInput): Pro
     throw toAdminError(err);
   }
 }
+
+/** Neue (veröffentlichte) Veranstaltung; Rechte per RLS (owner/admin) */
+export async function createEvent(ctx: AdminContext, input: { title: string; location: string | null; description: string | null }): Promise<string> {
+  try {
+    return await withActor(ctx.actor, async (db) => {
+      const { rows } = await db.query<{ id: string }>(
+        `insert into public.events (tenant_id, title, location, description, status) values ($1, $2, $3, $4, 'published') returning id`,
+        [ctx.tenant.id, input.title, input.location, input.description],
+      );
+      return rows[0]!.id;
+    });
+  } catch (err) {
+    throw toAdminError(err);
+  }
+}
