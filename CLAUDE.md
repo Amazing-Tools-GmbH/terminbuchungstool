@@ -26,15 +26,22 @@ Mandantenfähiges Terminbuchungstool mit Pipedrive-Integration. Auftrag und Phas
 
 ## Mandanten-Slug = Pipedrive-Unternehmensdomain
 
-- Slug (Subdomain `<slug>.<APP_DOMAIN>`) = Pipedrive-Unternehmensdomain, z. B.
-  `antennevorarlberg.pipedrive.com` → `antennevorarlberg`. Ableitung nur über
-  `lib/pipedrive/domain.ts` (reservierte Subdomains bekommen `-pd`).
+- Slug = Pipedrive-Unternehmensdomain, z. B. `antennevorarlberg.pipedrive.com` →
+  `antennevorarlberg`. Ableitung nur über `lib/pipedrive/domain.ts`. Der Slug ist eine
+  interne Kennung (Dateinamen, Seed) – er steht in KEINER öffentlichen Adresse.
 - Wird einmal bei der Pipedrive-Installation gesetzt und danach nicht automatisch geändert
   (verschickte Links bleiben gültig). Stabiler Schlüssel des Mandanten bleibt `company_id`;
   die aktuelle Domain steht in `pipedrive_connections.company_domain`.
-- Öffentliche Domain (entschieden, Variante A): Kunde wählt frei eine Subdomain seiner
-  eigenen Domain (z. B. `termine.kunde.at`) per CNAME auf die App → `tenants.custom_domain`
-  + automatisches HTTPS im Reverse Proxy (ab Phase 5 automatisiert mit DNS-Prüfung). Kein iframe-Embedding.
+- Adressen (entschieden): alles zentral unter `APP_BASE_URL` (`https://atools.de/meetings`),
+  keine Kunden-Subdomains. Buchungsseite `/b/<token>`: Mandant aus dem Token (Middleware →
+  `resolve_tenant_by_token`; API-Routen aus dem Token im Body). Admin `/admin`: Mandant aus
+  der Sitzung (`resolve_tenant_by_id`, nur Mitglieder). Pipedrive-Login: Mandant über die
+  `company_id` der Pipedrive-Firma. Einstieg aus den Pipedrive-App-Einstellungen:
+  `/settings?userId&companyId&token` (JWT HS256, `lib/pipedrive/settings-token.ts`,
+  Geheimnis `PIPEDRIVE_JWT_SECRET` bzw. Client-Secret, max. 15 Min. alt).
+- Optional eigene Domain des Kunden (`tenants.custom_domain`, z. B. `termine.kunde.at` per
+  CNAME, ebenfalls mit Unterpfad) – nur für Buchungsseiten; Einrichtung später in den
+  Pipedrive-App-Einstellungen (Phase 5, DNS-Prüfung, automatisches HTTPS). Kein iframe.
 
 ## Datenzugriff
 
@@ -43,11 +50,12 @@ Mandantenfähiges Terminbuchungstool mit Pipedrive-Integration. Auftrag und Phas
   `request.jwt.claims` – exakt wie PostgREST bei Supabase. So gilt RLS lokal und auf Supabase
   identisch, und derselbe Code läuft unverändert gegen `SUPABASE_DB_URL`.
 - `service_role` umgeht RLS: nur für Server-Jobs (Outbox, Pipedrive-Installation, Seed).
-- Anmeldung nur über Pipedrive (OAuth, eine zentrale Callback-URL) – keine Passwörter, keine
+- Anmeldung nur über Pipedrive (OAuth, eine zentrale Callback-URL) oder per Einstieg aus den
+  Pipedrive-App-Einstellungen (`/settings`, signiertes Token) – keine Passwörter, keine
   Einladungsmails, kein `supabase-js`. Sitzung = versiegeltes Cookie (`lib/auth/session.ts`,
-  je Zweck eigener HKDF-Schlüssel), gilt nur für den Mandanten des Hosts; Mitgliedschaft und
-  Rolle werden pro Request frisch gelesen (`lib/auth/admin.ts`). Login prüft: richtige
-  Pipedrive-Firma, freigeschaltet (`tenant_members.status = active`), E-Mail = auth-Benutzer.
+  je Zweck eigener HKDF-Schlüssel) mit Benutzer + Mandant; Mitgliedschaft und Rolle werden pro
+  Request frisch gelesen (`lib/auth/admin.ts`). Login prüft: Mandant zur Pipedrive-Firma
+  (`company_id`), freigeschaltet (`tenant_members.status = active`), E-Mail = auth-Benutzer.
 - Nutzerverwaltung (`/admin/benutzer`, später auch in den Pipedrive-App-Einstellungen): listet
   die Pipedrive-Benutzer der Firma; neue Benutzer haben keinen Zugriff, bis owner/admin sie
   freischalten. owner verwaltet alle, admin alle außer owner, sales nichts (RLS). Immer
@@ -147,5 +155,5 @@ npm run supabase:inspect            # Supabase-Bestand (nur lesend)
 npm run supabase:migrate [-- --dry-run]
 npm run supabase:seed
 npm test           # Unit- + DB-Tests
-npm run dev        # http://localhost:3000/?tenant=antennevorarlberg
+npm run dev        # http://localhost:3000/admin (Dev-Login), Buchungslinks gibt db:reset aus
 ```

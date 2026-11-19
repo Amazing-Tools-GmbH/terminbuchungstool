@@ -7,7 +7,19 @@
  * Die eigentliche DB-Abfrage passiert serverseitig (lib/tenant/current.ts).
  */
 
-export type TenantKey = { kind: "slug"; slug: string } | { kind: "domain"; domain: string };
+export type TenantKey =
+  | { kind: "slug"; slug: string }
+  | { kind: "domain"; domain: string }
+  /** Buchungslink /b/<token>: Mandant aus dem Token; domain = eigene Kundendomain des Hosts (Prüfung) */
+  | { kind: "token"; token: string; domain: string | null };
+
+const TOKEN = /^[A-Za-z0-9_-]{20,200}$/;
+
+/** /b/<token>[/…] (Pfad ohne Unterpfad) -> Token, sonst null */
+export function bookingTokenFromPath(pathname: string): string | null {
+  const m = /^\/b\/([^/]+)(?:\/|$)/.exec(pathname);
+  return m && TOKEN.test(m[1]!) ? m[1]! : null;
+}
 
 export const TENANT_HEADER = "x-tb-tenant";
 export const TENANT_QUERY_PARAM = "tenant";
@@ -67,6 +79,7 @@ export function parseTenantKey(input: {
 }
 
 export function encodeTenantKey(key: TenantKey): string {
+  if (key.kind === "token") return `token:${key.domain ?? "-"}:${key.token}`;
   return key.kind === "slug" ? `slug:${key.slug}` : `domain:${key.domain}`;
 }
 
@@ -76,5 +89,10 @@ export function decodeTenantKey(value: string | null | undefined): TenantKey | n
   const v = rest.join(":");
   if (kind === "slug" && isValidSlug(v)) return { kind: "slug", slug: v };
   if (kind === "domain" && HOSTNAME.test(v)) return { kind: "domain", domain: v };
+  if (kind === "token") {
+    const [domain, token] = [rest[0] ?? "", rest.slice(1).join(":")];
+    if (!TOKEN.test(token) || (domain !== "-" && !HOSTNAME.test(domain))) return null;
+    return { kind: "token", token, domain: domain === "-" ? null : domain };
+  }
   return null;
 }

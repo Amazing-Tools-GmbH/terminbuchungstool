@@ -11,7 +11,7 @@ import { completePipedriveLogin, type LoginDeps } from "@/lib/auth/pipedrive-log
 import { mergeTeam, type MemberRow } from "@/lib/admin/team";
 import { dealUrl, kpis, slotLevel } from "@/lib/admin/slot-logic";
 import { createSlotSchema } from "@/lib/admin/input";
-import { tenantUrl } from "@/lib/auth/urls";
+import { appUrl } from "@/lib/auth/urls";
 import { authAdminTarget } from "@/lib/auth/users-target";
 import { ADMIN_TEXTS, loginErrorText } from "@/lib/texts/admin";
 import { ADMIN_ERROR_CODES } from "@/lib/admin/errors";
@@ -35,16 +35,16 @@ describe("Siegel (Sitzung, Login-State, Ticket)", () => {
     expect(unseal("session", s.slice(0, -2) + (s.endsWith("A") ? "BB" : "AA"), sessionSchema, { key: KEY })).toBeNull();
     expect(unseal("session", s, sessionSchema, { key: randomBytes(32).toString("base64") })).toBeNull();
     // ein Login-Ticket/State ist nie als Sitzung verwendbar
-    expect(unseal("login-ticket", s, sessionSchema, { key: KEY })).toBeNull();
+    expect(unseal("login-state", s, sessionSchema, { key: KEY })).toBeNull();
     expect(unseal("session", null, sessionSchema, { key: KEY })).toBeNull();
     expect(unseal("session", "x".repeat(5000), sessionSchema, { key: KEY })).toBeNull();
   });
 
   it("prüft den Inhalt per Schema", () => {
-    const s = seal("login-state", { purpose: "install", tid: TID, nonce: "n".repeat(20) }, 60, { key: KEY });
+    const s = seal("login-state", { purpose: "install", nonce: "n".repeat(20) }, 60, { key: KEY });
     expect(unseal("login-state", s, loginStateSchema, { key: KEY })).toBeNull();
-    const ok = seal("login-state", { purpose: "login", tid: TID, nonce: "n".repeat(20) }, 60, { key: KEY });
-    expect(unseal("login-state", ok, loginStateSchema, { key: KEY })?.tid).toBe(TID);
+    const ok = seal("login-state", { purpose: "login", nonce: "n".repeat(20) }, 60, { key: KEY });
+    expect(unseal("login-state", ok, loginStateSchema, { key: KEY })?.nonce).toBe("n".repeat(20));
     expect(unseal("login-state", ok, z.object({ other: z.string() }), { key: KEY })).toBeNull();
   });
 });
@@ -111,14 +111,14 @@ describe("Pipedrive-Client", () => {
 });
 
 describe("Login über Pipedrive", () => {
-  const state = { purpose: "login" as const, tid: TID, nonce: "n".repeat(20) };
   const me: PipedriveMe = { id: 5, name: "Eva", email: "eva@firma.example", isAdmin: false, active: true, companyId: 99, companyDomain: "firma" };
 
   function deps(over: Partial<LoginDeps> = {}): LoginDeps {
     return {
       exchangeCode: async () => ({ accessToken: "a", refreshToken: "r", expiresAt: new Date(), scope: null, apiDomain: "https://firma.pipedrive.com" }),
       getMe: async () => me,
-      connectedCompanyId: async () => 99,
+      // Mandant ergibt sich aus der Pipedrive-Firma
+      tenantForCompany: async (companyId: number) => (companyId === 99 ? TID : null),
       lookupMember: async () => ({ userId: UID, authEmail: "eva@firma.example", status: "active" }),
       refreshMemberCache: async () => {},
       storeUserTokens: async () => {},
@@ -129,7 +129,7 @@ describe("Login über Pipedrive", () => {
   it("freigeschalteter Benutzer der richtigen Firma bekommt eine Sitzung", async () => {
     const refresh = vi.fn(async () => {});
     const store = vi.fn(async () => {});
-    const r = await completePipedriveLogin(state, "code", deps({ refreshMemberCache: refresh, storeUserTokens: store }));
+    const r = await completePipedriveLogin("code", deps({ refreshMemberCache: refresh, storeUserTokens: store }));
     expect(r).toEqual({ ok: true, session: { uid: UID, tid: TID, pd: 5 } });
     expect(refresh).toHaveBeenCalledWith(TID, UID, me);
     // Tokens des Mitarbeiters werden für den Versand über Pipedrive gespeichert
@@ -138,23 +138,22 @@ describe("Login über Pipedrive", () => {
 
   it("verweigerte Logins speichern keine Tokens", async () => {
     const store = vi.fn(async () => {});
-    await completePipedriveLogin(state, "code", deps({ lookupMember: async () => null, storeUserTokens: store }));
+    await completePipedriveLogin("code", deps({ lookupMember: async () => null, storeUserTokens: store }));
     expect(store).not.toHaveBeenCalled();
   });
 
   it.each([
     ["oauth_failed", { exchangeCode: async () => Promise.reject(new Error("x")) }],
-    ["not_connected", { connectedCompanyId: async (): Promise<number | null> => null }],
-    ["wrong_company", { connectedCompanyId: async (): Promise<number | null> => 12 }],
+    ["not_connected", { tenantForCompany: async (): Promise<string | null> => null }],
     ["no_access", { lookupMember: async (): Promise<null> => null }],
     ["disabled", { lookupMember: async () => ({ userId: UID, authEmail: "eva@firma.example", status: "disabled" as const }) }],
     ["email_mismatch", { lookupMember: async () => ({ userId: UID, authEmail: "andere@firma.example", status: "active" as const }) }],
   ] as const)("verweigert: %s", async (error, over) => {
-    expect(await completePipedriveLogin(state, "code", deps(over as Partial<LoginDeps>))).toEqual({ ok: false, error });
+    expect(await completePipedriveLogin("code", deps(over as Partial<LoginDeps>))).toEqual({ ok: false, error });
   });
 
   it("jede Login-Fehlermeldung hat einen Text", () => {
-    for (const e of ["oauth_failed", "not_connected", "wrong_company", "no_access", "disabled", "email_mismatch", "expired", "cancelled", "not_configured"]) {
+    for (const e of ["oauth_failed", "not_connected", "settings_invalid", "no_access", "disabled", "email_mismatch", "expired", "cancelled", "not_configured"]) {
       expect(loginErrorText(e)).toBeTruthy();
     }
     expect(loginErrorText("<script>")).toBeNull();
@@ -230,16 +229,11 @@ describe("Konfiguration und Texte", () => {
     expect(() => authAdminTarget({})).toThrow(/AUTH_ADMIN/);
   });
 
-  it("Login führt auf die kanonische Adresse des Mandanten zurück", () => {
-    expect(tenantUrl({ slug: "firma" }, "/admin", {}, { TENANT_BASE_URL_TEMPLATE: "https://{slug}.termine.example" })).toBe(
-      "https://firma.termine.example/admin",
+  it("Login, Admin und Callbacks liegen zentral unter APP_BASE_URL", () => {
+    expect(appUrl("/admin/login", { error: "no_access" }, { APP_BASE_URL: "https://atools.de/meetings/" })).toBe(
+      "https://atools.de/meetings/admin/login?error=no_access",
     );
-    expect(tenantUrl({ slug: "firma", customDomain: "termine.kunde.at" }, "/admin/login", { error: "no_access" }, {})).toBe(
-      "https://termine.kunde.at/admin/login?error=no_access",
-    );
-    expect(tenantUrl({ slug: "demo" }, "/api/auth/session", { ticket: "T" }, { APP_BASE_URL: "http://localhost:3000" })).toBe(
-      "http://localhost:3000/api/auth/session?tenant=demo&ticket=T",
-    );
+    expect(appUrl("/admin", {}, { APP_BASE_URL: "http://localhost:3000" })).toBe("http://localhost:3000/admin");
   });
 
   it("jeder Admin-Fehlercode hat einen Text", () => {

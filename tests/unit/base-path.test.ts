@@ -2,7 +2,7 @@
 import { describe, expect, it } from "vitest";
 import { basePathFrom, cookiePath, normalizeBasePath, withBasePath } from "@/lib/base-path";
 import { bookingIcsUrl, bookingUrl } from "@/lib/links";
-import { tenantUrl } from "@/lib/auth/urls";
+import { appUrl } from "@/lib/auth/urls";
 import { oauthConfig } from "@/lib/pipedrive/client";
 import { mailOAuthConfig } from "@/lib/mail/oauth";
 
@@ -36,20 +36,15 @@ describe("Unterpfad", () => {
 });
 
 describe("Links in Mails und Redirects mit Unterpfad", () => {
-  it("Buchungslinks: Vorlage, eigene Domain, Fallback", () => {
-    const env = { ...PROD, TENANT_BASE_URL_TEMPLATE: "https://{slug}.atools.de/meetings" };
-    expect(bookingUrl({ slug: "antenne" }, "TOK", env)).toBe("https://antenne.atools.de/meetings/b/TOK");
-    expect(bookingIcsUrl({ slug: "antenne" }, "TOK", env)).toBe("https://antenne.atools.de/meetings/b/TOK/ics");
-    // eigene Domain des Kunden: Unterpfad gilt auch dort
+  it("Buchungslinks: zentral bzw. eigene Domain, jeweils mit Unterpfad", () => {
+    expect(bookingUrl({ slug: "antenne" }, "TOK", PROD)).toBe("https://atools.de/meetings/b/TOK");
+    expect(bookingIcsUrl({ slug: "antenne" }, "TOK", PROD)).toBe("https://atools.de/meetings/b/TOK/ics");
     expect(bookingUrl({ slug: "antenne", customDomain: "termine.kunde.at" }, "TOK", PROD)).toBe("https://termine.kunde.at/meetings/b/TOK");
-    expect(bookingUrl({ slug: "demo" }, "TOK", PROD)).toBe("https://atools.de/meetings/b/TOK?tenant=demo");
   });
 
-  it("Redirects (Login, Ticket) auf die Mandanten-Adresse inkl. Unterpfad", () => {
-    expect(tenantUrl({ slug: "demo" }, "/admin/login", { error: "expired" }, PROD)).toBe("https://atools.de/meetings/admin/login?tenant=demo&error=expired");
-    expect(tenantUrl({ slug: "a", customDomain: "termine.kunde.at" }, "/api/auth/session", { ticket: "T" }, PROD)).toBe(
-      "https://termine.kunde.at/meetings/api/auth/session?ticket=T",
-    );
+  it("Redirects (Login, Admin) zentral inkl. Unterpfad", () => {
+    expect(appUrl("/admin/login", { error: "expired" }, PROD)).toBe("https://atools.de/meetings/admin/login?error=expired");
+    expect(appUrl("/settings", {}, PROD)).toBe("https://atools.de/meetings/settings");
   });
 
   it("OAuth-Callbacks unter dem Unterpfad", () => {

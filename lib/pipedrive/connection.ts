@@ -59,3 +59,13 @@ export async function connectedCompanyId(tenantId: string): Promise<number | nul
     return rows[0] ? Number(rows[0].company_id) : null;
   });
 }
+
+/** Mandant zur Pipedrive-Firma (Login, Einstieg aus den App-Einstellungen) */
+export async function tenantIdForCompany(companyId: number): Promise<string | null> {
+  return withActor({ role: "service_role" }, async (db) => {
+    const { rows } = await db.query<{ tenant_id: string }>("select tenant_id from public.pipedrive_connections where company_id = $1", [
+      companyId,
+    ]);
+    return rows[0]?.tenant_id ?? null;
+  });
+}

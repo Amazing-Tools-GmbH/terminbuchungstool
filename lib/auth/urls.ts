@@ -1,21 +1,19 @@
 /**
- * Kanonische Adresse des Admin-Backends eines Mandanten (dorthin führt der
- * Login zurück; nur dort gelten Nonce- und Sitzungs-Cookie). Gleiche Regeln
- * wie für Links in Mails (lib/links.ts).
+ * Adressen der zentralen App (Admin-Backend, Login, OAuth-Callbacks):
+ * immer unter APP_BASE_URL (z. B. https://atools.de/meetings).
  */
-import { tenantBaseUrl, type LinkTenant } from "@/lib/links";
+import { appBaseUrl } from "@/lib/links";
 
 type Env = Record<string, string | undefined>;
 
-/** Absolute URL eines Pfads im Admin-Bereich des Mandanten, z. B. "/admin" */
-export function tenantUrl(t: LinkTenant, path: string, params: Record<string, string> = {}, env: Env = process.env): string {
-  const { base, query } = tenantBaseUrl(t, env);
-  const url = new URL(`${base}${path}${query}`);
+/** Absolute URL eines Pfads der App, z. B. appUrl("/admin/login", { error: "x" }) */
+export function appUrl(path: string, params: Record<string, string> = {}, env: Env = process.env): string {
+  const url = new URL(`${appBaseUrl(env)}${path}`);
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
   return url.toString();
 }
 
-/** Origin (Schema + Host) der kanonischen Mandanten-Adresse */
-export function tenantOrigin(t: LinkTenant, env: Env = process.env): string {
-  return new URL(tenantBaseUrl(t, env).base).origin;
+/** Origin (Schema + Host) der App */
+export function appOrigin(env: Env = process.env): string {
+  return new URL(appBaseUrl(env)).origin;
 }

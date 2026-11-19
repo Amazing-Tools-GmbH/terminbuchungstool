@@ -1,15 +1,16 @@
 import "server-only";
 /**
  * Angemeldeter Benutzer des Admin-Backends (Server-Komponenten, Actions).
- * Die Sitzung gilt nur für den Mandanten des aktuellen Hosts; Mitgliedschaft
- * und Rolle werden bei JEDEM Request frisch aus der DB gelesen (als der
- * Benutzer selbst, RLS) – Sperren oder Rollenwechsel wirken sofort.
+ * Das Admin-Backend liegt zentral unter APP_BASE_URL; der Mandant steht in
+ * der Sitzung. Mitgliedschaft und Rolle werden bei JEDEM Request frisch aus
+ * der DB gelesen (als der Benutzer selbst, RLS) – Sperren oder Rollenwechsel
+ * wirken sofort.
  */
 import { cache } from "react";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { withActor, type DbActor } from "@/lib/db";
-import { getCurrentTenant } from "@/lib/tenant/current";
+import { tenantForMember } from "@/lib/tenant/current";
 import type { PublicTenant } from "@/lib/tenant/types";
 import { SESSION_COOKIE, SESSION_TTL_SECONDS, seal, sessionSchema, unseal, type Session } from "./session";
 
@@ -32,10 +33,11 @@ export function secureCookies(env: Record<string, string | undefined> = process.
 }
 
 export const getAdminContext = cache(async (): Promise<AdminContext | null> => {
-  const tenant = await getCurrentTenant();
-  if (!tenant) return null;
   const session = unseal("session", (await cookies()).get(SESSION_COOKIE)?.value, sessionSchema);
-  if (!session || session.tid !== tenant.id) return null;
+  if (!session) return null;
+  // Mandant aus der Sitzung (zentrale Adresse, keine Subdomain); nur für Mitglieder auflösbar
+  const tenant = await tenantForMember(session.uid, session.tid);
+  if (!tenant) return null;
 
   const actor: DbActor = { role: "authenticated", userId: session.uid };
   const member = await withActor(actor, async (db) => {

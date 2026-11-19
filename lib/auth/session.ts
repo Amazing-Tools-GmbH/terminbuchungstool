@@ -13,7 +13,7 @@ import { hkdfSync } from "node:crypto";
 import { z } from "zod";
 import { decryptSecret, encryptSecret } from "@/lib/crypto/secretbox";
 
-export type SealPurpose = "session" | "login-state" | "login-ticket" | "mail-state";
+export type SealPurpose = "session" | "login-state" | "mail-state";
 
 function purposeKey(purpose: SealPurpose, rawKey: string | undefined): string {
   if (!rawKey) throw new Error("ENCRYPTION_KEY fehlt");
@@ -59,7 +59,6 @@ export const SESSION_COOKIE = "tb_session";
 export const LOGIN_NONCE_COOKIE = "tb_login_nonce";
 export const SESSION_TTL_SECONDS = 12 * 60 * 60;
 export const LOGIN_STATE_TTL_SECONDS = 10 * 60;
-export const LOGIN_TICKET_TTL_SECONDS = 60;
 
 /** Sitzung: Benutzer (auth.users.id) für genau einen Mandanten */
 export const sessionSchema = z.object({
@@ -70,20 +69,16 @@ export const sessionSchema = z.object({
 });
 export type Session = z.infer<typeof sessionSchema>;
 
-/** OAuth-state: von welchem Mandanten der Login ausging + Nonce (Cookie auf dessen Host) */
+/**
+ * OAuth-state des Logins: Nonce, der zusätzlich als Cookie auf der zentralen
+ * Adresse liegt (Schutz vor untergeschobenen Logins). Der Mandant ergibt sich
+ * erst nach der Anmeldung aus der Pipedrive-Firma (company_id).
+ */
 export const loginStateSchema = z.object({
   purpose: z.literal("login"),
-  tid: z.string().uuid(),
   nonce: z.string().min(16).max(128),
 });
 export type LoginState = z.infer<typeof loginStateSchema>;
-
-/**
- * Einmal-Ticket vom zentralen OAuth-Callback zurück auf den Host des
- * Mandanten; dort wird es nur zusammen mit dem Nonce-Cookie eingelöst.
- */
-export const loginTicketSchema = sessionSchema.extend({ nonce: z.string().min(16).max(128) });
-export type LoginTicket = z.infer<typeof loginTicketSchema>;
 
 /** OAuth-state beim Verbinden eines Postfachs (Google/Microsoft) */
 export const MAIL_NONCE_COOKIE = "tb_mail_nonce";

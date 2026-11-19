@@ -201,9 +201,11 @@ export async function runSeedSupabase(opts: { quiet?: boolean } = {}): Promise<S
 }
 
 function printLinks(result: SeededInvitation[]) {
-  const base = process.env.APP_BASE_URL ?? "http://localhost:3000";
+  // Mandant ergibt sich aus dem Buchungslink – kein ?tenant= nötig
+  const base = (process.env.APP_BASE_URL ?? "http://localhost:3000").replace(/\/+$/, "");
   console.log("\nSeed eingespielt. Test-Buchungslinks:");
-  for (const r of result) console.log(`  ${r.slug.padEnd(20)} ${base}/b/${r.token}?tenant=${r.slug}`);
+  for (const r of result) console.log(`  ${r.slug.padEnd(20)} ${base}/b/${r.token}`);
+  console.log(`  Admin-Backend: ${base}/admin`);
   console.log("");
 }
 

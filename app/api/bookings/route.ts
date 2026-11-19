@@ -1,4 +1,4 @@
-import { getCurrentTenant } from "@/lib/tenant/current";
+import { hostCustomDomain, tenantForToken } from "@/lib/tenant/current";
 import { bookInputSchema } from "@/lib/booking/input";
 import { bookSlot } from "@/lib/booking/service";
 import { errorResponse, runAnon, sendMailsSoon } from "@/lib/booking/api";
@@ -6,10 +6,13 @@ import { createTranslator } from "@/lib/texts";
 
 /** Buchen bzw. Umbuchen über den persönlichen Buchungslink */
 export async function POST(req: Request) {
-  const tenant = await getCurrentTenant();
+  const body = await req.json().catch(() => null);
+  const token = typeof body?.token === "string" ? body.token : "";
+  // Mandant aus dem Buchungslink (auf eigener Kundendomain muss er dazu passen)
+  const tenant = token ? await tenantForToken(token, await hostCustomDomain()) : null;
   if (!tenant) return Response.json({ ok: false, error: "tenant_not_found" }, { status: 404 });
 
-  const parsed = bookInputSchema.safeParse(await req.json().catch(() => null));
+  const parsed = bookInputSchema.safeParse(body);
   if (!parsed.success) {
     const t = createTranslator(tenant.anrede, tenant.textOverrides);
     const field = parsed.error.issues[0]?.path[0];

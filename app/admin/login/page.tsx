@@ -1,8 +1,7 @@
 import type { Metadata } from "next";
-import { notFound, redirect } from "next/navigation";
+import { redirect } from "next/navigation";
 import { withActor } from "@/lib/db";
 import { devToolsEnabled } from "@/lib/dev-tools";
-import { getCurrentTenant } from "@/lib/tenant/current";
 import { getAdminContext } from "@/lib/auth/admin";
 import { at, loginErrorText } from "@/lib/texts/admin";
 import styles from "@/components/admin/Admin.module.css";
@@ -15,8 +14,6 @@ export const metadata: Metadata = { title: "Anmelden", robots: { index: false, f
 type Search = Promise<Record<string, string | string[] | undefined>>;
 
 export default async function LoginPage({ searchParams }: { searchParams: Search }) {
-  const tenant = await getCurrentTenant();
-  if (!tenant) notFound();
   if (await getAdminContext()) redirect("/admin");
 
   const sp = await searchParams;
@@ -24,10 +21,17 @@ export default async function LoginPage({ searchParams }: { searchParams: Search
   const dev = devToolsEnabled();
   const devUsers = dev
     ? await withActor({ role: "service_role" }, async (db) => {
-        const { rows } = await db.query<{ user_id: string; display_name: string | null; email: string | null; role: string }>(
-          `select user_id, display_name, email, role::text as role from public.tenant_members
-            where tenant_id = $1 and status = 'active' order by role, display_name`,
-          [tenant.id],
+        const { rows } = await db.query<{
+          user_id: string;
+          tenant_id: string;
+          tenant_name: string;
+          display_name: string | null;
+          email: string | null;
+          role: string;
+        }>(
+          `select m.user_id, m.tenant_id, t.name as tenant_name, m.display_name, m.email, m.role::text as role
+             from public.tenant_members m join public.tenants t on t.id = m.tenant_id
+            where m.status = 'active' order by t.name, m.role, m.display_name`,
         );
         return rows;
       })
@@ -39,7 +43,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Search
         <div className={`${styles.card} ${styles.loginCard}`}>
           <div>
             <p className={styles.muted} style={{ margin: 0 }}>
-              {at("app.title")} · {tenant.name}
+              {at("app.title")}
             </p>
             <h1 className={styles.h1}>{at("login.title")}</h1>
           </div>
@@ -64,10 +68,11 @@ export default async function LoginPage({ searchParams }: { searchParams: Search
               ) : (
                 <div className={styles.actions}>
                   {devUsers.map((u) => (
-                    <form key={u.user_id} action={devLoginAction}>
+                    <form key={`${u.tenant_id}:${u.user_id}`} action={devLoginAction}>
                       <input type="hidden" name="userId" value={u.user_id} />
+                      <input type="hidden" name="tenantId" value={u.tenant_id} />
                       <button type="submit" className={styles.btnGhost}>
-                        {u.display_name ?? u.email} ({at(`role.${u.role as "owner" | "admin" | "sales"}`)})
+                        {u.display_name ?? u.email} ({at(`role.${u.role as "owner" | "admin" | "sales"}`)}, {u.tenant_name})
                       </button>
                     </form>
                   ))}

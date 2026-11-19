@@ -3,6 +3,7 @@ import {
   TENANT_COOKIE,
   TENANT_HEADER,
   TENANT_QUERY_PARAM,
+  bookingTokenFromPath,
   encodeTenantKey,
   parseTenantKey,
   tenantQueryAllowed,
@@ -18,13 +19,17 @@ export function middleware(req: NextRequest) {
   const allowQuery = tenantQueryAllowed(process.env);
   const queryTenant = req.nextUrl.searchParams.get(TENANT_QUERY_PARAM);
 
-  const key = parseTenantKey({
+  const hostKey = parseTenantKey({
     host: req.headers.get("x-forwarded-host") ?? req.headers.get("host"),
     appDomain: process.env.APP_DOMAIN ?? "localhost:3000",
     queryTenant,
     cookieTenant: req.cookies.get(TENANT_COOKIE)?.value,
     allowQuery,
   });
+  // Buchungslink: der Mandant ergibt sich aus dem Token (Pfad ohne Unterpfad);
+  // auf einer eigenen Kundendomain muss er zu dieser Domain gehören
+  const token = bookingTokenFromPath(req.nextUrl.pathname);
+  const key = token ? { kind: "token" as const, token, domain: hostKey?.kind === "domain" ? hostKey.domain : null } : hostKey;
 
   const headers = new Headers(req.headers);
   headers.delete(TENANT_HEADER);
@@ -32,8 +37,8 @@ export function middleware(req: NextRequest) {
 
   const res = NextResponse.next({ request: { headers } });
   // Vorschau-Fallback merken, damit Folgeseiten ohne ?tenant= funktionieren
-  if (allowQuery && queryTenant && key?.kind === "slug") {
-    res.cookies.set(TENANT_COOKIE, key.slug, { path: cookiePath(), sameSite: "lax", httpOnly: true });
+  if (allowQuery && queryTenant && hostKey?.kind === "slug") {
+    res.cookies.set(TENANT_COOKIE, hostKey.slug, { path: cookiePath(), sameSite: "lax", httpOnly: true });
   }
   return res;
 }

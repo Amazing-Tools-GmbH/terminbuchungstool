@@ -18,7 +18,7 @@ app/                 Next.js-Routen (Buchungsseite, Admin /admin, Login /api/aut
 components/          UI-Komponenten (nutzen nur Theme-Variablen --tb-*)
 lib/
   db/                Datenzugriff mit RLS (withActor), lokaler Migrations-Runner
-  tenant/            Mandantenauflösung (Host / custom_domain / ?tenant=)
+  tenant/            Mandantenauflösung (Buchungslink-Token / Sitzung / custom_domain)
   theme/             Theme-Schema (zod), CSS-Variablen, Schriften-Allowlist, Kontrastprüfung
   texts/             Texte je Anrede (Sie/Ihr) + Overrides
   auth/              Sitzung (versiegeltes Cookie), Pipedrive-Login, auth-Benutzer anlegen
@@ -93,8 +93,8 @@ npm run dev
 ```
 
 `db:reset` gibt am Ende persönliche Test-Buchungslinks für beide Mandanten aus.
-Mandant lokal wählen: `http://localhost:3000/?tenant=antennevorarlberg` bzw. `?tenant=demo`
-oder per Subdomain `http://demo.localhost:3000`.
+Der Mandant ergibt sich aus dem Buchungslink (`/b/<token>`) bzw. im Admin-Backend
+(`http://localhost:3000/admin`, Dev-Login) aus der Sitzung – kein `?tenant=` nötig.
 
 Was die Shims (`supabase/dev-shims/`) nachbilden: Schema `auth` mit `auth.users`,
 `auth.uid()`, `auth.role()`, `auth.jwt()` (aus `request.jwt.claims`), die Rollen `anon`,
@@ -174,7 +174,7 @@ Noch umzusetzen (eigener Schritt, vor dem ersten echten Kunden):
 ## Buchungsseite & E-Mails (Phase 2)
 
 - Buchungsseite: `/b/<token>` (persönlicher Link aus der Einladung). Lokal mit
-  `?tenant=<slug>`; `npm run db:reset` gibt fertige Links aus.
+  `npm run db:reset` gibt fertige Links aus (Mandant ergibt sich aus dem Token).
 - API: `POST /api/bookings` (buchen/umbuchen), `POST /api/bookings/cancel`,
   `.ics`: `GET /b/<token>/ics`.
 - Mails laufen immer über `email_outbox`. Direkt nach einer Buchung wird die Outbox des
@@ -183,24 +183,30 @@ Noch umzusetzen (eigener Schritt, vor dem ersten echten Kunden):
   Auf dem Hetzner-Server per Cron/systemd-Timer (siehe „Hosting“).
 - Versandwege siehe „Mailversand“. Mit `SYSTEM_MAIL_TRANSPORT=dev` landen Mails nur in der
   DB (Ansicht unter `/dev/mails`, braucht `DEV_TOOLS_ENABLED=true`).
-- Links in Mails: `lib/links.ts` + `TENANT_BASE_URL_TEMPLATE` (Domain-Struktur noch offen).
+- Links in Mails: `lib/links.ts` – `APP_BASE_URL` bzw. eigene Kundendomain, jeweils mit Unterpfad.
 - Recherche Pipedrive-Mailversand: [`docs/research/pipedrive-mailversand.md`](docs/research/pipedrive-mailversand.md).
 
-## Mandanten und Domains
+## Mandanten und Adressen (entschieden)
 
-Der Slug eines Mandanten ist seine **Pipedrive-Unternehmensdomain**
-(`antennevorarlberg.pipedrive.com` → `antennevorarlberg`). Pipedrive-Domains sind
-eindeutig, damit ist es auch der Slug. Die Buchungsseite ist intern unter
-`antennevorarlberg.<APP_DOMAIN>` erreichbar.
-Der Slug wird bei der Installation der Pipedrive-App einmal gesetzt und bleibt danach
-stabil. Der Seed-Mandant `demo` hat keine Pipedrive-Verbindung.
+Alles läuft **zentral unter `APP_BASE_URL`** (`https://atools.de/meetings`) – keine
+Subdomain je Kunde, kein DNS-Aufwand. Wie bei der SevDesk-Schnittstelle ergibt sich der
+Kunde aus seiner Pipedrive-Identität bzw. aus dem Buchungslink:
 
-**Entschieden (Variante A): eigene Subdomain des Kunden.** Jeder Kunde wählt frei eine
-Subdomain seiner eigenen Domain (z. B. `termine.`, `events.`, `webinare.kunde.at`) und
-setzt einen CNAME auf unsere App. Die Domain steht in `tenants.custom_domain` und wird
-im Reverse Proxy freigeschaltet (automatisches HTTPS); ab Phase 5 automatisiert im Onboarding (inkl. DNS-Prüfung).
-Die Mandantenauflösung über `custom_domain` gibt es bereits (`resolve_tenant`).
-Keine Einbettung per iframe (vorerst).
+| Seite | Adresse | Mandant aus |
+|---|---|---|
+| Buchungsseite | `…/meetings/b/<token>` | dem Buchungslink (Token) |
+| Admin-Backend | `…/meetings/admin` | der Sitzung |
+| Login | „Mit Pipedrive anmelden“ | der Pipedrive-Firma (`company_id`) |
+| Einstieg aus Pipedrive | `…/meetings/settings?userId=…&companyId=…&token=…` | `companyId`, abgesichert durch das signierte Token |
+
+- **Pipedrive Developer Hub:** Callback-URL `https://atools.de/meetings/api/auth/pipedrive/callback`,
+  „App settings“-Seite `https://atools.de/meetings/settings`. Das Token prüft die App mit
+  `PIPEDRIVE_JWT_SECRET` (leer = Client-Secret), es darf höchstens 15 Minuten alt sein.
+- Der Slug (= Pipedrive-Unternehmensdomain) ist nur noch eine interne Kennung.
+- **Optional eigene Domain** des Kunden (`tenants.custom_domain`, z. B.
+  `termine.kunde.at/meetings` per CNAME) für Buchungsseiten; Links in Mails nutzen sie dann.
+  Einrichtung in den Pipedrive-App-Einstellungen (Phase 5, mit DNS-Prüfung und HTTPS).
+  Keine Einbettung per iframe.
 
 ## Mailversand
 
@@ -227,15 +233,15 @@ Keine Einbettung per iframe (vorerst).
 
 ## Admin-Backend und Benutzer (Phase 3)
 
-- **Admin-Backend:** `/admin` auf der Adresse des Mandanten (`<slug>.<APP_DOMAIN>/admin`,
-  lokal `http://localhost:3000/admin?tenant=antennevorarlberg`). Termine & Kapazitäten
+- **Admin-Backend:** zentral unter `/admin` (`https://atools.de/meetings/admin`, lokal
+  `http://localhost:3000/admin`); der Mandant steht in der Sitzung. Termine & Kapazitäten
   (KPIs, Belegung, Kapazität +1, Buchungen je Termin mit Deal-Link, Termin anlegen) und
   Nutzerverwaltung. Weitere Bereiche (Buchungen, Veranstaltungsarten, E-Mail-Vorlagen,
   Pipedrive-Verbindung) folgen.
-- **Anmeldung nur über Pipedrive** („Mit Pipedrive anmelden“, OAuth). Ablauf: Start auf der
-  Mandanten-Adresse (Nonce-Cookie) → Pipedrive → zentraler Callback
-  `<APP_BASE_URL>/api/auth/pipedrive/callback` → Einmal-Ticket zurück auf die
-  Mandanten-Adresse → Sitzungs-Cookie (12 h). Keine Passwörter, keine Einladungsmails –
+- **Anmeldung nur über Pipedrive** („Mit Pipedrive anmelden“, OAuth) oder per Einstieg aus
+  den Pipedrive-App-Einstellungen (`/settings`, signiertes Token). Ablauf Login: Start auf
+  `APP_BASE_URL` (Nonce-Cookie) → Pipedrive → Callback (gleiche Adresse) → Mandant über die
+  Pipedrive-Firma → Sitzungs-Cookie (12 h). Keine Passwörter, keine Einladungsmails –
   darum braucht Supabase Auth auch **keinen eigenen SMTP-Server**.
 - **Nutzerverwaltung** (`/admin/benutzer`): zeigt alle Benutzer der Pipedrive-Firma. Neue
   Benutzer haben keinen Zugriff, bis ein Owner oder Admin sie freischaltet und eine Rolle
@@ -265,10 +271,10 @@ Siehe [`.env.example`](.env.example). Keine Secrets committen.
 | `SUPABASE_DB_URL` | nur Produktionsserver: DB-Verbindung, hat Vorrang vor `DATABASE_URL` |
 | `SUPABASE_ACCESS_TOKEN` | nur Betriebsskripte (`npm run supabase:*`), nie auf dem Server |
 | `ASSET_STORAGE` | `local` (Standard) oder `supabase` – Ablage der Mandanten-Logos |
-| `APP_DOMAIN` | Basis-Domain für `<slug>.<APP_DOMAIN>` |
+| `APP_DOMAIN` | Host der App (Produktion `atools.de`) |
 | `APP_BASE_URL` | öffentliche Basis-URL für Links in Mails |
-| `ALLOW_TENANT_QUERY_PARAM` | `?tenant=`-Fallback (nur Dev/Preview) |
-| `TENANT_BASE_URL_TEMPLATE` | Vorlage für Mandanten-URLs in Mails, z. B. `https://{slug}.termine.example.at` |
+| `ALLOW_TENANT_QUERY_PARAM` | `?tenant=` auf der Startseite (nur Entwicklung) |
+| `PIPEDRIVE_JWT_SECRET` | prüft das Token der „App settings“-Seite (leer = Client-Secret) |
 | `DEV_TOOLS_ENABLED` | `/dev/mails` u. Ä. (in Production immer aus) |
 | `ENCRYPTION_KEY` | 32 Byte base64, verschlüsselt Tokens/Passwörter |
 | `CRON_SECRET` | schützt den Outbox-Cron-Endpunkt |
