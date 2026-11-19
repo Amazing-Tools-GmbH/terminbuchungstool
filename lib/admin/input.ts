@@ -71,3 +71,6 @@ export const smartBccSchema = z
   .refine((v) => v === null || /^[a-z0-9._+-]+@([a-z0-9-]+\.)*pipedrivemail\.com$/.test(v), {
     message: "Nur Adressen auf @pipedrivemail.com",
   });
+
+/** Signatur für Einladungen (Klartext) */
+export const signatureSchema = z.string().max(2000).transform((v) => v.replace(/\r\n/g, "\n"));

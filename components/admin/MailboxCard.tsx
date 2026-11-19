@@ -11,12 +11,14 @@ type Props = {
   providers: { google: boolean; microsoft: boolean };
   dev: boolean;
   timezone: string;
+  /** SMTP-Formular anzeigen (nur für Postfächer, die per SMTP angebunden werden) */
+  showSmtp?: boolean;
 };
 
 const LEVEL: Record<MailboxView["status"], string> = { active: "lvl_ok", pending: "lvl_low", error: "lvl_full", revoked: "lvl_closed" };
 
 /** Ein Postfach (eigenes oder Firmenpostfach): Status, Verbinden, Testen, Trennen */
-export function MailboxCard({ scope, mailbox, providers, dev, timezone }: Props) {
+export function MailboxCard({ scope, mailbox, providers, dev, timezone, showSmtp = false }: Props) {
   const p = `mb-${scope}`;
   return (
     <div className={styles.mailbox}>
@@ -43,17 +45,13 @@ export function MailboxCard({ scope, mailbox, providers, dev, timezone }: Props)
       {mailbox?.lastVerifiedAt && <p className={styles.hint}>{at("mailbox.verifiedAt", { date: formatDateTime(mailbox.lastVerifiedAt, timezone) })}</p>}
 
       <div className={styles.actions}>
-        {(["google", "microsoft"] as const).map((prov) =>
-          providers[prov] ? (
+        {(["google", "microsoft"] as const)
+          .filter((prov) => providers[prov])
+          .map((prov) => (
             <a key={prov} className={mailbox ? styles.btnGhost : styles.btn} href={`/api/mail/oauth/${prov}/start?scope=${scope}`}>
               {mailbox?.provider === prov ? at("mailbox.reconnect") : at(prov === "google" ? "mailbox.connectGoogle" : "mailbox.connectMicrosoft")}
             </a>
-          ) : (
-            <span key={prov} className={styles.btnGhost} aria-disabled="true" title={at("mailbox.notConfigured")} style={{ opacity: 0.6, cursor: "not-allowed" }}>
-              {at(prov === "google" ? "mailbox.connectGoogle" : "mailbox.connectMicrosoft")} ({at("mailbox.notConfigured")})
-            </span>
-          ),
-        )}
+          ))}
         {mailbox && (
           <>
             <form action={sendTestAction}>
@@ -82,6 +80,7 @@ export function MailboxCard({ scope, mailbox, providers, dev, timezone }: Props)
         )}
       </div>
 
+      {showSmtp && (
       <details className={styles.details}>
         <summary>{at("mailbox.smtp.summary")}</summary>
         <p className={styles.hint}>{at("mailbox.smtp.hint")}</p>
@@ -125,6 +124,7 @@ export function MailboxCard({ scope, mailbox, providers, dev, timezone }: Props)
           </div>
         </form>
       </details>
+      )}
     </div>
   );
 }

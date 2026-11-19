@@ -7,7 +7,8 @@
  *   1. zur Pipedrive-Firma gehört, mit der der Mandant verbunden ist,
  *   2. in der Nutzerverwaltung des Mandanten freigeschaltet ist (status active),
  *   3. dieselbe E-Mail hat wie der freigeschaltete auth-Benutzer.
- * Die beim Login ausgestellten Benutzer-Tokens werden nicht gespeichert.
+ * Die Benutzer-Tokens werden verschlüsselt gespeichert: Mit dem Scope
+ * mail-sending:full verschickt die App Einladungen in seinem Namen über Pipedrive.
  */
 import type { PipedriveMe, PipedriveTokens } from "@/lib/pipedrive/client";
 import type { LoginState, Session } from "./session";
@@ -23,14 +24,17 @@ export type LoginDeps = {
   lookupMember: (tenantId: string, pipedriveUserId: number) => Promise<MemberLookup | null>;
   /** Name/E-Mail aus Pipedrive im Cache der Mitgliedschaft aktualisieren */
   refreshMemberCache: (tenantId: string, userId: string, me: PipedriveMe) => Promise<void>;
+  /** Tokens des Mitarbeiters speichern (Versand von Einladungen über Pipedrive) */
+  storeUserTokens: (tenantId: string, userId: string, me: PipedriveMe, tokens: PipedriveTokens) => Promise<void>;
 };
 
 export type LoginResult = { ok: true; session: Session } | { ok: false; error: LoginError };
 
 export async function completePipedriveLogin(state: LoginState, code: string, deps: LoginDeps): Promise<LoginResult> {
   let me: PipedriveMe;
+  let tokens: PipedriveTokens;
   try {
-    const tokens = await deps.exchangeCode(code);
+    tokens = await deps.exchangeCode(code);
     me = await deps.getMe(tokens.apiDomain, tokens.accessToken);
   } catch {
     return { ok: false, error: "oauth_failed" };
@@ -46,5 +50,6 @@ export async function completePipedriveLogin(state: LoginState, code: string, de
   if (member.authEmail.toLowerCase() !== me.email.toLowerCase()) return { ok: false, error: "email_mismatch" };
 
   await deps.refreshMemberCache(state.tid, member.userId, me);
+  await deps.storeUserTokens(state.tid, member.userId, me, tokens);
   return { ok: true, session: { uid: member.userId, tid: state.tid, pd: me.id } };
 }

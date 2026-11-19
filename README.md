@@ -163,9 +163,8 @@ Noch umzusetzen (eigener Schritt, vor dem ersten echten Kunden):
   Mandanten im Hintergrund abgearbeitet (`after()`), zusätzlich per Cron
   `GET /api/cron/outbox` (Header `Authorization: Bearer $CRON_SECRET`).
   Auf dem Hetzner-Server per Cron/systemd-Timer (siehe „Hosting“).
-- Versand über das Postfach des Mitarbeiters bzw. der Firma (`mail_connections`): `dev`
-  (nur DB, Ansicht unter `/dev/mails`, braucht `DEV_TOOLS_ENABLED=true`), `smtp`, `google`,
-  `microsoft` (siehe „Postfach verbinden“).
+- Versandwege siehe „Mailversand“. Mit `SYSTEM_MAIL_TRANSPORT=dev` landen Mails nur in der
+  DB (Ansicht unter `/dev/mails`, braucht `DEV_TOOLS_ENABLED=true`).
 - Links in Mails: `lib/links.ts` + `TENANT_BASE_URL_TEMPLATE` (Domain-Struktur noch offen).
 - Recherche Pipedrive-Mailversand: [`docs/research/pipedrive-mailversand.md`](docs/research/pipedrive-mailversand.md).
 
@@ -185,22 +184,28 @@ im Reverse Proxy freigeschaltet (automatisches HTTPS); ab Phase 5 automatisiert 
 Die Mandantenauflösung über `custom_domain` gibt es bereits (`resolve_tenant`).
 Keine Einbettung per iframe (vorerst).
 
-## Postfach verbinden (nach Phase 3)
+## Mailversand
 
-- **Mein Postfach** (`/admin/postfach`, alle Benutzer): Google (Gmail API), Microsoft 365
-  (Graph) oder SMTP verbinden. Wir fordern nur das Recht zum Senden an. Nach dem
-  Verbinden geht eine Testmail an das Postfach selbst; erst danach ist es aktiv. Trennen
-  widerruft bei Google auch den Zugang.
-- **E-Mail-Einstellungen** (`/admin/email`, Owner/Admin): Firmenpostfach, Pipedrive-Smart-BCC
-  (eine Adresse je Pipedrive-Firma, nur `@pipedrivemail.com`), Postfächer im Team und
-  Mails, die über das Firmenpostfach umgeleitet wurden.
-- **Absender:** Einladung über das Postfach des einladenden Mitarbeiters (sonst
-  Firmenpostfach; ist seins gestört, wartet die Einladung). Bestätigung/Stornierung über
-  dasselbe Postfach; ist es gestört, über das Firmenpostfach – sichtbar vermerkt.
-- **Für den Live-Betrieb nötig:** OAuth-App bei Google (bis zur Prüfung durch Google max.
-  100 Testnutzer) und App-Registrierung bei Microsoft, je mit Callback-URL unter
-  `APP_BASE_URL` (siehe `.env.example`). Lokal: „dev-Postfach verbinden“ (Mails unter
-  `/dev/mails`).
+| Mail | Weg | Bei Problemen |
+|---|---|---|
+| Einladung | `INVITE_MAIL_PROVIDER=pipedrive` (Standard): über das in Pipedrive verbundene Postfach des Mitarbeiters – steht im Deal-Verlauf und in „Gesendet“ | Meldung an den Mitarbeiter (z. B. „In Pipedrive ist kein Postfach verbunden“), kein anderer Weg |
+| | `oauth`: über sein per Google/Microsoft verbundenes Postfach | Meldung, kein anderer Weg |
+| | `smtp`: System-Adresse, Anzeigename + Reply-To = Mitarbeiter, Smart BCC | wartet, bis der System-Absender funktioniert |
+| Bestätigung/Stornierung (.ics) | immer System-SMTP (`SYSTEM_MAIL_*`), Reply-To = einladender Mitarbeiter, Smart BCC | wartet, bis der System-Absender funktioniert |
+
+- **Pipedrive-Versand:** Die App speichert beim „Mit Pipedrive anmelden“ die Tokens des
+  Mitarbeiters (verschlüsselt). Voraussetzungen: Pipedrive-App mit Scope `mail-sending:full`
+  und ein in Pipedrive verbundenes Postfach. Versand über Pipedrives offiziellen MCP-Server
+  (`PIPEDRIVE_MAIL_TRANSPORT=mcp`, Standard – so ging der Live-Test raus) oder die REST-API
+  (`rest`). Beide sind nicht in der API-Referenz dokumentiert; der genaue Aufruf mit dem
+  Token unserer App wird live geprüft, sobald die Pipedrive-App existiert. Details:
+  [`docs/research/pipedrive-mailversand.md`](docs/research/pipedrive-mailversand.md).
+- **Mein Postfach** (`/admin/postfach`): Versandstatus, Signatur (wird unter Einladungen
+  gesetzt), bei `oauth` die Buttons „Mit Google/Microsoft verbinden“ (nur mit eingetragenen
+  Zugangsdaten).
+- **E-Mail-Einstellungen** (`/admin/email`, Owner/Admin): Versandwege, Smart BCC (eine
+  Adresse je Pipedrive-Firma), Versandstatus im Team, nicht versendete Einladungen.
+- Lokal: `SYSTEM_MAIL_TRANSPORT=dev` – Mails landen unter `/dev/mails`.
 
 ## Admin-Backend und Benutzer (Phase 3)
 
@@ -251,5 +256,8 @@ Siehe [`.env.example`](.env.example). Keine Secrets committen.
 | `CRON_SECRET` | schützt den Outbox-Cron-Endpunkt |
 | `AUTH_ADMIN` | `local` (Shim per SQL) oder `supabase` (Auth-Admin-API) – Anlegen von Benutzern beim Freischalten |
 | `PIPEDRIVE_CLIENT_ID`, `PIPEDRIVE_CLIENT_SECRET` | OAuth-App aus dem Pipedrive Developer Hub (Login, Installation) |
-| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `MICROSOFT_CLIENT_ID`, `MICROSOFT_CLIENT_SECRET` | OAuth-Apps für „Postfach verbinden“ (nur Senden) |
+| `INVITE_MAIL_PROVIDER` | Weg für Einladungen: `pipedrive` (Standard) \| `oauth` \| `smtp` |
+| `PIPEDRIVE_MAIL_TRANSPORT` | Pipedrive-Versand über `mcp` (Standard) oder `rest` |
+| `SYSTEM_MAIL_TRANSPORT`, `SYSTEM_MAIL_FROM`, `SYSTEM_MAIL_FROM_NAME`, `SYSTEM_SMTP_HOST/PORT/SECURE/USER/PASS` | System-Absender (Bestätigungen; Einladungen bei `smtp`); `dev` nur lokal |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `MICROSOFT_CLIENT_ID`, `MICROSOFT_CLIENT_SECRET` | OAuth-Apps für „Postfach verbinden“ (nur bei `INVITE_MAIL_PROVIDER=oauth`) |
 | `PIPEDRIVE_DIRECTORY` | `api` (Pipedrive, Server) oder `fake` (Seed-Benutzer, nur lokal) – Benutzerliste der Nutzerverwaltung |

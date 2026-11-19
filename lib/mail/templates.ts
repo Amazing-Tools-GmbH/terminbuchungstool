@@ -189,6 +189,8 @@ export type InvitationMailData = {
   bookingUrl: string;
   validDays: number;
   senderName: string;
+  /** Signatur des Mitarbeiters (Klartext, Zeilen); ersetzt dann den Namen unter dem Gruß */
+  signature?: string | null;
 };
 
 export function renderInvitation(tenant: MailTenant, d: InvitationMailData): RenderedMail {
@@ -203,7 +205,7 @@ export function renderInvitation(tenant: MailTenant, d: InvitationMailData): Ren
 <p style="margin:0 0 12px">${escapeHtml(tr("mail.invitation.text", { event: d.eventTitle }))}</p>
 ${button(t, d.bookingUrl, tr("mail.invitation.button"))}
 <p style="margin:0 0 16px;font-size:14px;color:${t.muted}">${escapeHtml(tr("mail.invitation.validity", { days: d.validDays }))}</p>
-<p style="margin:0 0 20px">${escapeHtml(tr("mail.regards"))}<br>${escapeHtml(d.senderName)}</p>`,
+<p style="margin:0 0 20px">${escapeHtml(tr("mail.regards"))}<br>${signatureLines(d).map(escapeHtml).join("<br>")}</p>`,
     tr("mail.invitation.text", { event: d.eventTitle }),
   );
   const text = [
@@ -216,9 +218,19 @@ ${button(t, d.bookingUrl, tr("mail.invitation.button"))}
     tr("mail.invitation.validity", { days: d.validDays }),
     "",
     tr("mail.regards"),
-    d.senderName,
+    ...signatureLines(d),
   ].join("\n");
   return { subject, html, text };
+}
+
+/** Signatur (max. 20 Zeilen) oder Name des Absenders */
+function signatureLines(d: InvitationMailData): string[] {
+  const sig = d.signature?.trim();
+  if (!sig) return [d.senderName];
+  return sig
+    .split(/\r?\n/)
+    .map((l) => l.trimEnd())
+    .slice(0, 20);
 }
 
 export function renderTest(tenant: MailTenant): RenderedMail {

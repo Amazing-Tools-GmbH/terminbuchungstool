@@ -7,6 +7,7 @@ const OK: Record<string, AdminTextKey> = {
   test: "mailbox.ok.test",
   disconnected: "mailbox.ok.disconnected",
   smartBcc: "mailbox.ok.smartBcc",
+  signature: "mailbox.ok.signature",
   saved: "users.saved",
 };
 

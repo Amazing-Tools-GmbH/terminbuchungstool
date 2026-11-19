@@ -1,8 +1,10 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { withActor } from "@/lib/db";
+import { getPool } from "@/lib/db/pool";
 import { exchangeCode, getMe, oauthConfig } from "@/lib/pipedrive/client";
 import { connectedCompanyId } from "@/lib/pipedrive/connection";
 import { completePipedriveLogin } from "@/lib/auth/pipedrive-login";
+import { storeUserTokens } from "@/lib/pipedrive/user-connection";
 import { LOGIN_TICKET_TTL_SECONDS, loginStateSchema, seal, unseal } from "@/lib/auth/session";
 import { tenantUrl } from "@/lib/auth/urls";
 
@@ -60,6 +62,7 @@ export async function GET(req: NextRequest) {
           [tid, userId, me.name.slice(0, 200), me.email],
         );
       }),
+    storeUserTokens: (tid, uid, me, tokens) => storeUserTokens(getPool(), tid, uid, me, tokens),
   });
   if (!result.ok) return fail(result.error);
 

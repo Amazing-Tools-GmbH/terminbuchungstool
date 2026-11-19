@@ -115,14 +115,30 @@ export const ADMIN_TEXTS = {
   "nav.mailSettings": "E-Mail-Einstellungen",
 
   "mailbox.title": "Mein Postfach",
-  "mailbox.intro":
-    "Verbinde dein Postfach, damit Einladungen und Bestätigungen in deinem Namen rausgehen. Sie liegen dann in deinem Ordner „Gesendet“, und Antworten kommen direkt bei dir an. Wir dürfen nur senden, nicht lesen.",
+  "mailbox.intro.pipedrive":
+    "Deine Einladungen gehen automatisch über das Postfach raus, das du in Pipedrive verbunden hast – sie stehen im Deal-Verlauf und in deinem Ordner „Gesendet“.",
+  "mailbox.intro.oauth": "Deine Einladungen gehen über dein eigenes Postfach (Google oder Microsoft) raus. Wir dürfen nur senden, nicht lesen.",
+  "mailbox.intro.smtp": "Deine Einladungen gehen über die System-Adresse {email} mit deinem Namen raus. Antworten kommen direkt bei dir an.",
+  "mailbox.send.title": "Versand deiner Einladungen",
   "mailbox.none": "Noch kein Postfach verbunden.",
-  "mailbox.fallbackInfo": "Ohne eigenes Postfach gehen deine Einladungen über das Firmenpostfach {email}.",
-  "mailbox.noTenantMailbox": "Ohne eigenes Postfach können derzeit keine Einladungen verschickt werden – auch das Firmenpostfach ist noch nicht verbunden.",
-  "mailbox.tenant.title": "Firmenpostfach",
-  "mailbox.tenant.intro":
-    "Absender für alle, die kein eigenes Postfach verbunden haben. Bestätigungen gehen auch dann darüber, wenn das Postfach eines Mitarbeiters gestört ist – das wird unten angezeigt.",
+  "mailbox.pd.ready": "Bereit: Pipedrive erlaubt der App, in deinem Namen zu senden.",
+  "mailbox.pd.readyHint": "Voraussetzung: In Pipedrive ist dein Postfach verbunden (Einstellungen → E-Mail-Synchronisierung).",
+  "mailbox.pd.none": "Noch nicht freigegeben. Melde dich einmal mit „Mit Pipedrive anmelden“ an – damit erteilst du das Recht zum Senden.",
+  "mailbox.pd.missingScope": "Pipedrive hat der App das Senderecht nicht erteilt. Sobald die Pipedrive-App das Recht „Mail sending“ hat, einmal ab- und wieder anmelden.",
+  "mailbox.pd.error": "Der Versand über Pipedrive ist gestört: {reason}. Bitte einmal ab- und wieder über Pipedrive anmelden.",
+  "mailbox.pd.devLogin": "Du bist über den Entwicklungs-Login angemeldet – der Versand über Pipedrive braucht eine echte Pipedrive-Anmeldung.",
+  "mailbox.state.ready": "Bereit",
+  "mailbox.state.missing_scope": "Senderecht fehlt",
+  "mailbox.state.error": "Gestört",
+  "mailbox.state.none": "Nicht freigegeben",
+  "mailbox.oauthMissing": "Google und Microsoft sind noch nicht eingerichtet (Zugangsdaten fehlen).",
+  "mailbox.confirmInfo": "Buchungsbestätigungen gehen immer von der System-Adresse {email} raus – Antworten der Kunden landen bei dir.",
+  "mailbox.confirmInfoMissing": "Achtung: Die System-Adresse für Buchungsbestätigungen ist noch nicht eingerichtet – Bestätigungen warten, bis sie es ist.",
+  "mailbox.signature.title": "Meine Signatur",
+  "mailbox.signature.hint": "Wird unter deine Einladungen gesetzt (Pipedrive fügt beim Versand keine Signatur hinzu). Leer = nur dein Name.",
+  "mailbox.signature.label": "Signatur",
+  "mailbox.signature.submit": "Signatur speichern",
+  "mailbox.ok.signature": "Signatur gespeichert.",
   "mailbox.status.pending": "Testmail läuft",
   "mailbox.status.active": "Verbunden",
   "mailbox.status.error": "Gestört",
@@ -159,9 +175,22 @@ export const ADMIN_TEXTS = {
   "mailbox.ok.smartBcc": "Smart-BCC-Adresse gespeichert.",
 
   "mailSettings.title": "E-Mail-Einstellungen",
+  "mailSettings.routes.title": "Versandwege",
+  "mailSettings.routes.invite": "Einladungen",
+  "mailSettings.routes.confirm": "Buchungsbestätigungen",
+  "mailSettings.routes.pipedrive": "über das in Pipedrive verbundene Postfach des Mitarbeiters",
+  "mailSettings.routes.oauth": "über das eigene Postfach des Mitarbeiters (Google/Microsoft)",
+  "mailSettings.routes.smtp": "über die System-Adresse {email} mit dem Namen des Mitarbeiters",
+  "mailSettings.routes.system": "von der System-Adresse {email}, Antworten an den einladenden Mitarbeiter",
+  "mailSettings.routes.systemMissing": "System-Adresse noch nicht eingerichtet – Bestätigungen warten",
+  "mailSettings.routes.hint": "Die Versandwege legt der Betreiber fest (INVITE_MAIL_PROVIDER, SYSTEM_MAIL_*). Fällt ein Weg aus, gibt es eine Meldung – Mails gehen nie stillschweigend über einen anderen Weg.",
+  "mailSettings.team.ready": "Versand",
+  "mailSettings.team.viaSystem": "über die System-Adresse",
+  "mailSettings.failed.title": "Nicht versendete Einladungen (30 Tage)",
+  "mailSettings.failed.none": "Keine.",
   "mailSettings.smartBcc.title": "Ablage in Pipedrive (Smart BCC)",
   "mailSettings.smartBcc.intro":
-    "Alle Mails an Kunden gehen in Blindkopie an diese Adresse. Pipedrive legt sie dann beim Kontakt und Deal ab. Die Adresse steht in Pipedrive unter den Einstellungen zur E-Mail-Synchronisierung („Smart Email BCC“).",
+    "Buchungsbestätigungen (und Einladungen, die nicht über Pipedrive gehen) gehen in Blindkopie an diese Adresse – Pipedrive legt sie dann beim Kontakt und Deal ab. Über Pipedrive versendete Einladungen landen ohnehin im Deal. Die Adresse steht in Pipedrive unter den Einstellungen zur E-Mail-Synchronisierung („Smart Email BCC“).",
   "mailSettings.smartBcc.label": "Smart-BCC-Adresse",
   "mailSettings.smartBcc.hint": "Nur Adressen auf @pipedrivemail.com. Leer lassen = keine Ablage per BCC.",
   "mailSettings.smartBcc.submit": "Speichern",
@@ -170,9 +199,19 @@ export const ADMIN_TEXTS = {
   "mailSettings.team.mailbox": "Postfach",
   "mailSettings.team.status": "Status",
   "mailSettings.team.none": "keins – nutzt das Firmenpostfach",
-  "mailSettings.fallbacks.title": "Über das Firmenpostfach umgeleitet (30 Tage)",
-  "mailSettings.fallbacks.intro": "Diese Mails sollten über das Postfach eines Mitarbeiters gehen, das zu dem Zeitpunkt gestört war.",
-  "mailSettings.fallbacks.none": "Keine Umleitungen.",
+
+  "mailError.no_inviter": "Der einladende Mitarbeiter ist nicht (mehr) freigeschaltet.",
+  "mailError.no_user_mailbox": "Kein eigenes Postfach verbunden – bitte unter „Mein Postfach“ verbinden.",
+  "mailError.user_mailbox_error": "Das eigene Postfach ist gestört – bitte unter „Mein Postfach“ neu verbinden.",
+  "mailError.mailbox_error": "Das Postfach hat die Testmail nicht angenommen.",
+  "mailError.pipedrive_reauth": "Die Pipedrive-Anmeldung ist abgelaufen – bitte einmal ab- und wieder über Pipedrive anmelden.",
+  "mailError.pipedrive_no_permission": "Pipedrive erlaubt der App das Senden nicht – das Recht „Mail sending“ fehlt.",
+  "mailError.pipedrive_no_mailbox": "In Pipedrive ist kein Postfach verbunden – bitte in Pipedrive unter E-Mail-Synchronisierung verbinden.",
+  "mailError.pipedrive_unavailable": "Pipedrive ist gerade nicht erreichbar – wird automatisch erneut versucht.",
+  "mailError.pipedrive_rejected": "Pipedrive hat die Mail abgelehnt.",
+  "mailError.unavailable": "Der Versanddienst war wiederholt nicht erreichbar.",
+  "mailError.rejected": "Die Mail wurde abgelehnt.",
+  "mailError.generic": "Die Mail konnte nicht verschickt werden.",
 
   "placeholder.title": "Folgt",
   "placeholder.text": "Dieser Bereich folgt in einer späteren Phase.",
@@ -200,6 +239,12 @@ export type AdminTextKey = keyof typeof ADMIN_TEXTS;
 
 export function at(key: AdminTextKey, vars?: Record<string, string | number>): string {
   return formatText(ADMIN_TEXTS[key], vars);
+}
+
+/** Verständlicher Grund für eine nicht versendete Mail (email_outbox.error_code) */
+export function mailErrorText(code: string | null | undefined): string {
+  const key = `mailError.${code ?? "generic"}` as AdminTextKey;
+  return key in ADMIN_TEXTS ? at(key) : at("mailError.generic");
 }
 
 export function adminErrorText(code: AdminErrorCode): string {

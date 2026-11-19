@@ -1,6 +1,7 @@
 /**
- * Outbox: Versand über das Postfach des Mandanten, Verhalten bei gestörter
- * Verbindung, Retry/Backoff und parallele Verarbeitung ohne Doppelversand.
+ * Outbox: Bestätigungen über den System-Absender, Verhalten bei fehlender/
+ * gestörter Konfiguration, Retry/Backoff und parallele Verarbeitung ohne
+ * Doppelversand. (Einladungen/Wege: tests/db/mail-connect.test.ts)
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { ANON } from "@/lib/db/actor";
@@ -76,7 +77,8 @@ describe("Versand", () => {
     const r = await processOutbox(db.pool, { senderFactory: factory(rec) });
     expect(r).toEqual({ sent: 1, requeued: 0, failed: 0, blocked: 0 });
     const m = rec.sent[0]!;
-    expect(m.from.email).toBe("termine@antenne-vorarlberg.example");
+    // System-Absender, Anzeigename = Mandant
+    expect(m.from).toEqual({ email: "termine@system.example", name: "ANTENNE VORARLBERG" });
     expect(m.to).toEqual({ email: "eva@kunde.example", name: "Eva Probe" });
     expect(m.subject).toMatch(/^Buchungsbestätigung: Kunden-Workshop Radiowerbung am /);
     expect(m.html).toContain("2 Personen");
@@ -94,7 +96,7 @@ describe("Versand", () => {
     expect(decryptSecret(row!.payload.link_enc)).toContain(`/b/${token}`);
   });
 
-  it("dev-Postfach: speichert die gerenderte Mail für /dev/mails", async () => {
+  it("System-Absender dev: speichert die gerenderte Mail für /dev/mails", async () => {
     await bookNew();
     await processOutbox(db.pool); // Standard-Factory, Seed nutzt provider = dev
     const [row] = await outbox();
@@ -103,54 +105,33 @@ describe("Versand", () => {
   });
 });
 
-describe("Postfach gestört", () => {
-  it("nicht aktives Postfach: Mail bleibt in der Outbox, Versuch zählt nicht", async () => {
+describe("System-Absender gestört", () => {
+  it("nicht konfiguriert: Mail bleibt in der Outbox, Versuch zählt nicht", async () => {
     await bookNew();
-    await db.admin("update mail_connections set status = 'error' where tenant_id = $1", [tenant.id]);
     const rec = new Recorder();
-    const r = await processOutbox(db.pool, { senderFactory: factory(rec) });
+    const r = await processOutbox(db.pool, { senderFactory: factory(rec), systemConfig: null });
     expect(r.blocked).toBe(1);
     expect(rec.sent).toHaveLength(0);
     const [row] = await outbox();
     expect(row).toMatchObject({ status: "queued", attempts: 0 });
-    expect(row!.last_error).toMatch(/ist gestört/);
+    expect(row!.last_error).toMatch(/System-Absender nicht konfiguriert/);
     expect(new Date(row!.next_attempt_at).getTime()).toBeGreaterThan(Date.now() + 10 * 60_000);
 
-    // Verbindung erneuert + fällig -> geht raus
-    await db.admin("update mail_connections set status = 'active'");
+    // konfiguriert + fällig -> geht raus
     await db.admin("update email_outbox set next_attempt_at = now()");
     expect((await processOutbox(db.pool, { senderFactory: factory(rec) })).sent).toBe(1);
   });
 
-  it("Anmeldefehler: Verbindung -> error, Mail bleibt, kein Absenderwechsel", async () => {
+  it("Anmeldefehler am System-SMTP: Mail wartet (kein anderer Weg)", async () => {
     await bookNew();
     const rec = new Recorder(() => {
       throw new MailSendError("auth", "535 Authentication failed");
     });
     const r = await processOutbox(db.pool, { senderFactory: factory(rec) });
     expect(r.blocked).toBe(1);
-    const [conn] = await db.admin<{ status: string; last_error: string }>(
-      "select status, last_error from mail_connections where tenant_id = $1",
-      [tenant.id],
-    );
-    expect(conn).toMatchObject({ status: "error", last_error: "535 Authentication failed" });
-    expect((await outbox())[0]).toMatchObject({ status: "queued", attempts: 0 });
-  });
-
-  it("SMTP-Verbindung mit unlesbaren Zugangsdaten wird als gestört markiert", async () => {
-    await bookNew();
-    await db.admin("update mail_connections set provider = 'smtp', credentials_enc = $2 where tenant_id = $1", [
-      tenant.id,
-      encryptSecret(JSON.stringify({ host: "" })),
-    ]);
-    try {
-      const r = await processOutbox(db.pool);
-      expect(r.blocked).toBe(1);
-      const [conn] = await db.admin<{ status: string }>("select status from mail_connections where tenant_id = $1", [tenant.id]);
-      expect(conn!.status).toBe("error");
-    } finally {
-      await db.admin("update mail_connections set provider = 'dev', credentials_enc = null where tenant_id = $1", [tenant.id]);
-    }
+    const [row] = await outbox();
+    expect(row).toMatchObject({ status: "queued", attempts: 0 });
+    expect(row!.last_error).toMatch(/System-Absender: 535/);
   });
 });
 

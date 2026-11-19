@@ -92,15 +92,20 @@ Mandantenfähiges Terminbuchungstool mit Pipedrive-Integration. Auftrag und Phas
   Vorlagen in `templates.ts` (Inline-Styles, kein SVG/Verlauf), Verarbeitung in `outbox.ts`
   (SKIP LOCKED, Backoff, Postfach-Fehler ⇒ Mail bleibt queued). Links in Mails nur über
   `lib/links.ts`; der Buchungslink steht verschlüsselt im Outbox-Payload (`link_enc`).
-- Postfach verbinden (`/admin/postfach` je Benutzer, Firmenpostfach + Smart BCC unter
-  `/admin/email`): Speichern nur über `public.save_mail_connection` (Status `pending`),
-  aktiv erst nach zugestellter Testmail (`request_mail_test` → Outbox). OAuth wie der Login:
-  Start auf Mandanten-Host (Nonce), zentraler Callback → `mail_oauth_pending` (nur
-  service_role) → Abschluss mit Sitzung + Nonce. Absenderwahl beim Versand
-  (`lib/mail/sender-choice.ts`): Einladung = Postfach des Einladenden, gestört ⇒ wartet;
-  Bestätigung/Stornierung = Postfach des Einladenden, gestört ⇒ Firmenpostfach, sichtbar
-  vermerkt (`email_outbox.sender_fallback_reason`). Kundenmails in BCC an
-  `tenants.smart_bcc_email` (nur `@pipedrivemail.com`) → Ablage in Pipedrive.
+- Versandwege (`lib/mail/routing.ts`, Konfiguration `lib/mail/config.ts`):
+  Einladung über `INVITE_MAIL_PROVIDER` = `pipedrive` (Standard; Postfach des Mitarbeiters in
+  Pipedrive, OAuth-Token aus seinem Login in `pipedrive_user_connections`, Scope
+  `mail-sending:full`, `lib/pipedrive/mail.ts` über MCP oder REST) | `oauth` (eigenes
+  Google/Microsoft-Postfach, Buttons nur dann sichtbar) | `smtp` (System-Adresse, Anzeigename +
+  Reply-To = Mitarbeiter). Bestätigung/Stornierung immer System-SMTP (`SYSTEM_MAIL_*`),
+  Reply-To = einladender Mitarbeiter. Fällt der Weg aus: `email_outbox.error_code` + Meldung,
+  NIE ein stiller Wechsel des Weges. Smart BCC (`tenants.smart_bcc_email`, nur
+  `@pipedrivemail.com`) für alle Kundenmails außer Pipedrive-Versand. Signatur je Mitarbeiter
+  (`tenant_members.mail_signature`, Klartext) unter Einladungen.
+- Postfach verbinden (nur Weg `oauth`, `/admin/postfach`): Speichern über
+  `public.save_mail_connection` (Status `pending`), aktiv erst nach zugestellter Testmail.
+  OAuth wie der Login: Start auf Mandanten-Host (Nonce), zentraler Callback →
+  `mail_oauth_pending` (nur service_role) → Abschluss mit Sitzung + Nonce.
 
 ## Theme & Texte
 

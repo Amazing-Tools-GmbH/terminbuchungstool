@@ -121,15 +121,25 @@ describe("Login über Pipedrive", () => {
       connectedCompanyId: async () => 99,
       lookupMember: async () => ({ userId: UID, authEmail: "eva@firma.example", status: "active" }),
       refreshMemberCache: async () => {},
+      storeUserTokens: async () => {},
       ...over,
     };
   }
 
   it("freigeschalteter Benutzer der richtigen Firma bekommt eine Sitzung", async () => {
     const refresh = vi.fn(async () => {});
-    const r = await completePipedriveLogin(state, "code", deps({ refreshMemberCache: refresh }));
+    const store = vi.fn(async () => {});
+    const r = await completePipedriveLogin(state, "code", deps({ refreshMemberCache: refresh, storeUserTokens: store }));
     expect(r).toEqual({ ok: true, session: { uid: UID, tid: TID, pd: 5 } });
     expect(refresh).toHaveBeenCalledWith(TID, UID, me);
+    // Tokens des Mitarbeiters werden für den Versand über Pipedrive gespeichert
+    expect(store).toHaveBeenCalledWith(TID, UID, me, expect.objectContaining({ accessToken: "a", refreshToken: "r" }));
+  });
+
+  it("verweigerte Logins speichern keine Tokens", async () => {
+    const store = vi.fn(async () => {});
+    await completePipedriveLogin(state, "code", deps({ lookupMember: async () => null, storeUserTokens: store }));
+    expect(store).not.toHaveBeenCalled();
   });
 
   it.each([

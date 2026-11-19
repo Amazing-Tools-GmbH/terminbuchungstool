@@ -96,6 +96,32 @@ describe("Lesen", () => {
   });
 });
 
+describe("pipedrive_user_connections (Pipedrive-Zugang je Mitarbeiter)", () => {
+  it("Mitglied sieht nur den eigenen Zugang, owner/admin den ihres Mandanten, nie Tokens", async () => {
+    const uA = (userA as { userId: string }).userId;
+    const uB = (userB as { userId: string }).userId;
+    for (const [tid, uid] of [
+      [tenantA, uA],
+      [tenantB, uB],
+    ] as const) {
+      await db.admin(
+        `insert into pipedrive_user_connections (tenant_id, user_id, pipedrive_user_id, api_domain, access_token_enc, refresh_token_enc, expires_at)
+         values ($1, $2, 1, 'https://x.pipedrive.com', 'enc', 'enc', now()) on conflict do nothing`,
+        [tid, uid],
+      );
+    }
+    expect(await tenantIdsVisible(userA, "pipedrive_user_connections")).toEqual([tenantA]);
+    expect(await tenantIdsVisible(userB, "pipedrive_user_connections")).toEqual([tenantB]);
+    // sales sieht nur den eigenen (hat keinen) -> nichts
+    expect(await tenantIdsVisible(salesA, "pipedrive_user_connections")).toEqual([]);
+    await expect(db.as(userA, (c) => c.query("select access_token_enc from pipedrive_user_connections"))).rejects.toThrow(/permission denied/);
+    await expect(db.as(ANON, (c) => c.query("select 1 from pipedrive_user_connections"))).rejects.toThrow(/permission denied/);
+    await expect(
+      db.as(userA, (c) => c.query("update pipedrive_user_connections set status = 'error'")),
+    ).rejects.toThrow(/permission denied/);
+  });
+});
+
 describe("Schreiben", () => {
   it("A kann keine Veranstaltung für B anlegen", async () => {
     await expect(

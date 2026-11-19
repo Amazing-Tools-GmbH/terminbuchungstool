@@ -14,6 +14,7 @@ import { AdminError, toAdminError } from "@/lib/admin/errors";
 import { oauthCredentialsSchema, revokeMailAccess, type ConnectedMailbox, type MailOAuthProviderId } from "./oauth";
 import type { MailState } from "@/lib/auth/session";
 import type { SmtpCredentials } from "./senders/smtp";
+import { canSendMail } from "@/lib/pipedrive/scopes";
 
 export type MailScope = "user" | "tenant";
 
@@ -55,32 +56,53 @@ const toView = (r: Row): MailboxView => ({
 });
 const COLS = "id, scope::text as scope, provider::text as provider, sender_email, sender_name, status::text as status, last_error, last_verified_at, user_id";
 
-/** Eigenes Postfach + Firmenpostfach (Adresse/Status, für alle Mitglieder) */
+export type PipedriveSendStatus = {
+  /** "ready" | "missing_scope" | "error" | "none" (noch nie über Pipedrive angemeldet) */
+  state: "ready" | "missing_scope" | "error" | "none";
+  lastError: string | null;
+  updatedAt: Date | null;
+};
+
+type PdRow = { user_id: string; scopes: string | null; status: string; last_error: string | null; updated_at: Date };
+const pdStatus = (r: PdRow | undefined): PipedriveSendStatus => {
+  if (!r) return { state: "none", lastError: null, updatedAt: null };
+  if (r.status === "error") return { state: "error", lastError: r.last_error, updatedAt: r.updated_at };
+  return { state: canSendMail(r.scopes) ? "ready" : "missing_scope", lastError: null, updatedAt: r.updated_at };
+};
+
+/** Eigener Versandstatus: Pipedrive-Zugang, eigenes Postfach (oauth), Signatur */
 export async function loadMyMailbox(ctx: AdminContext) {
   return withActor(ctx.actor, async (db) => {
     const { rows } = await db.query<Row>(
       `select ${COLS} from public.mail_connections where tenant_id = $1 and scope = 'user' and user_id = $2`,
       [ctx.tenant.id, ctx.userId],
     );
-    const { rows: t } = await db.query<{ sender_email: string; provider: string; status: string }>(
-      "select sender_email, provider::text, status::text from public.get_tenant_mailbox($1)",
-      [ctx.tenant.id],
+    const { rows: pd } = await db.query<PdRow>(
+      "select user_id, scopes, status, last_error, updated_at from public.pipedrive_user_connections where tenant_id = $1 and user_id = $2",
+      [ctx.tenant.id, ctx.userId],
     );
-    return { mine: rows[0] ? toView(rows[0]) : null, tenantMailbox: t[0] ?? null };
+    const { rows: m } = await db.query<{ mail_signature: string | null }>(
+      "select mail_signature from public.tenant_members where tenant_id = $1 and user_id = $2",
+      [ctx.tenant.id, ctx.userId],
+    );
+    return { mine: rows[0] ? toView(rows[0]) : null, pipedrive: pdStatus(pd[0]), signature: m[0]?.mail_signature ?? "" };
   });
 }
 
 export type MailSettings = {
-  tenantMailbox: MailboxView | null;
   smartBccEmail: string | null;
-  team: { userId: string; name: string; role: string; mailbox: MailboxView | null }[];
-  fallbacks: { sentAt: Date; toEmail: string; type: string; reason: string }[];
+  team: { userId: string; name: string; role: string; pipedrive: PipedriveSendStatus; mailbox: MailboxView | null }[];
+  failedInvitations: { at: Date; toEmail: string; code: string | null }[];
 };
 
 /** E-Mail-Einstellungen der Firma (owner/admin; RLS liefert sonst nichts) */
 export async function loadMailSettings(ctx: AdminContext): Promise<MailSettings> {
   return withActor(ctx.actor, async (db) => {
-    const { rows: conns } = await db.query<Row>(`select ${COLS} from public.mail_connections where tenant_id = $1`, [ctx.tenant.id]);
+    const { rows: conns } = await db.query<Row>(`select ${COLS} from public.mail_connections where tenant_id = $1 and scope = 'user'`, [ctx.tenant.id]);
+    const { rows: pd } = await db.query<PdRow>(
+      "select user_id, scopes, status, last_error, updated_at from public.pipedrive_user_connections where tenant_id = $1",
+      [ctx.tenant.id],
+    );
     const { rows: t } = await db.query<{ smart_bcc_email: string | null }>("select smart_bcc_email from public.tenants where id = $1", [
       ctx.tenant.id,
     ]);
@@ -89,25 +111,33 @@ export async function loadMailSettings(ctx: AdminContext): Promise<MailSettings>
         where tenant_id = $1 and status = 'active' order by role, display_name`,
       [ctx.tenant.id],
     );
-    const { rows: fb } = await db.query<{ sent_at: Date; to_email: string; type: string; sender_fallback_reason: string }>(
-      `select sent_at, to_email, type::text, sender_fallback_reason from public.email_outbox
-        where tenant_id = $1 and sender_fallback_reason is not null and sent_at > now() - interval '30 days'
-        order by sent_at desc limit 20`,
+    const { rows: failed } = await db.query<{ created_at: Date; to_email: string; error_code: string | null }>(
+      `select created_at, to_email, error_code from public.email_outbox
+        where tenant_id = $1 and type = 'invitation' and status = 'failed' and created_at > now() - interval '30 days'
+        order by created_at desc limit 20`,
       [ctx.tenant.id],
     );
     const views = conns.map(toView);
     return {
-      tenantMailbox: views.find((v) => v.scope === "tenant") ?? null,
       smartBccEmail: t[0]?.smart_bcc_email ?? null,
       team: members.map((m) => ({
         userId: m.user_id,
         name: m.display_name ?? m.email ?? "—",
         role: m.role,
-        mailbox: views.find((v) => v.scope === "user" && v.userId === m.user_id) ?? null,
+        pipedrive: pdStatus(pd.find((p) => p.user_id === m.user_id)),
+        mailbox: views.find((v) => v.userId === m.user_id) ?? null,
       })),
-      fallbacks: fb.map((f) => ({ sentAt: f.sent_at, toEmail: f.to_email, type: f.type, reason: f.sender_fallback_reason })),
+      failedInvitations: failed.map((f) => ({ at: f.created_at, toEmail: f.to_email, code: f.error_code })),
     };
   });
+}
+
+export async function saveMySignature(ctx: AdminContext, signature: string): Promise<void> {
+  try {
+    await withActor(ctx.actor, (db) => db.query("select public.set_my_mail_signature($1, $2)", [ctx.tenant.id, signature]));
+  } catch (err) {
+    throw toAdminError(err);
+  }
 }
 
 async function saveConnection(

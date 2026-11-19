@@ -149,3 +149,6 @@
   .mailbox .actions > * { flex: 1 1 100%; }
   .mailbox .actions form button { width: 100%; }
 }
+.textarea { min-height: 110px; padding: 8px 10px; border: 1px solid #8a929c; border-radius: 8px; font: inherit; resize: vertical; }
+.list li > span, .list li > div { min-width: 0; overflow-wrap: anywhere; }
+@media (max-width: 640px) { .list li { flex-direction: column; gap: 4px; } }

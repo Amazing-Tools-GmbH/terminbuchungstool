@@ -10,6 +10,8 @@ export type MailMessage = {
   replyTo?: MailAddress | null;
   /** z. B. Pipedrive-Smart-BCC (Ablage der Mail beim Kontakt/Deal) */
   bcc?: MailAddress[];
+  /** Versand über Pipedrive: Deal, mit dem die Mail verknüpft wird */
+  pipedriveDealId?: number | null;
   subject: string;
   html: string;
   text: string;
@@ -34,6 +36,8 @@ export class MailSendError extends Error {
   constructor(
     readonly kind: MailErrorKind,
     message: string,
+    /** Verständlicher Grund für die Oberfläche (lib/texts/admin.ts: mailError.<code>) */
+    readonly code?: string,
   ) {
     super(message);
     this.name = "MailSendError";

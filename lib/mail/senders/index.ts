@@ -5,13 +5,26 @@ import { DevMailSender } from "./dev";
 import { GoogleMailSender } from "./google";
 import { MicrosoftMailSender } from "./microsoft";
 import { SmtpMailSender, smtpCredentialsSchema } from "./smtp";
+import { pipedriveMailTransport, type SystemMailConfig } from "../config";
+import {
+  McpPipedriveMailTransport,
+  PipedriveMailSender,
+  RestPipedriveMailTransport,
+  type PipedriveMailAccess,
+} from "@/lib/pipedrive/mail";
 
 export type SenderContext = {
   /** speichert neue (verschlüsselte) Zugangsdaten, z. B. nach Token-Refresh */
   saveCredentials?: (credentialsEnc: string) => Promise<void>;
 };
 
-export type SenderFactory = (connection: MailConnection, ctx?: SenderContext) => MailSender;
+/** Wohin geht der Versand? */
+export type SenderTarget =
+  | { kind: "connection"; connection: MailConnection }
+  | { kind: "system"; config: SystemMailConfig }
+  | { kind: "pipedrive"; access: () => Promise<PipedriveMailAccess> };
+
+export type SenderFactory = (target: SenderTarget, ctx?: SenderContext) => MailSender;
 
 function readCredentials(connection: MailConnection): unknown {
   if (!connection.credentialsEnc) throw new MailSendError("auth", "Zugangsdaten des Postfachs fehlen");
@@ -22,8 +35,16 @@ function readCredentials(connection: MailConnection): unknown {
   }
 }
 
-/** Passende Implementierung je Anbieter */
-export const defaultSenderFactory: SenderFactory = (connection, ctx = {}) => {
+/** Passende Implementierung je Ziel bzw. Anbieter */
+export const defaultSenderFactory: SenderFactory = (target, ctx = {}) => {
+  if (target.kind === "system") {
+    return target.config.transport === "dev" ? new DevMailSender() : new SmtpMailSender(target.config.smtp);
+  }
+  if (target.kind === "pipedrive") {
+    const transport = pipedriveMailTransport() === "rest" ? new RestPipedriveMailTransport() : new McpPipedriveMailTransport();
+    return new PipedriveMailSender(target.access, transport);
+  }
+  const connection = target.connection;
   switch (connection.provider) {
     case "dev":
       return new DevMailSender();

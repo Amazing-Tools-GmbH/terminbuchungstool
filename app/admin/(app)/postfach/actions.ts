@@ -5,8 +5,8 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/auth/admin";
 import { toAdminError } from "@/lib/admin/errors";
-import { mailScopeSchema, smartBccSchema, smtpFormSchema } from "@/lib/admin/input";
-import { connectDevMailbox, disconnectMailbox, requestTestMail, saveSmartBcc, saveSmtpMailbox } from "@/lib/mail/connect";
+import { mailScopeSchema, signatureSchema, smartBccSchema, smtpFormSchema } from "@/lib/admin/input";
+import { connectDevMailbox, disconnectMailbox, requestTestMail, saveMySignature, saveSmartBcc, saveSmtpMailbox } from "@/lib/mail/connect";
 import { sendMailsSoon } from "@/lib/booking/api";
 import { devToolsEnabled } from "@/lib/dev-tools";
 
@@ -73,4 +73,11 @@ export async function devConnectAction(form: FormData) {
   const error = await attempt(() => connectDevMailbox(ctx, scope));
   if (!error) sendMailsSoon(ctx.tenant.id);
   done(pageFor(scope), error ? { error } : { ok: "connected" });
+}
+
+export async function saveSignatureAction(form: FormData) {
+  const ctx = await requireAdmin();
+  const parsed = signatureSchema.safeParse(str(form, "signature") ?? "");
+  const error = parsed.success ? await attempt(() => saveMySignature(ctx, parsed.data)) : "invalid_input";
+  done("/admin/postfach", error ? { error } : { ok: "signature" });
 }
