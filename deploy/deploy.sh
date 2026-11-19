@@ -56,7 +56,8 @@ log "Umschalten: $REL"
 ln -sfn "$REL" "$ROOT/current.new"
 mv -Tf "$ROOT/current.new" "$ROOT/current"
 
-restart() { sudo -n /usr/bin/systemctl restart meetings; }
+# RESTART_CMD nur für Tests ohne systemd überschreiben
+restart() { ${RESTART_CMD:-sudo -n /usr/bin/systemctl restart meetings}; }
 healthy() {
   for _ in $(seq 1 30); do
     curl -fsS --max-time 3 -o /dev/null "$HEALTH_URL" && return 0
