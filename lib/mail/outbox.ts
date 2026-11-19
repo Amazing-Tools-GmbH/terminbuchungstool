@@ -453,7 +453,8 @@ function toMailTenant(t: TenantRow): MailTenant {
   // SVG zeigen viele Mail-Clients (z. B. Gmail) nicht an -> dann Name als Text
   if (t.logo_path && /\.(png|jpe?g)$/i.test(t.logo_path)) {
     const url = storage.publicUrl(t.logo_path);
-    logoUrl = url.startsWith("http") ? url : `${(process.env.APP_BASE_URL ?? "").replace(/\/$/, "")}${url}`;
+    // relative URL enthält den Unterpfad bereits -> nur den Origin davorsetzen
+    logoUrl = url.startsWith("http") ? url : `${new URL(process.env.APP_BASE_URL ?? "http://localhost:3000").origin}${url}`;
   }
   return {
     name: t.name,

@@ -7,6 +7,7 @@ import {
   parseTenantKey,
   tenantQueryAllowed,
 } from "@/lib/tenant/host";
+import { cookiePath } from "@/lib/base-path";
 
 /**
  * Ermittelt aus Host (bzw. in Vorschauen aus ?tenant=) den Mandanten-
@@ -32,7 +33,7 @@ export function middleware(req: NextRequest) {
   const res = NextResponse.next({ request: { headers } });
   // Vorschau-Fallback merken, damit Folgeseiten ohne ?tenant= funktionieren
   if (allowQuery && queryTenant && key?.kind === "slug") {
-    res.cookies.set(TENANT_COOKIE, key.slug, { path: "/", sameSite: "lax", httpOnly: true });
+    res.cookies.set(TENANT_COOKIE, key.slug, { path: cookiePath(), sameSite: "lax", httpOnly: true });
   }
   return res;
 }

@@ -6,13 +6,15 @@ import { tenantUrl } from "@/lib/auth/urls";
 import { AdminError } from "@/lib/admin/errors";
 import { finishPendingMailbox } from "@/lib/mail/connect";
 import { sendMailsSoon } from "@/lib/booking/api";
+import { withBasePath } from "@/lib/base-path";
+import { cookiePath } from "@/lib/base-path";
 
 export const dynamic = "force-dynamic";
 
 /** Abschluss auf der Mandanten-Adresse: Sitzung + Nonce-Cookie prüfen, speichern, Testmail */
 export async function GET(req: NextRequest) {
   const ctx = await getAdminContext();
-  if (!ctx) return NextResponse.redirect(new URL("/admin/login", req.nextUrl));
+  if (!ctx) return NextResponse.redirect(new URL(withBasePath("/admin/login"), req.nextUrl.origin));
   const pending = z.string().uuid().safeParse(req.nextUrl.searchParams.get("pending"));
   let target: string;
   try {
@@ -25,6 +27,6 @@ export async function GET(req: NextRequest) {
     target = tenantUrl(ctx.tenant, "/admin/postfach", { error: code });
   }
   const res = NextResponse.redirect(target);
-  res.cookies.set(MAIL_NONCE_COOKIE, "", { path: "/api/mail", maxAge: 0 });
+  res.cookies.set(MAIL_NONCE_COOKIE, "", { path: cookiePath("/api/mail"), maxAge: 0 });
   return res;
 }

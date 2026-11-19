@@ -4,6 +4,8 @@ import { getAdminContext, secureCookies } from "@/lib/auth/admin";
 import { MAIL_NONCE_COOKIE, seal } from "@/lib/auth/session";
 import { tenantOrigin, tenantUrl } from "@/lib/auth/urls";
 import { mailAuthorizeUrl, mailOAuthConfig, MAIL_OAUTH_PROVIDERS, type MailOAuthProviderId } from "@/lib/mail/oauth";
+import { withBasePath } from "@/lib/base-path";
+import { cookiePath } from "@/lib/base-path";
 
 export const dynamic = "force-dynamic";
 
@@ -16,7 +18,7 @@ const STATE_TTL = 10 * 60;
 export async function GET(req: NextRequest, { params }: { params: Promise<{ provider: string }> }) {
   const { provider } = await params;
   const ctx = await getAdminContext();
-  if (!ctx) return NextResponse.redirect(new URL("/admin/login", req.nextUrl));
+  if (!ctx) return NextResponse.redirect(new URL(withBasePath("/admin/login"), req.nextUrl.origin));
   const scope = req.nextUrl.searchParams.get("scope") === "tenant" ? "tenant" : "user";
   const back = scope === "tenant" ? "/admin/email" : "/admin/postfach";
 
@@ -31,6 +33,6 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ prov
   const nonce = randomBytes(24).toString("base64url");
   const state = seal("mail-state", { purpose: "mail", provider, scope, tid: ctx.tenant.id, uid: ctx.userId, nonce }, STATE_TTL);
   const res = NextResponse.redirect(mailAuthorizeUrl(provider as MailOAuthProviderId, cfg, state, scope === "user" ? ctx.email : null));
-  res.cookies.set(MAIL_NONCE_COOKIE, nonce, { httpOnly: true, sameSite: "lax", secure: secureCookies(), path: "/api/mail", maxAge: STATE_TTL });
+  res.cookies.set(MAIL_NONCE_COOKIE, nonce, { httpOnly: true, sameSite: "lax", secure: secureCookies(), path: cookiePath("/api/mail"), maxAge: STATE_TTL });
   return res;
 }

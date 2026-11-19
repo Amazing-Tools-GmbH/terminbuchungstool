@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { formatText, type ResolvedTexts, type TextKey } from "@/lib/texts";
 import { splitAttendees } from "@/lib/booking/input";
 import styles from "./Booking.module.css";
+import { withBasePath } from "@/lib/base-path";
 
 export type SlotDisplay = {
   id: string;
@@ -175,7 +176,7 @@ function SelectionView(
     setPosting(true);
     setError(null);
     try {
-      const res = await fetch("/api/bookings", {
+      const res = await fetch(withBasePath("/api/bookings"), {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ token: props.token, slotId: selected.id, seats, name, email, extraAttendees }),
@@ -419,7 +420,7 @@ function Confirmation({
     setBusy(true);
     setError(null);
     try {
-      const res = await fetch("/api/bookings/cancel", {
+      const res = await fetch(withBasePath("/api/bookings/cancel"), {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ token }),

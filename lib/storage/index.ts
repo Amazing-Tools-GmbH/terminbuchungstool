@@ -9,6 +9,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { supabaseSecretKey } from "../supabase-keys";
+import { withBasePath } from "../base-path";
 
 export const ASSET_BUCKET = "tenant-assets";
 
@@ -39,7 +40,7 @@ export class LocalAssetStorage implements AssetStorage {
   }
   publicUrl(key: string): string {
     assertKey(key);
-    return `/dev-assets/${key}`;
+    return withBasePath(`/dev-assets/${key}`);
   }
 }
 

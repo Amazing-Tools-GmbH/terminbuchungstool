@@ -135,6 +135,24 @@ npm run supabase:seed                    # Seed-Mandanten + Logos in Bucket tena
 - DB-Tests laufen immer gegen `TEST_DATABASE_URL` und brechen ab, wenn die URL auf
   Supabase zeigt (sie setzen die Datenbank komplett zurück).
 
+### Unterpfad: `https://atools.de/meetings`
+
+Die App läuft produktiv unter einem Unterpfad: `APP_BASE_URL=https://atools.de/meetings`.
+Daraus setzt `next.config.ts` beim **Build** den Next.js-`basePath` `/meetings` (nach einer
+Änderung von `APP_BASE_URL` neu bauen).
+
+- Alle Seiten und APIs liegen unter `/meetings/…` (z. B. `/meetings/admin`, `/meetings/b/<token>`).
+- **Pipedrive-Callback** (Developer Hub): `https://atools.de/meetings/api/auth/pipedrive/callback`.
+  Google/Microsoft (nur bei `INVITE_MAIL_PROVIDER=oauth`):
+  `https://atools.de/meetings/api/mail/oauth/google/callback` bzw. `…/microsoft/callback`.
+- **Reverse Proxy:** `/meetings` *mit* Präfix an die App weiterreichen (nicht abschneiden),
+  Header `Host`/`X-Forwarded-Host` und `X-Forwarded-Proto` setzen.
+- Links in Mails, Redirects, Cookies (Pfad `/meetings`) und Logos berücksichtigen den Unterpfad;
+  geprüft im Browser-Durchlauf (Login, Navigation, Formulare, Abmelden, Pipedrive-Start,
+  Buchen, .ics, Mail-Links).
+- Lokal ohne Unterpfad (`APP_BASE_URL=http://localhost:3000`); zum Testen mit Unterpfad
+  `APP_BASE_URL=http://localhost:3000/meetings npm run dev` → `http://localhost:3000/meetings/…`.
+
 ### Hosting: eigener Server bei Hetzner (entschieden)
 
 Die App läuft als Node-Prozess (`next build` + `next start`) auf einem eigenen

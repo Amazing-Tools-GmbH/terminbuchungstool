@@ -58,6 +58,12 @@ Mandantenfähiges Terminbuchungstool mit Pipedrive-Integration. Auftrag und Phas
   `lib/texts/admin.ts`. Pipedrive-Benutzerliste über `lib/pipedrive/directory.ts`
   (`PIPEDRIVE_DIRECTORY=api|fake`; `fake` = Seed-Daten, nur lokal).
 - Hosting: eigener Server bei Hetzner (EU), kein Vercel. Cron per Server-Cron/systemd.
+- Unterpfad: Produktion unter `https://atools.de/meetings` (`APP_BASE_URL`) → Next.js
+  `basePath` `/meetings` (aus `APP_BASE_URL`, zur Build-Zeit, `next.config.ts`). Next ergänzt ihn
+  bei `<Link>`, `redirect()`, Server Actions; überall sonst (`href`/`action`-Attribute,
+  `fetch()` im Browser, selbst gebaute Redirect-URLs, Cookie-Pfade, Asset-URLs) IMMER
+  `withBasePath()` / `cookiePath()` aus `lib/base-path.ts`. Links in Mails über `lib/links.ts`
+  (Unterpfad gilt auch auf Kundendomains).
 
 ## Datenbank & Migrationen
 

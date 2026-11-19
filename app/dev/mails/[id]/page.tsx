@@ -4,6 +4,7 @@ import { withActor } from "@/lib/db";
 import { devToolsEnabled } from "@/lib/dev-tools";
 import type { MailMessage } from "@/lib/mail/types";
 import styles from "../mails.module.css";
+import { withBasePath } from "@/lib/base-path";
 
 export const dynamic = "force-dynamic";
 
@@ -43,7 +44,7 @@ export default async function DevMailPage({ params }: { params: Promise<{ id: st
           <div key={a.filename} className={styles.pair}>
             <dt>Anhang</dt>
             <dd>
-              <a href={`/dev/mails/${id}/ics?i=${i}`}>{a.filename}</a>
+              <a href={withBasePath(`/dev/mails/${id}/ics?i=${i}`)}>{a.filename}</a>
             </dd>
           </div>
         ))}

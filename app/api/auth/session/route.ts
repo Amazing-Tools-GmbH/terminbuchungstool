@@ -4,6 +4,7 @@ import { getCurrentTenant } from "@/lib/tenant/current";
 import { LOGIN_NONCE_COOKIE, loginTicketSchema, unseal } from "@/lib/auth/session";
 import { sessionCookie } from "@/lib/auth/admin";
 import { tenantUrl } from "@/lib/auth/urls";
+import { cookiePath } from "@/lib/base-path";
 
 export const dynamic = "force-dynamic";
 
@@ -27,6 +28,6 @@ export async function GET(req: NextRequest) {
 
   const res = NextResponse.redirect(tenantUrl(tenant, "/admin"));
   res.cookies.set(sessionCookie({ uid: ticket.uid, tid: ticket.tid, pd: ticket.pd }));
-  res.cookies.set(LOGIN_NONCE_COOKIE, "", { path: "/api/auth", maxAge: 0 });
+  res.cookies.set(LOGIN_NONCE_COOKIE, "", { path: cookiePath("/api/auth"), maxAge: 0 });
   return res;
 }

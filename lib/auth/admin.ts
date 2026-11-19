@@ -14,6 +14,7 @@ import type { PublicTenant } from "@/lib/tenant/types";
 import { SESSION_COOKIE, SESSION_TTL_SECONDS, seal, sessionSchema, unseal, type Session } from "./session";
 
 import type { MemberRole } from "./roles";
+import { cookiePath } from "@/lib/base-path";
 
 export { canManage, type MemberRole } from "./roles";
 
@@ -64,7 +65,7 @@ export function sessionCookie(session: Session) {
     httpOnly: true,
     sameSite: "lax" as const,
     secure: secureCookies(),
-    path: "/",
+    path: cookiePath(),
     maxAge: SESSION_TTL_SECONDS,
   };
 }
