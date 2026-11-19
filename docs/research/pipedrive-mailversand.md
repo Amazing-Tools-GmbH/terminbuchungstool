@@ -137,3 +137,38 @@ Eine Mail an die Adresse von Person 53 mit der Smart-BCC-Adresse der Sandbox in 
 (Absender egal – genau das täte unser `MailSender`), danach per API prüfen: erscheint sie
 bei Person 53 / Deal 501, mit `smart_bcc_flag = 1`, und kommt sie ohne Anhang-Verlust an
 (.ics)? Dafür fehlt in der Cloud-Umgebung ein Postfach zum Senden (SMTP o. Ä.).
+
+---
+
+## Nachtrag 19.11.2026 (3): Live-Versand über Pipedrive bestätigt
+
+**Offizielle API-Referenz (v1+v2, 371 Operationen, vollständig geparst):** kein Endpunkt
+zum Anlegen/Senden; dokumentierte Mail-Scopes nur `mail:read`, `mail:full`.
+
+**Undokumentiert, aber vorhanden (Sandbox, API-Token):**
+- `POST /api/v1/mailbox/mailDrafts` legt einen Entwurf im verbundenen Postfach des
+  Benutzers an, verknüpfbar mit Deal (`deal_id`), Felder wie `to`, `subject`, `body`,
+  `sendmode`. `PUT /api/v1/mailbox/mailDrafts/{id}` aktualisiert ihn.
+- `POST /api/v1/mailbox/mailDrafts/{id}/send` existiert (Dienst „email-api“), lehnt aber
+  ohne bekanntes Format mit `statusCode 7000 Bad request` ab.
+- Pipedrives OAuth-Server (`https://oauth.pipedrive.com/.well-known/oauth-authorization-server`)
+  bietet den Scope **`mail-sending:full`** an (nicht in der API-Referenz), außerdem Dynamic
+  Client Registration (`/oauth/register`) und PKCE.
+
+**Echter Versand über Pipedrives offiziellen MCP-Server** (`mcp.pipedrive.ai/mcp`, genutzt
+vom Claude-Connector, Firma `pdx-sandbox`): `createMailDraft` + `sendMailDraft`, Empfänger
+Testadresse des Auftraggebers, Deal 501.
+- Versand über das verbundene Postfach des Benutzers nach ca. 10 s Warteschlange
+  („Rückgängig“-Fenster, `mail_queue.delay_until_time`).
+- Nachricht: `sent_flag = 1`, `sent_from_pipedrive_flag = 1`, `synced_flag = 1`.
+- **Erscheint im Deal-Verlauf** (Deal 501, `flow` → `mailMessage`).
+- **Zugestellt** (vom Auftraggeber bestätigt), Link und Signatur im HTML-Text korrekt.
+- Pipedrive fügt keine Signatur hinzu (`mail_signature_id = null`) → Signatur im HTML-Body.
+- Keine Anhänge auf diesem Weg (für Einladungen nicht nötig).
+
+**Wege für die App (automatischer Versand beim Klick „Einladung senden“ im Panel):**
+- A: eigene Pipedrive-App mit Scope `mail-sending:full` (prüfen, ob im Developer Hub
+  wählbar) + Entwurfs-Endpunkte direkt.
+- B: App als MCP-Client gegen `mcp.pipedrive.ai/mcp` (offiziell angebotene Schnittstelle),
+  einmalige Freigabe je Vertriebsmitarbeiter; Tools `createMailDraft`/`sendMailDraft`.
+  Host ist in der Cloud-Umgebung derzeit nicht freigegeben.
