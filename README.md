@@ -198,7 +198,7 @@ useradd --system --no-create-home --home-dir /nonexistent --shell /usr/sbin/nolo
 useradd --create-home --shell /bin/bash deploy-meetings
 install -d -o deploy-meetings -g meetings -m 2750 /srv/meetings /srv/meetings/releases   # 2 = setgid: Uploads erben die Gruppe meetings
 install -d -o root -g meetings -m 0750 /etc/meetings
-install -o root -g meetings -m 0640 /dev/null /etc/meetings/env && sudoedit /etc/meetings/env
+bash deploy/setup-env.sh                       # legt /etc/meetings/env an (fragt Werte ab, erzeugt Schlüssel)
 # Deploy-Schlüssel: öffentlichen Teil eintragen (privaten als Secret DEPLOY_SSH_KEY in GitHub)
 install -d -o deploy-meetings -g deploy-meetings -m 0700 /home/deploy-meetings/.ssh
 echo 'restrict ssh-ed25519 AAAA… github-actions-meetings' > /home/deploy-meetings/.ssh/authorized_keys
