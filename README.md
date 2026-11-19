@@ -106,8 +106,12 @@ Logos landen lokal unter `.data/dev-assets/` (gitignored, ausgeliefert über `/d
 Aus der Cloud-Umgebung gibt es **keine direkte DB-Verbindung** (nur HTTPS über den
 Proxy; erlaubte Hosts `pkegcsgnyicdxzivnijw.supabase.co`, `api.supabase.com`). Darum
 laufen die Betriebsskripte unter `scripts/supabase/` über die Management API
-(`SUPABASE_ACCESS_TOKEN`) bzw. die Projekt-API (`SUPABASE_SERVICE_ROLE_KEY`).
+(`SUPABASE_ACCESS_TOKEN`) bzw. die Projekt-API (`SUPABASE_SECRET_KEY`).
 `SUPABASE_DB_URL` wird nur auf dem Produktionsserver gesetzt.
+
+In der Cloud-Umgebung muss Node dafür den Proxy nutzen, solange der Projekt-Host nicht
+als erlaubte Domain eingetragen ist: `export NODE_USE_ENV_PROXY=1` vor den Befehlen.
+Die Skripte brechen ab, wenn `SUPABASE_URL` nicht auf `SUPABASE_PROJECT_REF` zeigt.
 
 ```bash
 npm run supabase:inspect                 # Bestandsaufnahme, nur lesend
@@ -144,7 +148,7 @@ Noch umzusetzen (eigener Schritt, vor dem ersten echten Kunden):
 - Outbox-Cron: Server-Cron/systemd-Timer ruft `GET /api/cron/outbox`
   (Header `Authorization: Bearer $CRON_SECRET`) z. B. jede Minute auf – kein Tarif-Limit.
 - Umgebungsvariablen auf dem Server: `SUPABASE_DB_URL` (Pooler-URL, Transaction-Modus),
-  `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`,
+  `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY`,
   `ASSET_STORAGE=supabase`, `ENCRYPTION_KEY`, `APP_DOMAIN`, `APP_BASE_URL`, `CRON_SECRET`
   (`SUPABASE_ACCESS_TOKEN` gehört **nicht** auf den Server).
 - Statt Vercel-Previews: eine Staging-Instanz mit `ALLOW_TENANT_QUERY_PARAM=true`.
@@ -216,7 +220,7 @@ Siehe [`.env.example`](.env.example). Keine Secrets committen.
 |---|---|
 | `DATABASE_URL` | lokale Dev-Datenbank |
 | `TEST_DATABASE_URL` | lokale Testdatenbank, wird bei jedem Testlauf zurückgesetzt (nie Supabase) |
-| `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` | Supabase-Projekt (Service-Key nur serverseitig) |
+| `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY` | Supabase-Projekt, neue API-Schlüssel (`sb_publishable_…`, `sb_secret_…`; secret nur serverseitig). Alte Namen `SUPABASE_ANON_KEY`/`SUPABASE_SERVICE_ROLE_KEY` gelten als Fallback |
 | `SUPABASE_DB_URL` | nur Produktionsserver: DB-Verbindung, hat Vorrang vor `DATABASE_URL` |
 | `SUPABASE_ACCESS_TOKEN` | nur Betriebsskripte (`npm run supabase:*`), nie auf dem Server |
 | `ASSET_STORAGE` | `local` (Standard) oder `supabase` – Ablage der Mandanten-Logos |

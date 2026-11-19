@@ -11,6 +11,7 @@ import "server-only";
 import { withActor } from "@/lib/db";
 import { getPool } from "@/lib/db/pool";
 import { authAdminTarget } from "./users-target";
+import { supabaseSecretKey } from "@/lib/supabase-keys";
 
 type Env = Record<string, string | undefined>;
 
@@ -23,8 +24,8 @@ async function findUserId(email: string): Promise<string | null> {
 
 async function createSupabaseUser(email: string, name: string, env: Env): Promise<void> {
   const url = env.SUPABASE_URL?.replace(/\/$/, "");
-  const key = env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) throw new Error("SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY fehlen für AUTH_ADMIN=supabase");
+  const key = supabaseSecretKey(env);
+  if (!url || !key) throw new Error("SUPABASE_URL/SUPABASE_SECRET_KEY fehlen für AUTH_ADMIN=supabase");
   const res = await fetch(`${url}/auth/v1/admin/users`, {
     method: "POST",
     headers: { apikey: key, authorization: `Bearer ${key}`, "content-type": "application/json" },

@@ -1,11 +1,12 @@
 /**
  * Zugriff auf das Supabase-Projekt über HTTPS (ohne direkte DB-Verbindung):
  *   * SQL über die Management API  (SUPABASE_ACCESS_TOKEN, Projekt-Ref aus SUPABASE_URL)
- *   * Storage/Auth über die Projekt-API (SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY)
+ *   * Storage/Auth über die Projekt-API (SUPABASE_URL + SUPABASE_SECRET_KEY)
  * Nur für Betriebsskripte (Migration, Seed, Bestandsaufnahme) – nie in der App.
  */
 import pg from "pg";
 import { requireEnv } from "../env";
+import { supabaseSecretKey } from "../../lib/supabase-keys";
 
 /**
  * Projekt-Ref aus SUPABASE_URL – muss mit SUPABASE_PROJECT_REF übereinstimmen.
@@ -67,7 +68,8 @@ export function inlineParams(sql: string, params: readonly unknown[] = []): stri
 /** Aufruf der Projekt-API (Storage, Auth-Admin) mit Service-Role-Key. */
 export async function projectApi<T = unknown>(pathname: string, init: RequestInit = {}): Promise<T> {
   projectRef(); // gleiche Projektprüfung wie bei SQL
-  const key = requireEnv("SUPABASE_SERVICE_ROLE_KEY");
+  const key = supabaseSecretKey();
+  if (!key) throw new Error("SUPABASE_SECRET_KEY fehlt (siehe .env.example)");
   const res = await fetch(`${requireEnv("SUPABASE_URL")}${pathname}`, {
     ...init,
     headers: { apikey: key, authorization: `Bearer ${key}`, ...((init.headers as Record<string, string>) ?? {}) },

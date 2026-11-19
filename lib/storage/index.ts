@@ -8,6 +8,7 @@
  */
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { supabaseSecretKey } from "../supabase-keys";
 
 export const ASSET_BUCKET = "tenant-assets";
 
@@ -50,7 +51,7 @@ export class SupabaseAssetStorage implements AssetStorage {
   ) {}
   async put(key: string, body: Buffer, contentType: string): Promise<void> {
     assertKey(key);
-    if (!this.serviceRoleKey) throw new Error("SUPABASE_SERVICE_ROLE_KEY fehlt für Uploads");
+    if (!this.serviceRoleKey) throw new Error("SUPABASE_SECRET_KEY fehlt für Uploads");
     const res = await fetch(`${this.url}/storage/v1/object/${ASSET_BUCKET}/${key}`, {
       method: "POST",
       headers: {
@@ -84,7 +85,7 @@ export function createAssetStorage(
 ): AssetStorage {
   if (kind === "local") return new LocalAssetStorage();
   if (!env.SUPABASE_URL) throw new Error("ASSET_STORAGE=supabase, aber SUPABASE_URL fehlt");
-  return new SupabaseAssetStorage(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY);
+  return new SupabaseAssetStorage(env.SUPABASE_URL, supabaseSecretKey(env));
 }
 
 /** Ablage gemäß ASSET_STORAGE (App-Laufzeit). */
