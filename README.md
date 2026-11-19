@@ -247,7 +247,11 @@ Kunde aus seiner Pipedrive-Identität bzw. aus dem Buchungslink:
 - **Installation:** Die Installation läuft über dieselbe Callback-URL (ohne `state`). Neue
   Pipedrive-Firma ⇒ Mandant (Slug = Unternehmensdomain, Name/Zeitzone aus Pipedrive),
   Verbindung, Installierende:r wird Owner und ist gleich angemeldet (`/admin?installed=1`,
-  dort „Veranstaltung anlegen“). Erneute Installation erneuert nur die Tokens.
+  dort „Veranstaltung anlegen“). Gibt es bereits einen vorbereiteten Mandanten mit genau
+  diesem Slug, der noch **nie** mit Pipedrive verbunden war (z. B. aus dem Seed), wird er
+  übernommen – Theme, Termine, Name und Zeitzone bleiben, Installierende:r wird Owner.
+  Ein schon einmal verbundener Mandant wird nie übernommen (dann neuer Mandant mit Zähler,
+  z. B. `demo-2`). Erneute Installation erneuert nur die Tokens.
   Deinstallation setzt die Verbindung auf `revoked` – Daten bleiben erhalten.
 - **Panel im Deal** (`/panel`): Pipedrive lädt die Seite im iframe mit signiertem Token
   (wie `/settings`, max. 15 Min. alt). Daraus entsteht eine Panel-Sitzung (versiegelt, 2 h,

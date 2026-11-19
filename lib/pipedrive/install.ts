@@ -4,10 +4,12 @@ import "server-only";
  *   - neue Firma  -> Mandant anlegen (Name aus Pipedrive, Slug aus der
  *                    Pipedrive-Domain, Standard-Theme), Verbindung speichern,
  *                    Installierender wird owner und ist angemeldet
+ *   - vorbereiteter Mandant mit gleichem Slug, noch nie verbunden -> übernehmen
  *   - bekannte Firma -> Verbindung erneuern (Daten bleiben unverändert)
  * Deinstallation: Verbindung deaktivieren, Daten behalten.
  * Läuft als service_role (Server-Job "Pipedrive-Installation").
  */
+import type { PoolClient } from "pg";
 import { withActor } from "@/lib/db";
 import { getPool } from "@/lib/db/pool";
 import { encryptSecret } from "@/lib/crypto/secretbox";
@@ -18,7 +20,7 @@ import { tenantSlugFromPipedrive } from "./domain";
 import { storeUserTokens } from "./user-connection";
 
 export type InstallResult =
-  | { ok: true; created: boolean; session: Session }
+  | { ok: true; created: boolean; adopted: boolean; session: Session }
   | { ok: false; error: "no_access" | "install_failed"; created: boolean };
 
 function validTimezone(tz: string | undefined): string {
@@ -29,6 +31,24 @@ function validTimezone(tz: string | undefined): string {
   } catch {
     return "Europe/Vienna";
   }
+}
+
+/** Installierende:r wird aktiver Owner (bestehender Eintrag desselben Benutzers wird angehoben) */
+async function addOwner(db: PoolClient, tid: string, uid: string, me: PipedriveMe) {
+  // Pipedrive-ID eindeutig je Mandant: ein anderer Eintrag mit derselben ID verliert sie
+  await db.query("update public.tenant_members set pipedrive_user_id = null where tenant_id = $1 and pipedrive_user_id = $2 and user_id <> $3", [
+    tid,
+    me.id,
+    uid,
+  ]);
+  await db.query(
+    `insert into public.tenant_members (tenant_id, user_id, role, status, pipedrive_user_id, display_name, email)
+     values ($1, $2, 'owner', 'active', $3, $4, $5)
+     on conflict (tenant_id, user_id) do update
+       set role = 'owner', status = 'active', pipedrive_user_id = excluded.pipedrive_user_id,
+           display_name = excluded.display_name, email = excluded.email`,
+    [tid, uid, me.id, me.name.slice(0, 200), me.email],
+  );
 }
 
 export async function installFromOAuth(me: PipedriveMe, t: PipedriveTokens): Promise<InstallResult> {
@@ -61,11 +81,34 @@ export async function installFromOAuth(me: PipedriveMe, t: PipedriveTokens): Pro
         "select user_id from public.tenant_members where tenant_id = $1 and pipedrive_user_id = $2 and status = 'active'",
         [tid, me.id],
       );
-      return { tid, created: false, uid: rows[0]?.user_id ?? null };
+      return { tid, created: false, adopted: false, uid: rows[0]?.user_id ?? null };
+    }
+
+    const base = tenantSlugFromPipedrive(me.companyDomain) ?? `firma-${me.companyId}`;
+
+    // vorbereiteter Mandant (z. B. aus dem Seed) mit genau diesem Slug, der noch NIE mit
+    // Pipedrive verbunden war: übernehmen statt einen zweiten anzulegen. Daten (Theme,
+    // Termine, Name, Zeitzone) bleiben; Installierende:r wird Owner.
+    const { rows: prepared } = await db.query<{ id: string }>(
+      `select t.id from public.tenants t
+        where t.slug = $1
+          and not exists (select 1 from public.pipedrive_connections c where c.tenant_id = t.id)
+        for update`,
+      [base],
+    );
+    if (prepared[0]) {
+      const tid = prepared[0].id;
+      await db.query(
+        `insert into public.pipedrive_connections
+           (tenant_id, api_domain, access_token_enc, refresh_token_enc, expires_at, scopes, installed_by_user_id, company_domain, company_id)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+        [tid, ...conn, me.companyId],
+      );
+      await addOwner(db, tid, authUserId, me);
+      return { tid, created: false, adopted: true, uid: authUserId };
     }
 
     // neuer Mandant: Slug aus der Pipedrive-Domain, bei Kollision mit Zähler
-    const base = tenantSlugFromPipedrive(me.companyDomain) ?? `firma-${me.companyId}`;
     let slug = base;
     for (let n = 2; ; n++) {
       const { rowCount } = await db.query("select 1 from public.tenants where slug = $1", [slug]);
@@ -84,18 +127,13 @@ export async function installFromOAuth(me: PipedriveMe, t: PipedriveTokens): Pro
        values ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
       [tid, ...conn, me.companyId],
     );
-    // Installierender wird owner
-    await db.query(
-      `insert into public.tenant_members (tenant_id, user_id, role, status, pipedrive_user_id, display_name, email)
-       values ($1, $2, 'owner', 'active', $3, $4, $5)`,
-      [tid, authUserId, me.id, me.name.slice(0, 200), me.email],
-    );
-    return { tid, created: true, uid: authUserId };
+    await addOwner(db, tid, authUserId, me);
+    return { tid, created: true, adopted: false, uid: authUserId };
   });
 
   if (!res.uid) return { ok: false, error: "no_access", created: res.created };
   await storeUserTokens(getPool(), res.tid, res.uid, me, t);
-  return { ok: true, created: res.created, session: { uid: res.uid, tid: res.tid, pd: me.id } };
+  return { ok: true, created: res.created, adopted: res.adopted, session: { uid: res.uid, tid: res.tid, pd: me.id } };
 }
 
 /** Deinstallation (Pipedrive meldet sie an den Callback): deaktivieren, Daten behalten */

@@ -95,7 +95,7 @@ async function install(code: string | null, fail: (e: string) => NextResponse) {
     return fail("install_failed");
   }
   if (!result.ok) return fail(result.error);
-  const res = NextResponse.redirect(appUrl("/admin", result.created ? { installed: "1" } : {}));
+  const res = NextResponse.redirect(appUrl("/admin", result.created || result.adopted ? { installed: "1" } : {}));
   res.cookies.set(sessionCookie(result.session));
   return res;
 }

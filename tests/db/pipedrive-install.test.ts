@@ -89,12 +89,37 @@ describe("Pipedrive-Installation", () => {
     expect(r).toEqual({ ok: false, error: "no_access", created: false });
   });
 
-  it("Slug-Kollision mit bestehendem Mandanten: Zähler; ungültige Zeitzone -> Standard", async () => {
+  it("vorbereiteter Mandant mit gleichem Slug (nie verbunden) wird übernommen", async () => {
+    const [before] = await db.admin<{ id: string; name: string; theme: unknown; timezone: string }>(
+      "select id, name, theme, timezone from tenants where slug = 'demo'",
+    );
+    const membersBefore = await db.admin<{ user_id: string }>("select user_id from tenant_members where tenant_id = $1", [before!.id]);
     const r = await install.installFromOAuth(
-      me({ companyId: 8100002, id: 8800003, email: "x@demo.example", companyDomain: "demo", companyName: undefined, timezone: "Mars/Olympus" }),
+      me({ companyId: 8100002, id: 8800003, email: "x@demo.example", companyDomain: "demo", companyName: "Anderer Name", timezone: "Europe/Berlin" }),
       tokens("4"),
     );
-    expect(r.ok).toBe(true);
+    expect(r).toMatchObject({ ok: true, created: false, adopted: true });
+    if (!r.ok) return;
+    expect(r.session.tid).toBe(before!.id);
+    // Daten bleiben unverändert
+    const [after] = await db.admin<{ name: string; theme: unknown; timezone: string }>("select name, theme, timezone from tenants where id = $1", [before!.id]);
+    expect(after).toEqual({ name: before!.name, theme: before!.theme, timezone: before!.timezone });
+    const members = await db.admin<{ user_id: string; role: string; status: string }>(
+      "select user_id, role::text, status::text from tenant_members where tenant_id = $1",
+      [before!.id],
+    );
+    expect(members).toHaveLength(membersBefore.length + 1);
+    expect(members.find((m) => m.user_id === r.session.uid)).toMatchObject({ role: "owner", status: "active" });
+    expect(await connection.tenantIdForCompany(8100002)).toBe(before!.id);
+  });
+
+  it("Mandant war schon einmal verbunden: keine Übernahme, neuer Mandant mit Zähler; ungültige Zeitzone -> Standard", async () => {
+    await install.uninstallCompany(8100002);
+    const r = await install.installFromOAuth(
+      me({ companyId: 8100004, id: 8800005, email: "z@demo.example", companyDomain: "demo", companyName: undefined, timezone: "Mars/Olympus" }),
+      tokens("7"),
+    );
+    expect(r).toMatchObject({ ok: true, created: true, adopted: false });
     if (!r.ok) return;
     const [t] = await db.admin<{ slug: string; name: string; timezone: string }>("select slug, name, timezone from tenants where id = $1", [r.session.tid]);
     expect(t).toEqual({ slug: "demo-2", name: "demo", timezone: "Europe/Vienna" });
