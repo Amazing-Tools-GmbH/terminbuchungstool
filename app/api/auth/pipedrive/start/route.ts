@@ -3,7 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { authorizeUrl, oauthConfig } from "@/lib/pipedrive/client";
 import { LOGIN_NONCE_COOKIE, LOGIN_STATE_TTL_SECONDS, seal } from "@/lib/auth/session";
 import { secureCookies } from "@/lib/auth/admin";
-import { appOrigin, appUrl } from "@/lib/auth/urls";
+import { appUrl, isAppOrigin } from "@/lib/auth/urls";
 
 export const dynamic = "force-dynamic";
 
@@ -13,7 +13,7 @@ export const dynamic = "force-dynamic";
  * Adresse) akzeptiert die Anmeldung nur zusammen mit diesem Cookie.
  */
 export async function GET(req: NextRequest) {
-  if (req.nextUrl.origin !== appOrigin()) return NextResponse.redirect(appUrl("/api/auth/pipedrive/start"));
+  if (!isAppOrigin(req.headers, req.url)) return NextResponse.redirect(appUrl("/api/auth/pipedrive/start"));
 
   const cfg = oauthConfig();
   if (!cfg) return NextResponse.redirect(appUrl("/admin/login", { error: "not_configured" }));

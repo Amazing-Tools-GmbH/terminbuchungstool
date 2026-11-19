@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { NextResponse, type NextRequest } from "next/server";
 import { getAdminContext, secureCookies } from "@/lib/auth/admin";
 import { MAIL_NONCE_COOKIE, seal } from "@/lib/auth/session";
-import { appOrigin, appUrl } from "@/lib/auth/urls";
+import { appUrl, isAppOrigin } from "@/lib/auth/urls";
 import { mailAuthorizeUrl, mailOAuthConfig, MAIL_OAUTH_PROVIDERS, type MailOAuthProviderId } from "@/lib/mail/oauth";
 
 export const dynamic = "force-dynamic";
@@ -16,13 +16,13 @@ const STATE_TTL = 10 * 60;
 export async function GET(req: NextRequest, { params }: { params: Promise<{ provider: string }> }) {
   const { provider } = await params;
   const ctx = await getAdminContext();
-  if (!ctx) return NextResponse.redirect(new URL("/admin/login", req.nextUrl.origin));
+  if (!ctx) return NextResponse.redirect(appUrl("/admin/login"));
   const scope = req.nextUrl.searchParams.get("scope") === "tenant" ? "tenant" : "user";
   const back = scope === "tenant" ? "/admin/email" : "/admin/postfach";
 
   if (!(MAIL_OAUTH_PROVIDERS as readonly string[]).includes(provider)) return new NextResponse("Unbekannter Anbieter", { status: 404 });
   if (scope === "tenant" && ctx.role === "sales") return NextResponse.redirect(appUrl(back, { error: "forbidden" }));
-  if (req.nextUrl.origin !== appOrigin()) {
+  if (!isAppOrigin(req.headers, req.url)) {
     return NextResponse.redirect(appUrl(`/api/mail/oauth/${provider}/start`, { scope }));
   }
   const cfg = mailOAuthConfig(provider as MailOAuthProviderId);

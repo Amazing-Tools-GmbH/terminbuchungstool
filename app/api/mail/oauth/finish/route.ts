@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
 /** Abschluss (zentrale Adresse): Sitzung + Nonce-Cookie prüfen, speichern, Testmail */
 export async function GET(req: NextRequest) {
   const ctx = await getAdminContext();
-  if (!ctx) return NextResponse.redirect(new URL("/admin/login", req.nextUrl.origin));
+  if (!ctx) return NextResponse.redirect(appUrl("/admin/login"));
   const pending = z.string().uuid().safeParse(req.nextUrl.searchParams.get("pending"));
   let target: string;
   try {

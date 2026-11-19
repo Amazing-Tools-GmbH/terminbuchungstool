@@ -25,3 +25,18 @@ describe("Öffentliche Links (Root, Mandant aus dem Token)", () => {
     );
   });
 });
+
+import { isAppOrigin, requestOrigin } from "@/lib/auth/urls";
+describe("Anfrage-Adresse hinter Caddy", () => {
+  const h = (o: Record<string, string>) => new Headers(o);
+  it("X-Forwarded-Proto/-Host von Caddy zählen, nicht 127.0.0.1:3003", () => {
+    const caddy = h({ host: "meetings.atools.de", "x-forwarded-proto": "https", "x-forwarded-host": "meetings.atools.de" });
+    expect(requestOrigin(caddy, "http://127.0.0.1:3003/api/auth/pipedrive/start")).toBe("https://meetings.atools.de");
+    expect(isAppOrigin(caddy, "http://127.0.0.1:3003/x", PROD)).toBe(true);
+  });
+  it("andere Hosts (z. B. Kundendomain) sind nicht die zentrale Adresse", () => {
+    const other = h({ host: "termine.kunde.at", "x-forwarded-proto": "https" });
+    expect(isAppOrigin(other, "http://127.0.0.1:3003/x", PROD)).toBe(false);
+    expect(isAppOrigin(h({ host: "meetings.atools.de" }), "http://127.0.0.1:3003/x", PROD)).toBe(false); // ohne https
+  });
+});
