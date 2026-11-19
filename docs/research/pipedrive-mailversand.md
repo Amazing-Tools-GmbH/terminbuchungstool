@@ -40,3 +40,72 @@ Pipedrive hat die Funktion also intern. Ob unsere private OAuth-App sie über ei
 - https://devcommunity.pipedrive.com/t/endpoint-for-creating-a-draft-email/163
 - https://devcommunity.pipedrive.com/t/pipedrive-apis-for-sending-emails/6460
 - https://developers.pipedrive.com/changelog
+
+---
+
+## Nachtrag 19.11.2026: Prüfung mit Zugängen
+
+### Was in der Umgebung vorhanden ist
+
+| Prüfung | Ergebnis |
+|---|---|
+| `PIPEDRIVE_COMPANY_DOMAIN`, `PIPEDRIVE_API_TOKEN` | **nicht gesetzt** (weder als Umgebungsvariable noch als Network secret) |
+| `api.pipedrive.com` | erreichbar, aber ohne Zugangsdaten → `401 unauthorized` |
+| `oauth.pipedrive.com` | erreichbar (`401` ohne Client-Zugang, erwartbar) |
+| `developers.pipedrive.com` | erreichbar, Doku und Changelog abrufbar |
+| `pipedrive.readme.io` (Scope-Erklärungen) | nicht freigegeben |
+| Pipedrive-Connector (claude.ai) | verbunden, aber **ohne Mail-Berechtigung** („connector requires additional permissions“); auch `base`/`users:read` fehlen. Ein Live-Test von `createMailDraft` war daher nicht möglich. |
+
+### Öffentliche API (Stand heute, geprüft direkt auf developers.pipedrive.com)
+
+- **Mailbox gibt es nur in v1** und nur mit diesen Endpunkten:
+  `GET mailbox/mailMessages/{id}`, `GET mailbox/mailThreads`, `GET mailbox/mailThreads/{id}`,
+  `GET mailbox/mailThreads/{id}/mailMessages`, `PUT mailbox/mailThreads/{id}` (Deal/Lead
+  verknüpfen, gelesen/archiviert), `DELETE mailbox/mailThreads/{id}`.
+  **Kein Endpunkt zum Anlegen oder Senden** von Mails oder Entwürfen – weder v1 noch v2.
+- **Changelog 2025/2026**: kein Eintrag zu Mail/Entwürfen/neuen Scopes (Einträge betreffen
+  Projects v2, Fields v2, Webhooks, Abschaltung der Channels-API und der veralteten
+  v1-Endpunkte für Deals/Personen usw. zum 01.08.2026 – Mailbox ist davon nicht betroffen).
+- **Scopes**: `mail:read` (lesen) und `mail:full` (Threads lesen/ändern/löschen). Keiner der
+  dokumentierten Scopes erlaubt Senden oder Entwürfe.
+- **API-Token vs. OAuth**: für die Mailbox-Endpunkte gleichwertig; beide sehen nur das
+  Postfach *des Benutzers, dem Token bzw. Installation gehören*. Für eine Multi-Mandanten-App
+  kommt ohnehin nur OAuth in Frage (ein Token pro installierendem Benutzer, Rechte nach Scope).
+- **Rate-Limits**: Token-basiertes Kontingent pro Firma (Tagesbudget abhängig von Tarif und
+  Plätzen) plus Burst-Limits; für unser Volumen (einzelne Einladungen) unkritisch.
+- Die Draft-/Send-Funktion des Claude-Connectors nutzt also eine **nicht öffentliche**
+  Schnittstelle, die Pipedrive eigenen bzw. Partner-Integrationen vorbehält. Darauf können wir
+  nicht bauen (undokumentiert, kein Scope für Marketplace-Apps, jederzeit änderbar).
+
+### Wege, die Mails trotzdem in den Deal-Verlauf bringen
+
+| Weg | Absender | Anhänge (.ics) | Deal-Verlauf | Aufwand/Risiko |
+|---|---|---|---|---|
+| **A. Versand über das eigene Postfach (Gmail API / Graph / SMTP) + Pipedrive „Smart Email BCC“** | Postfach des Mitarbeiters (`scope = 'user'`) oder Mandanten-Postfach | ja | ja: Pipedrive legt jede Mail, die in BCC an die Smart-BCC-Adresse geht, bei Kontakt/Deal ab | gering; Smart-BCC-Adresse einmal im Onboarding hinterlegen (Feld in `mail_connections` bzw. Mandant). Kein neuer Scope nötig. |
+| **B. Versand über das eigene Postfach, das in Pipedrive per E-Mail-Sync verbunden ist** | wie A | ja | ja, automatisch per Sync, wenn Empfänger als Kontakt existiert (Zuordnung zum Deal nach Pipedrive-Regeln) | gering, aber abhängig davon, dass der Mitarbeiter sein Postfach in Pipedrive synchronisiert |
+| **C. Pipedrive-Automatisierung „E-Mail senden“** (App setzt ein Deal-Feld mit dem Buchungslink, Automation verschickt Vorlage) | Pipedrive-Postfach des Benutzers | nein | ja | Einrichtung pro Kunde in Pipedrive, tarifabhängig, Text/Theme liegen außerhalb unseres Tools → widerspricht „minimaler Einrichtungsaufwand“ |
+| **D. Nicht öffentliche Draft-/Send-Schnittstelle** | Pipedrive-Postfach | nein | ja | nicht nutzbar (s. o.) |
+| **E. Notiz/Aktivität per API im Deal** (ohnehin Phase 4) | – | – | Verlaufseintrag „Einladung gesendet/Termin gebucht“, keine Mail-Kopie | gering, offiziell (`notes`, `activities` v2) |
+
+Die Idee „Kalendereintrag als Link statt Anhang“ (.ics-Download + Google/Outlook-Links, gibt es
+schon) würde nur für Weg C/D gebraucht. Bei A/B bleibt der .ics-Anhang möglich.
+
+### Empfehlung (aktualisiert)
+
+1. **Einladungen und Bestätigungen laufen nicht über die Pipedrive-API**, sondern weiter über
+   `MailSender` (Google/Microsoft/SMTP) – öffentlich gibt es keinen Sende-Endpunkt.
+2. **Absender der Einladung** = Postfach des einladenden Vertriebsmitarbeiters
+   (`mail_connections.scope = 'user'`), wenn verbunden; sonst Mandanten-Postfach mit
+   sichtbarem Hinweis im Panel (kein stiller Wechsel). Bestätigungen: Postfach des
+   Mitarbeiters, der eingeladen hat, falls vorhanden, sonst Mandanten-Postfach – das ist eine
+   fachliche Entscheidung des Auftraggebers.
+3. **Deal-Verlauf** über Weg A (Smart Email BCC, optional je Mandant/Benutzer) **plus** Weg E
+   (Notiz/Aktivität per API) – E funktioniert immer, A liefert zusätzlich die Mail-Kopie.
+4. Live-Bestätigung offen: Sobald `PIPEDRIVE_API_TOKEN` (bzw. ein Connector mit Mail-Scope)
+   und ein Test-Benutzer mit verbundenem Postfach vorhanden sind, prüfen: Smart-BCC-Ablage am
+   Deal, Sync-Zuordnung, und ob der Connector-Entwurf (`createMailDraft`) im Deal erscheint –
+   Testmails nur an eine vom Auftraggeber genannte Adresse.
+
+Quellen (Nachtrag): https://developers.pipedrive.com/docs/api/v1/Mailbox ·
+https://developers.pipedrive.com/changelog ·
+https://pipedrive.readme.io/docs/marketplace-scopes-and-permissions-explanations
