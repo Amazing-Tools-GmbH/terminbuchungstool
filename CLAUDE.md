@@ -87,10 +87,20 @@ Mandantenfähiges Terminbuchungstool mit Pipedrive-Integration. Auftrag und Phas
   (`resolveTexts`), Datums-Formatierung serverseitig in der Mandanten-Zeitzone.
 - API-Routen validieren mit zod, rufen `lib/booking/service.ts` und stoßen danach per
   `after()` die Outbox an. Fehlercodes `TB:*` → `lib/booking/errors.ts`.
-- Mails: `lib/mail` – `MailSender`-Interface (`dev`, `smtp`; Google/Microsoft folgen),
+- Mails: `lib/mail` – `MailSender`-Interface (`dev`, `smtp`, `google` = Gmail API,
+  `microsoft` = Graph; OAuth nur mit Sende-Recht, `lib/mail/oauth.ts`),
   Vorlagen in `templates.ts` (Inline-Styles, kein SVG/Verlauf), Verarbeitung in `outbox.ts`
   (SKIP LOCKED, Backoff, Postfach-Fehler ⇒ Mail bleibt queued). Links in Mails nur über
   `lib/links.ts`; der Buchungslink steht verschlüsselt im Outbox-Payload (`link_enc`).
+- Postfach verbinden (`/admin/postfach` je Benutzer, Firmenpostfach + Smart BCC unter
+  `/admin/email`): Speichern nur über `public.save_mail_connection` (Status `pending`),
+  aktiv erst nach zugestellter Testmail (`request_mail_test` → Outbox). OAuth wie der Login:
+  Start auf Mandanten-Host (Nonce), zentraler Callback → `mail_oauth_pending` (nur
+  service_role) → Abschluss mit Sitzung + Nonce. Absenderwahl beim Versand
+  (`lib/mail/sender-choice.ts`): Einladung = Postfach des Einladenden, gestört ⇒ wartet;
+  Bestätigung/Stornierung = Postfach des Einladenden, gestört ⇒ Firmenpostfach, sichtbar
+  vermerkt (`email_outbox.sender_fallback_reason`). Kundenmails in BCC an
+  `tenants.smart_bcc_email` (nur `@pipedrivemail.com`) → Ablage in Pipedrive.
 
 ## Theme & Texte
 

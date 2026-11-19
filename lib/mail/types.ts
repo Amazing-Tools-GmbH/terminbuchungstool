@@ -8,6 +8,8 @@ export type MailMessage = {
   from: MailAddress;
   to: MailAddress;
   replyTo?: MailAddress | null;
+  /** z. B. Pipedrive-Smart-BCC (Ablage der Mail beim Kontakt/Deal) */
+  bcc?: MailAddress[];
   subject: string;
   html: string;
   text: string;

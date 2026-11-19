@@ -1,5 +1,6 @@
 import nodemailer from "nodemailer";
 import { z } from "zod";
+import { toNodemailerOptions } from "../mime";
 import { MailSendError, type MailMessage, type MailSender, type SendResult } from "../types";
 
 /** Zugangsdaten (verschlüsselt in mail_connections.credentials_enc) */
@@ -35,15 +36,7 @@ export class SmtpMailSender implements MailSender {
 
   async send(m: MailMessage): Promise<SendResult> {
     try {
-      const info = await this.transport.sendMail({
-        from: { address: m.from.email, name: m.from.name ?? "" },
-        to: { address: m.to.email, name: m.to.name ?? "" },
-        replyTo: m.replyTo ? { address: m.replyTo.email, name: m.replyTo.name ?? "" } : undefined,
-        subject: m.subject,
-        html: m.html,
-        text: m.text,
-        attachments: m.attachments?.map((a) => ({ filename: a.filename, contentType: a.contentType, content: a.content })),
-      });
+      const info = await this.transport.sendMail(toNodemailerOptions(m));
       return { messageId: info.messageId ?? null };
     } catch (err) {
       throw classifySmtpError(err);

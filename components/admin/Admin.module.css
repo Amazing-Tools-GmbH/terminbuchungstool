@@ -135,3 +135,17 @@
   .table td[data-label]::before { content: attr(data-label); font-size: 13px; color: var(--adm-muted); font-weight: 600; }
   .table td > .bar { width: 100%; }
 }
+
+/* Postfach */
+.mailbox { display: flex; flex-direction: column; gap: 12px; }
+.mailboxStatus { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.details { border-top: 1px solid var(--adm-line); padding-top: 12px; }
+.details summary { cursor: pointer; font-weight: 600; min-height: 32px; display: flex; align-items: center; }
+.details[open] summary { margin-bottom: 8px; }
+.mailboxStatus strong { overflow-wrap: anywhere; }
+@media (max-width: 640px) {
+  .btn, .btnGhost, .btnDanger { white-space: normal; text-align: center; }
+  .tag { white-space: normal; }
+  .mailbox .actions > * { flex: 1 1 100%; }
+  .mailbox .actions form button { width: 100%; }
+}

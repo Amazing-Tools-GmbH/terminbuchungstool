@@ -16,7 +16,11 @@ const TABLES = [
   "pipedrive_connections",
   "mail_connections",
   "email_outbox",
+  "mail_oauth_pending",
 ] as const;
+
+/** Nur service_role (Tokens/Zugangsdaten): für Mitglieder gar nicht lesbar */
+const SERVICE_ONLY: readonly string[] = ["pipedrive_connections", "mail_oauth_pending"];
 
 let db: TestDb;
 let tenantA: string;
@@ -58,12 +62,12 @@ async function tenantIdsVisible(actor: DbActor, table: string): Promise<string[]
 }
 
 describe("Lesen", () => {
-  it.each(TABLES.filter((t) => t !== "pipedrive_connections"))("Mitglied A sieht in %s nur Daten von A", async (table) => {
+  it.each(TABLES.filter((t) => !SERVICE_ONLY.includes(t)))("Mitglied A sieht in %s nur Daten von A", async (table) => {
     const seen = await tenantIdsVisible(userA, table);
     expect(seen).toEqual([tenantA]);
   });
 
-  it.each(TABLES.filter((t) => t !== "pipedrive_connections"))("Mitglied B sieht in %s nur Daten von B", async (table) => {
+  it.each(TABLES.filter((t) => !SERVICE_ONLY.includes(t)))("Mitglied B sieht in %s nur Daten von B", async (table) => {
     const seen = await tenantIdsVisible(userB, table);
     expect(seen).toEqual([tenantB]);
   });
@@ -72,8 +76,8 @@ describe("Lesen", () => {
     await expect(db.as(ANON, (c) => c.query(`select 1 from public.${table} limit 1`))).rejects.toThrow(/permission denied/);
   });
 
-  it("pipedrive_connections (Tokens) sind für Mitglieder unsichtbar", async () => {
-    await expect(db.as(userA, (c) => c.query("select 1 from public.pipedrive_connections"))).rejects.toThrow(/permission denied/);
+  it.each(SERVICE_ONLY)("%s (Tokens/Zugangsdaten) sind für Mitglieder unsichtbar", async (table) => {
+    await expect(db.as(userA, (c) => c.query(`select 1 from public.${table}`))).rejects.toThrow(/permission denied/);
   });
 
   it("Zugangsdaten von Postfächern und Token-Hashes sind nicht lesbar", async () => {
@@ -86,7 +90,7 @@ describe("Lesen", () => {
   it("Benutzer ohne Mitgliedschaft sieht nichts", async () => {
     const [u] = await db.admin<{ id: string }>("insert into auth.users (email) values ('fremd@x.example') returning id");
     const stranger: DbActor = { role: "authenticated", userId: u!.id };
-    for (const table of TABLES.filter((t) => t !== "pipedrive_connections")) {
+    for (const table of TABLES.filter((t) => !SERVICE_ONLY.includes(t))) {
       expect(await tenantIdsVisible(stranger, table)).toEqual([]);
     }
   });

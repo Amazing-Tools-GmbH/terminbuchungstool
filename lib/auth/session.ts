@@ -13,7 +13,7 @@ import { hkdfSync } from "node:crypto";
 import { z } from "zod";
 import { decryptSecret, encryptSecret } from "@/lib/crypto/secretbox";
 
-export type SealPurpose = "session" | "login-state" | "login-ticket";
+export type SealPurpose = "session" | "login-state" | "login-ticket" | "mail-state";
 
 function purposeKey(purpose: SealPurpose, rawKey: string | undefined): string {
   if (!rawKey) throw new Error("ENCRYPTION_KEY fehlt");
@@ -84,3 +84,15 @@ export type LoginState = z.infer<typeof loginStateSchema>;
  */
 export const loginTicketSchema = sessionSchema.extend({ nonce: z.string().min(16).max(128) });
 export type LoginTicket = z.infer<typeof loginTicketSchema>;
+
+/** OAuth-state beim Verbinden eines Postfachs (Google/Microsoft) */
+export const MAIL_NONCE_COOKIE = "tb_mail_nonce";
+export const mailStateSchema = z.object({
+  purpose: z.literal("mail"),
+  provider: z.enum(["google", "microsoft"]),
+  scope: z.enum(["user", "tenant"]),
+  tid: z.string().uuid(),
+  uid: z.string().uuid(),
+  nonce: z.string().min(16).max(128),
+});
+export type MailState = z.infer<typeof mailStateSchema>;

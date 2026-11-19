@@ -36,3 +36,38 @@ export const updateMemberSchema = z
     status: z.enum(["active", "disabled"]).optional(),
   })
   .refine((v) => v.role !== undefined || v.status !== undefined);
+
+export const mailScopeSchema = z.enum(["user", "tenant"]);
+
+/** SMTP-Postfach aus dem Formular */
+export const smtpFormSchema = z.object({
+  scope: mailScopeSchema,
+  senderEmail: z.string().trim().toLowerCase().email().max(320),
+  senderName: z
+    .string()
+    .trim()
+    .max(200)
+    .transform((v) => (v === "" ? null : v)),
+  host: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .min(1)
+    .max(253)
+    .regex(/^[a-z0-9.-]+$/),
+  port: z.coerce.number().int().min(1).max(65535),
+  secure: z.enum(["tls", "starttls"]).transform((v) => v === "tls"),
+  user: z.string().trim().min(1).max(320),
+  pass: z.string().min(1).max(1000),
+});
+
+/** Smart-BCC-Adresse (leer = entfernen); DB prüft zusätzlich die Domain */
+export const smartBccSchema = z
+  .string()
+  .trim()
+  .toLowerCase()
+  .max(320)
+  .transform((v) => (v === "" ? null : v))
+  .refine((v) => v === null || /^[a-z0-9._+-]+@([a-z0-9-]+\.)*pipedrivemail\.com$/.test(v), {
+    message: "Nur Adressen auf @pipedrivemail.com",
+  });

@@ -4,8 +4,12 @@
  *
  * - Aufruf per Cron (/api/cron/outbox) und direkt nach einer Buchung (after()).
  * - Parallel sicher: Zeilen werden mit FOR UPDATE SKIP LOCKED beansprucht.
- * - Postfach nicht aktiv/gestört -> Mail bleibt in der Outbox (kein stiller
- *   Absenderwechsel); bei Anmeldefehler wird die Verbindung auf "error" gesetzt.
+ * - Absender: lib/mail/sender-choice.ts (Mitarbeiter-Postfach, sonst Firmen-
+ *   postfach; Bestätigungen bei gestörtem Mitarbeiter-Postfach sichtbar über das
+ *   Firmenpostfach, Einladungen warten). Kein stiller Absenderwechsel.
+ * - Bei Anmeldefehler wird die Verbindung auf "error" gesetzt.
+ * - Testmails gehen genau über das zu prüfende Postfach; Erfolg schaltet es aktiv.
+ * - Smart BCC: Kundenmails gehen in Kopie an tenants.smart_bcc_email (Pipedrive).
  * - Vorübergehende Fehler -> Retry mit Backoff, nach MAX_ATTEMPTS -> failed.
  */
 import type pg from "pg";
@@ -18,6 +22,7 @@ import { assetStorage } from "@/lib/storage";
 import { renderCancellation, renderConfirmation, renderTest, type MailTenant, type RenderedMail } from "./templates";
 import { defaultSenderFactory, type SenderFactory } from "./senders";
 import { MailSendError, type MailAttachment, type MailConnection, type MailMessage } from "./types";
+import { chooseSender } from "./sender-choice";
 
 export const MAX_ATTEMPTS = 8;
 /** Wartezeit nach dem n-ten Fehlversuch (Minuten) */
@@ -79,11 +84,12 @@ async function processOne(
   row: OutboxRow,
   senderFactory: SenderFactory,
 ): Promise<keyof ProcessResult> {
-  const connection = await loadConnection(pool, row);
-  if (!connection || connection.status !== "active") {
-    await requeueBlocked(pool, row.id, connection ? `Postfach ${connection.senderEmail} ist nicht aktiv (${connection.status})` : "Kein Postfach verbunden");
+  const pick = await pickConnection(pool, row);
+  if (pick.kind === "blocked") {
+    await requeueBlocked(pool, row.id, pick.reason);
     return "blocked";
   }
+  const { connection, fallbackReason, isUserConnection } = pick;
 
   let message: MailMessage;
   try {
@@ -94,26 +100,45 @@ async function processOne(
   }
 
   try {
-    const sender = senderFactory(connection);
+    const sender = senderFactory(connection, {
+      saveCredentials: (enc) =>
+        asService(pool, async (c) => {
+          await c.query("update public.mail_connections set credentials_enc = $2 where id = $1", [connection.id, enc]);
+        }),
+    });
     const { messageId } = await sender.send(message);
-    await asService(pool, (c) =>
-      c.query(
+    await asService(pool, async (c) => {
+      await c.query(
         `update public.email_outbox
             set status = 'sent', sent_at = now(), locked_at = null, last_error = null,
-                provider_message_id = $2, mail_connection_id = $3,
+                provider_message_id = $2, mail_connection_id = $3, sender_fallback_reason = $6,
                 rendered = case when $4 then $5::jsonb else null end
           where id = $1`,
-        [row.id, messageId, connection.id, connection.provider === "dev", JSON.stringify(message)],
-      ),
-    );
+        [row.id, messageId, connection.id, connection.provider === "dev", JSON.stringify(message), fallbackReason],
+      );
+      // Erfolgreiche Testmail bestätigt das Postfach
+      if (row.type === "test") {
+        await c.query(
+          `update public.mail_connections set status = 'active', last_error = null, last_verified_at = now()
+            where id = $1 and status <> 'revoked'`,
+          [connection.id],
+        );
+      }
+    });
     return "sent";
   } catch (err) {
     const e = err instanceof MailSendError ? err : new MailSendError("transient", (err as Error)?.message ?? String(err));
-    if (e.kind === "auth") {
+    if (e.kind === "auth" || (row.type === "test" && e.kind === "permanent")) {
       await asService(pool, (c) =>
         c.query("update public.mail_connections set status = 'error', last_error = $2 where id = $1", [connection.id, e.message]),
       );
-      await requeueBlocked(pool, row.id, e.message);
+      if (row.type === "test") {
+        await markFailed(pool, row.id, e.message);
+        return "failed";
+      }
+      // Bestätigung/Stornierung über ein Mitarbeiter-Postfach: sofort erneut
+      // einplanen – dann greift das Firmenpostfach (sichtbar vermerkt)
+      await requeueBlocked(pool, row.id, e.message, isUserConnection && row.type !== "invitation" ? 0 : CONNECTION_RETRY_MINUTES);
       return "blocked";
     }
     if (e.kind === "permanent" || row.attempts >= MAX_ATTEMPTS) {
@@ -135,14 +160,14 @@ async function processOne(
 }
 
 /** Ohne aktives Postfach: zurück in die Warteschlange, Versuch zählt nicht */
-async function requeueBlocked(pool: pg.Pool, id: string, reason: string) {
+async function requeueBlocked(pool: pg.Pool, id: string, reason: string, waitMinutes = CONNECTION_RETRY_MINUTES) {
   await asService(pool, (c) =>
     c.query(
       `update public.email_outbox
           set status = 'queued', locked_at = null, attempts = greatest(attempts - 1, 0), last_error = $2,
               next_attempt_at = now() + make_interval(mins => $3)
         where id = $1`,
-      [id, reason, CONNECTION_RETRY_MINUTES],
+      [id, reason, waitMinutes],
     ),
   );
 }
@@ -153,27 +178,78 @@ async function markFailed(pool: pg.Pool, id: string, reason: string) {
   );
 }
 
-async function loadConnection(pool: pg.Pool, row: OutboxRow): Promise<MailConnection | null> {
-  return asService(pool, async (c) => {
-    const { rows } = await c.query(
-      `select id, tenant_id, provider, sender_email, sender_name, status, credentials_enc
-         from public.mail_connections
-        where tenant_id = $1 and ($2::uuid is null and scope = 'tenant' or id = $2)
-        limit 1`,
-      [row.tenant_id, row.mail_connection_id],
+type ConnRow = {
+  id: string;
+  tenant_id: string;
+  provider: MailConnection["provider"];
+  sender_email: string;
+  sender_name: string | null;
+  status: MailConnection["status"];
+  credentials_enc: string | null;
+  scope: "tenant" | "user";
+};
+
+const toConnection = (r: ConnRow): MailConnection => ({
+  id: r.id,
+  tenantId: r.tenant_id,
+  provider: r.provider,
+  senderEmail: r.sender_email,
+  senderName: r.sender_name,
+  status: r.status,
+  credentialsEnc: r.credentials_enc,
+});
+
+type Pick =
+  | { kind: "send"; connection: MailConnection; fallbackReason: string | null; isUserConnection: boolean }
+  | { kind: "blocked"; reason: string };
+
+/**
+ * Postfach für diese Mail. Testmails (und Mails mit fest zugeordnetem
+ * Postfach) gehen genau darüber; sonst entscheidet chooseSender.
+ */
+async function pickConnection(pool: pg.Pool, row: OutboxRow): Promise<Pick> {
+  return asService(pool, async (c): Promise<Pick> => {
+    const cols = "id, tenant_id, provider, sender_email, sender_name, status, credentials_enc, scope::text as scope";
+    if (row.mail_connection_id) {
+      const { rows } = await c.query<ConnRow>(`select ${cols} from public.mail_connections where id = $1 and tenant_id = $2`, [
+        row.mail_connection_id,
+        row.tenant_id,
+      ]);
+      const r = rows[0];
+      if (!r) return { kind: "blocked", reason: "Postfach nicht mehr vorhanden" };
+      // Testmails prüfen gerade NICHT aktive Postfächer; alle anderen brauchen "active"
+      if (r.status === "revoked" || (row.type !== "test" && r.status !== "active")) {
+        return { kind: "blocked", reason: `Postfach ${r.sender_email} ist nicht aktiv (${r.status})` };
+      }
+      return { kind: "send", connection: toConnection(r), fallbackReason: null, isUserConnection: r.scope === "user" };
+    }
+    if (row.type === "test") return { kind: "blocked", reason: "Testmail ohne Postfach" };
+
+    // Wer hat eingeladen? (Einladung direkt, Bestätigung/Stornierung über die Buchung)
+    const invitationId = typeof row.payload.invitation_id === "string" ? row.payload.invitation_id : null;
+    const bookingId = typeof row.payload.booking_id === "string" ? row.payload.booking_id : null;
+    const { rows: inv } = await c.query<{ created_by: string | null }>(
+      `select i.created_by from public.invitations i
+        where i.tenant_id = $1
+          and i.id = coalesce($2::uuid, (select b.invitation_id from public.bookings b where b.id = $3::uuid))`,
+      [row.tenant_id, invitationId, bookingId],
     );
-    const r = rows[0];
-    return r
-      ? {
-          id: r.id,
-          tenantId: r.tenant_id,
-          provider: r.provider,
-          senderEmail: r.sender_email,
-          senderName: r.sender_name,
-          status: r.status,
-          credentialsEnc: r.credentials_enc,
-        }
-      : null;
+    const inviter = inv[0]?.created_by ?? null;
+    const { rows } = await c.query<ConnRow>(
+      `select ${cols} from public.mail_connections mc
+        where mc.tenant_id = $1
+          and (mc.scope = 'tenant'
+               or (mc.scope = 'user' and mc.user_id = $2::uuid
+                   and exists (select 1 from public.tenant_members m
+                                where m.tenant_id = mc.tenant_id and m.user_id = mc.user_id and m.status = 'active')))`,
+      [row.tenant_id, inviter],
+    );
+    const userRow = rows.find((r) => r.scope === "user");
+    const tenantRow = rows.find((r) => r.scope === "tenant");
+    const user = userRow ? toConnection(userRow) : null;
+    const choice = chooseSender(row.type, { user, tenant: tenantRow ? toConnection(tenantRow) : null });
+    if (choice.kind === "blocked") return choice;
+    return { ...choice, isUserConnection: choice.connection.id === user?.id };
   });
 }
 
@@ -190,6 +266,7 @@ type TenantRow = {
   logo_path: string | null;
   sender_name: string | null;
   reply_to_email: string | null;
+  smart_bcc_email: string | null;
 };
 
 function toMailTenant(t: TenantRow): MailTenant {
@@ -300,5 +377,7 @@ async function buildMessage(pool: pg.Pool, row: OutboxRow, conn: MailConnection)
     throw new Error(`Mailtyp ${row.type} wird noch nicht unterstützt`);
   }
 
-  return { from, to: { email: row.to_email, name: toName }, replyTo, ...rendered, attachments };
+  // Kundenmails in Kopie an Pipedrive (Smart BCC) -> Ablage beim Kontakt/Deal
+  const bcc = row.type !== "test" && tenantRow.smart_bcc_email ? [{ email: tenantRow.smart_bcc_email }] : undefined;
+  return { from, to: { email: row.to_email, name: toName }, replyTo, bcc, ...rendered, attachments };
 }

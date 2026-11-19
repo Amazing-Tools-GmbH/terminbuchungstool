@@ -113,7 +113,7 @@ describe("Postfach gestört", () => {
     expect(rec.sent).toHaveLength(0);
     const [row] = await outbox();
     expect(row).toMatchObject({ status: "queued", attempts: 0 });
-    expect(row!.last_error).toMatch(/nicht aktiv/);
+    expect(row!.last_error).toMatch(/ist gestört/);
     expect(new Date(row!.next_attempt_at).getTime()).toBeGreaterThan(Date.now() + 10 * 60_000);
 
     // Verbindung erneuert + fällig -> geht raus
