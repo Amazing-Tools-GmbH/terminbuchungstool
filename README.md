@@ -204,6 +204,10 @@ Kunde aus seiner Pipedrive-Identität bzw. aus dem Buchungslink:
   „App settings“-Seite `https://atools.de/meetings/settings`. Das Token prüft die App mit
   `PIPEDRIVE_JWT_SECRET` (leer = Client-Secret), es darf höchstens 15 Minuten alt sein.
 - Der Slug (= Pipedrive-Unternehmensdomain) ist nur noch eine interne Kennung.
+- **Adresse in Pipedrive geändert** (`alt.pipedrive.com` → `neu.pipedrive.com`): Der Mandant
+  hängt an der `company_id` und bleibt gleich; Buchungslinks bleiben gültig. Die gespeicherte
+  Adresse (für Deal-Links) zieht die App bei Login, Installation und jeder Token-Erneuerung
+  (etwa stündlich) aus der `api_domain` nach.
 - **Optional eigene Domain** des Kunden (`tenants.custom_domain`, z. B.
   `termine.kunde.at/meetings` per CNAME) für Buchungsseiten; Links in Mails nutzen sie dann.
   Einrichtung in den Pipedrive-App-Einstellungen (Phase 5, mit DNS-Prüfung und HTTPS).

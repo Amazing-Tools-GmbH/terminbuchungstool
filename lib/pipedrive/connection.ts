@@ -8,6 +8,7 @@ import "server-only";
 import { withActor } from "@/lib/db";
 import { decryptSecret, encryptSecret } from "@/lib/crypto/secretbox";
 import { oauthConfig, refreshTokens, PipedriveError } from "./client";
+import { companyDomainFromApiDomain, syncCompanyDomainOn } from "./domain-sync";
 
 export type PipedriveAccess = { apiDomain: string; accessToken: string; companyId: number; companyDomain: string };
 
@@ -45,7 +46,10 @@ export async function pipedriveAccess(tenantId: string): Promise<PipedriveAccess
         where tenant_id = $1`,
       [tenantId, encryptSecret(t.accessToken), encryptSecret(t.refreshToken), t.expiresAt, t.apiDomain, t.scope],
     );
-    return { ...base, apiDomain: t.apiDomain, accessToken: t.accessToken };
+    // Adresse in Pipedrive geändert? -> nachziehen (Deal-Links)
+    const domain = companyDomainFromApiDomain(t.apiDomain);
+    await syncCompanyDomainOn(db, { tenantId }, domain);
+    return { ...base, companyDomain: domain ?? base.companyDomain, apiDomain: t.apiDomain, accessToken: t.accessToken };
   });
 }
 

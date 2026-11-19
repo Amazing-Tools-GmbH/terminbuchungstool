@@ -31,7 +31,9 @@ Mandantenfähiges Terminbuchungstool mit Pipedrive-Integration. Auftrag und Phas
   interne Kennung (Dateinamen, Seed) – er steht in KEINER öffentlichen Adresse.
 - Wird einmal bei der Pipedrive-Installation gesetzt und danach nicht automatisch geändert
   (verschickte Links bleiben gültig). Stabiler Schlüssel des Mandanten bleibt `company_id`;
-  die aktuelle Domain steht in `pipedrive_connections.company_domain`.
+  die aktuelle Domain steht in `pipedrive_connections.company_domain` und wird bei Login,
+  Installation und jeder Token-Erneuerung aus der `api_domain` nachgezogen
+  (`lib/pipedrive/domain-sync.ts`) – eine Adressänderung in Pipedrive bricht nichts.
 - Adressen (entschieden): alles zentral unter `APP_BASE_URL` (`https://atools.de/meetings`),
   keine Kunden-Subdomains. Buchungsseite `/b/<token>`: Mandant aus dem Token (Middleware →
   `resolve_tenant_by_token`; API-Routen aus dem Token im Body). Admin `/admin`: Mandant aus

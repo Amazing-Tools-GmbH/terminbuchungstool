@@ -10,6 +10,7 @@ import { decryptSecret, encryptSecret } from "@/lib/crypto/secretbox";
 import { MailSendError } from "@/lib/mail/types";
 import { oauthConfig, refreshTokens, PipedriveError, type PipedriveMe, type PipedriveTokens } from "./client";
 import type { PipedriveMailAccess } from "./mail";
+import { companyDomainFromApiDomain, syncCompanyDomainOn } from "./domain-sync";
 
 export async function storeUserTokens(pool: pg.Pool, tenantId: string, userId: string, me: PipedriveMe, t: PipedriveTokens): Promise<void> {
   await withActorOn(pool, { role: "service_role" }, async (db) => {
@@ -66,6 +67,7 @@ export async function userPipedriveAccess(pool: pg.Pool, tenantId: string, userI
         where tenant_id = $1 and user_id = $2`,
       [tenantId, userId, encryptSecret(t.accessToken), encryptSecret(t.refreshToken), t.expiresAt, t.apiDomain, t.scope],
     );
+    await syncCompanyDomainOn(db, { tenantId }, companyDomainFromApiDomain(t.apiDomain));
     return { apiDomain: t.apiDomain, accessToken: t.accessToken };
   });
 }

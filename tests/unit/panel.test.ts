@@ -151,3 +151,14 @@ describe("Pipedrive-CRM", () => {
     await expect(crm500.getDeal(access, 1)).rejects.toBeInstanceOf(PipedriveError);
   });
 });
+
+import { companyDomainFromApiDomain } from "@/lib/pipedrive/domain-sync";
+describe("Pipedrive-Adresse aus api_domain", () => {
+  it("nur echte Firmenadressen", () => {
+    expect(companyDomainFromApiDomain("https://antenne.pipedrive.com")).toBe("antenne");
+    expect(companyDomainFromApiDomain("https://Antenne.pipedrive.com/")).toBe("antenne");
+    expect(companyDomainFromApiDomain("https://api.pipedrive.com")).toBeNull();
+    expect(companyDomainFromApiDomain("https://firma.example.com")).toBeNull();
+    expect(companyDomainFromApiDomain("kein-url")).toBeNull();
+  });
+});

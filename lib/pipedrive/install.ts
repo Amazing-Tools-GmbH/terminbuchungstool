@@ -18,6 +18,7 @@ import type { Session } from "@/lib/auth/session";
 import type { PipedriveMe, PipedriveTokens } from "./client";
 import { tenantSlugFromPipedrive } from "./domain";
 import { storeUserTokens } from "./user-connection";
+import { syncCompanyDomainOn } from "./domain-sync";
 
 export type InstallResult =
   | { ok: true; created: boolean; adopted: boolean; session: Session }
@@ -155,12 +156,5 @@ export async function uninstallCompany(companyId: number): Promise<boolean> {
 
 /** Pipedrive-Domain der Firma aktuell halten (bei jedem Login; Domain kann sich in Pipedrive ändern) */
 export async function syncCompanyDomain(companyId: number, domain: string): Promise<void> {
-  await withActor({ role: "service_role" }, async (db) => {
-    await db.query(
-      `update public.pipedrive_connections set company_domain = company_domain || '~' || company_id::text
-        where company_domain = $1 and company_id <> $2`,
-      [domain, companyId],
-    );
-    await db.query("update public.pipedrive_connections set company_domain = $2 where company_id = $1 and company_domain <> $2", [companyId, domain]);
-  });
+  await withActor({ role: "service_role" }, (db) => syncCompanyDomainOn(db, { companyId }, domain));
 }

@@ -3,7 +3,7 @@
  * Slug-Kollision) und Deinstallation (Verbindung deaktiviert, Daten bleiben).
  * Läuft über den App-Pool -> zeigt ausdrücklich auf die lokale Testdatenbank.
  */
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { setupTestDb, type TestDb } from "./helpers";
 import type { PipedriveMe, PipedriveTokens } from "@/lib/pipedrive/client";
 
@@ -149,6 +149,34 @@ describe("Pipedrive-Installation", () => {
       { company_id: "8100001", company_domain: "neuefirma" },
       { company_id: "8100003", company_domain: "neuefirma~8100003" },
     ]);
+  });
+
+  it("Adresse in Pipedrive geändert: wird bei der Token-Erneuerung nachgezogen", async () => {
+    const { userPipedriveAccess } = await import("@/lib/pipedrive/user-connection");
+    const { getPool } = await import("@/lib/db/pool");
+    const tid = (await connection.tenantIdForCompany(8100001))!;
+    const [u] = await db.admin<{ user_id: string }>("select user_id from pipedrive_user_connections where tenant_id = $1 limit 1", [tid]);
+    await db.admin("update pipedrive_user_connections set expires_at = now() - interval '1 minute' where tenant_id = $1", [tid]);
+    vi.stubEnv("PIPEDRIVE_CLIENT_ID", "cid");
+    vi.stubEnv("PIPEDRIVE_CLIENT_SECRET", "csecret");
+    const fetchMock = vi.fn(async () =>
+      Response.json({ access_token: "a-neu", refresh_token: "r-neu", expires_in: 3600, api_domain: "https://umbenannt.pipedrive.com" }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      const a = await userPipedriveAccess(getPool(), tid, u!.user_id);
+      expect(a).toEqual({ apiDomain: "https://umbenannt.pipedrive.com", accessToken: "a-neu" });
+    } finally {
+      vi.unstubAllGlobals();
+      vi.unstubAllEnvs();
+    }
+    const [c] = await db.admin<{ company_domain: string }>("select company_domain from pipedrive_connections where tenant_id = $1", [tid]);
+    expect(c!.company_domain).toBe("umbenannt");
+    // Mandant und Slug bleiben gleich
+    expect(await connection.tenantIdForCompany(8100001)).toBe(tid);
+    const [t] = await db.admin<{ slug: string }>("select slug from tenants where id = $1", [tid]);
+    expect(t!.slug).toBe("neuefirma");
+    await install.syncCompanyDomain(8100001, "neuefirma");
   });
 
   it("Deinstallation: Verbindung revoked, Daten bleiben; erneute Installation reaktiviert", async () => {
