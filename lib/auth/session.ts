@@ -80,6 +80,18 @@ export const loginStateSchema = z.object({
 });
 export type LoginState = z.infer<typeof loginStateSchema>;
 
+/**
+ * OAuth-state beim (Neu-)Verbinden der Pipedrive-Firma aus dem Admin
+ * (Admin → Pipedrive-Verbindung): an Mandant + angemeldeten Owner gebunden.
+ */
+export const relinkStateSchema = z.object({
+  purpose: z.literal("relink"),
+  nonce: z.string().min(16).max(128),
+  tid: z.string().uuid(),
+  uid: z.string().uuid(),
+});
+export type RelinkState = z.infer<typeof relinkStateSchema>;
+
 /** OAuth-state beim Verbinden eines Postfachs (Google/Microsoft) */
 export const MAIL_NONCE_COOKIE = "tb_mail_nonce";
 export const mailStateSchema = z.object({

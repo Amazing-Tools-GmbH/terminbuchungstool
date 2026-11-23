@@ -6,8 +6,10 @@ import { exchangeCode, getMe, oauthConfig } from "@/lib/pipedrive/client";
 import { tenantIdForCompany } from "@/lib/pipedrive/connection";
 import { storeUserTokens } from "@/lib/pipedrive/user-connection";
 import { completePipedriveLogin } from "@/lib/auth/pipedrive-login";
-import { LOGIN_NONCE_COOKIE, loginStateSchema, unseal } from "@/lib/auth/session";
-import { sessionCookie } from "@/lib/auth/admin";
+import { z } from "zod";
+import { LOGIN_NONCE_COOKIE, loginStateSchema, relinkStateSchema, unseal, type RelinkState } from "@/lib/auth/session";
+import { getAdminContext, sessionCookie } from "@/lib/auth/admin";
+import { relinkFromOAuth } from "@/lib/pipedrive/manage";
 import { appUrl } from "@/lib/auth/urls";
 import { syncCompanyDomain, installFromOAuth, uninstallCompany } from "@/lib/pipedrive/install";
 
@@ -44,7 +46,11 @@ export async function GET(req: NextRequest) {
   const oauthError = params.get("error");
   if (oauthError) return fail(OAUTH_CANCELLED.has(oauthError) ? "cancelled" : "oauth_failed");
   if (!params.has("state")) return install(params.get("code"), fail);
-  const state = unseal("login-state", params.get("state"), loginStateSchema);
+  const state = unseal("login-state", params.get("state"), z.discriminatedUnion("purpose", [loginStateSchema, relinkStateSchema]));
+  if (state?.purpose === "relink") {
+    if (!sameNonce(state.nonce, req.cookies.get(LOGIN_NONCE_COOKIE)?.value)) return relinkDone({ error: "pipedrive_relink_failed" });
+    return relink(state, params.get("code"));
+  }
   if (!state || !sameNonce(state.nonce, req.cookies.get(LOGIN_NONCE_COOKIE)?.value)) return fail("expired");
   const cfg = oauthConfig();
   if (!cfg) return fail("not_configured");
@@ -83,6 +89,40 @@ export async function GET(req: NextRequest) {
   const res = NextResponse.redirect(appUrl("/admin"));
   res.cookies.set(sessionCookie(result.session));
   res.cookies.set(LOGIN_NONCE_COOKIE, "", { path: "/api/auth", maxAge: 0 });
+  return res;
+}
+
+/** Zurück auf die Seite „Pipedrive-Verbindung“ (Nonce-Cookie verbrauchen) */
+function relinkDone(q: Record<string, string>) {
+  const res = NextResponse.redirect(appUrl("/admin/pipedrive", q));
+  res.cookies.set(LOGIN_NONCE_COOKIE, "", { path: "/api/auth", maxAge: 0 });
+  return res;
+}
+
+/** (Neu-)Verbinden aus dem Admin: nur der Owner, der es gestartet hat, in seiner Sitzung */
+async function relink(state: RelinkState, code: string | null) {
+  const ctx = await getAdminContext();
+  if (!ctx || ctx.userId !== state.uid || ctx.tenant.id !== state.tid || ctx.role !== "owner") return relinkDone({ error: "forbidden" });
+  const cfg = oauthConfig();
+  if (!cfg || !code) return relinkDone({ error: "pipedrive_relink_failed" });
+  let result;
+  let pd: number;
+  try {
+    const tokens = await exchangeCode(cfg, code);
+    const me = await getMe(tokens.apiDomain, tokens.accessToken);
+    pd = me.id;
+    result = await relinkFromOAuth(state.tid, state.uid, me, tokens);
+  } catch (err) {
+    console.error("Pipedrive neu verbinden fehlgeschlagen:", (err as Error).message);
+    return relinkDone({ error: "pipedrive_relink_failed" });
+  }
+  if (!result.ok) {
+    const error = result.error === "company_in_use" ? "pipedrive_company_in_use" : result.error === "email_mismatch" ? "pipedrive_email_mismatch" : "forbidden";
+    return relinkDone({ error });
+  }
+  const res = relinkDone({ ok: result.changedCompany ? "pdChanged" : "pdConnected" });
+  // Sitzung: Pipedrive-Benutzer der (neuen) Firma
+  res.cookies.set(sessionCookie({ uid: state.uid, tid: state.tid, pd }));
   return res;
 }
 
