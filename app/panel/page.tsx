@@ -6,7 +6,7 @@ import { loadPanelContext } from "@/lib/panel/context";
 import { tenantForMember } from "@/lib/tenant/current";
 import { at, panelTexts, type PanelErrorCode } from "@/lib/texts/admin";
 import { PanelApp } from "@/components/panel/PanelApp";
-import styles from "@/components/panel/Panel.module.css";
+import { PanelError } from "@/components/panel/PanelError";
 
 export const dynamic = "force-dynamic";
 // Token in der Adresse nicht als Referrer weitergeben
@@ -14,14 +14,8 @@ export const metadata: Metadata = { title: "Terminbuchung", referrer: "no-referr
 
 type Search = Promise<Record<string, string | string[] | undefined>>;
 
-function PanelMessage({ code, theme }: { code: PanelErrorCode; theme: string }) {
-  return (
-    <main className={styles.root} data-theme={theme}>
-      <p role="alert" className={styles.alert}>
-        {at(`panel.error.${code}`)}
-      </p>
-    </main>
-  );
+function PanelMessage({ code, detail, theme }: { code: PanelErrorCode; detail?: string; theme: "light" | "dark" }) {
+  return <PanelError message={at(`panel.error.${code}`)} code={detail ? `${code}/${detail}` : code} theme={theme} />;
 }
 
 /**
@@ -35,15 +29,27 @@ export default async function PanelPage({ searchParams }: { searchParams: Search
   for (const [k, v] of Object.entries(sp)) if (typeof v === "string") q.set(k, v);
   const theme = q.get("theme") === "dark" ? "dark" : "light";
 
+  // Grund im Server-Log (journalctl -u meetings), ohne Token – nur IDs
+  const reject = (code: PanelErrorCode, detail?: string) => {
+    console.warn(`[panel] abgelehnt: ${code}${detail ? `/${detail}` : ""} (userId=${q.get("userId") ?? "-"}, companyId=${q.get("companyId") ?? "-"}, resource=${q.get("resource") ?? "-"}, selectedIds=${q.get("selectedIds") ?? "-"})`);
+    return <PanelMessage code={code} detail={detail} theme={theme} />;
+  };
+
   const v = verifyPanelEntry(q, settingsJwtSecret());
-  if (!v.ok) return <PanelMessage code={v.error === "not_configured" ? "not_configured" : v.error === "no_deal" ? "no_deal" : "invalid"} theme={theme} />;
+  if (!v.ok) return reject(v.error === "not_configured" ? "not_configured" : v.error === "no_deal" ? "no_deal" : "invalid", v.error);
 
-  const start = await startPanelSession(v.entry);
-  if (!start.ok) return <PanelMessage code={start.error} theme={theme} />;
-  const tenant = await tenantForMember(start.session.uid, start.session.tid);
-  if (!tenant) return <PanelMessage code="no_access" theme={theme} />;
-
-  const context = await loadPanelContext(start.session, { role: "authenticated", userId: start.session.uid }, tenant);
+  let context: Awaited<ReturnType<typeof loadPanelContext>>;
+  let start: Awaited<ReturnType<typeof startPanelSession>>;
+  try {
+    start = await startPanelSession(v.entry);
+    if (!start.ok) return reject(start.error);
+    const tenant = await tenantForMember(start.session.uid, start.session.tid);
+    if (!tenant) return reject("no_access", "tenant");
+    context = await loadPanelContext(start.session, { role: "authenticated", userId: start.session.uid }, tenant);
+  } catch (err) {
+    console.error("[panel] Fehler beim Laden", err);
+    return reject("generic", "load");
+  }
   return (
     <PanelApp
       initial={context}

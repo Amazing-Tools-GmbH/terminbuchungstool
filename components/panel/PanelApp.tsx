@@ -9,6 +9,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { PanelContext, PanelEvent, PanelSlot } from "@/lib/panel/context";
 import { formatText } from "@/lib/texts";
 import styles from "./Panel.module.css";
+import { usePipedriveSdk } from "./usePipedriveSdk";
 
 type Texts = Record<string, string>;
 type Identity = { userId: number; companyId: number; dealId: number };
@@ -48,7 +49,6 @@ export function PanelApp(props: {
 
   const [ctx, setCtx] = useState(props.initial);
   const bearer = useRef(props.bearer);
-  const sdk = useRef<Sdk | null>(null);
   const rootRef = useRef<HTMLElement>(null);
 
   const initialEvent = ctx.events.find((e) => firstOpen(e)) ?? ctx.events[0];
@@ -68,25 +68,7 @@ export function PanelApp(props: {
   const slots = useMemo(() => event?.slots ?? [], [event]);
 
   // --- Pipedrive SDK (nur im iframe mit Kennung) -----------------------
-  useEffect(() => {
-    if (window.self === window.top || !new URLSearchParams(window.location.search).get("id")) return;
-    let stop = () => {};
-    (async () => {
-      try {
-        const mod = await import("@pipedrive/app-extensions-sdk");
-        const instance = await new mod.default().initialize({ size: { height: Math.ceil(document.documentElement.scrollHeight) } });
-        sdk.current = instance as unknown as Sdk;
-        const ro = new ResizeObserver(() => {
-          void sdk.current?.execute(mod.Command.RESIZE, { height: Math.ceil(document.documentElement.scrollHeight) }).catch(() => {});
-        });
-        if (rootRef.current) ro.observe(rootRef.current);
-        stop = () => ro.disconnect();
-      } catch {
-        sdk.current = null;
-      }
-    })();
-    return () => stop();
-  }, []);
+  const sdk = usePipedriveSdk(rootRef);
 
   // --- API mit Sitzungserneuerung --------------------------------------
   const renew = useCallback(async (): Promise<boolean> => {
