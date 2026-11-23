@@ -8,6 +8,13 @@ import { useEffect, useRef, type RefObject } from "react";
 
 export type PipedriveSdk = { execute: (cmd: string, args?: unknown) => Promise<unknown> };
 
+/** Pipedrive erlaubt für Panels nur 100–750 px Höhe; höherer Inhalt scrollt im Panel */
+export const PANEL_MIN_HEIGHT = 100;
+export const PANEL_MAX_HEIGHT = 750;
+export function panelHeight(contentHeight: number): number {
+  return Math.min(PANEL_MAX_HEIGHT, Math.max(PANEL_MIN_HEIGHT, Math.ceil(contentHeight || 0)));
+}
+
 export function usePipedriveSdk(rootRef: RefObject<HTMLElement | null>) {
   const sdk = useRef<PipedriveSdk | null>(null);
   useEffect(() => {
@@ -16,7 +23,7 @@ export function usePipedriveSdk(rootRef: RefObject<HTMLElement | null>) {
     (async () => {
       try {
         const mod = await import("@pipedrive/app-extensions-sdk");
-        const height = () => Math.ceil(document.documentElement.scrollHeight);
+        const height = () => panelHeight(document.documentElement.scrollHeight);
         const instance = await new mod.default().initialize({ size: { height: height() } });
         sdk.current = instance as unknown as PipedriveSdk;
         const ro = new ResizeObserver(() => {

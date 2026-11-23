@@ -203,3 +203,60 @@ describe("Aufträge an Pipedrive", () => {
     expect(await processPipedriveJobs(db.pool, { crm: new FakePipedriveCrm({}), access: async () => null })).toEqual({ done: 0, requeued: 0, failed: 1 });
   });
 });
+
+describe("book_for_deal (Direktbuchung aus dem Panel)", () => {
+  const deal = 1777;
+  async function bookFor(actor: DbActor, opts: { slotId?: string; seats?: number; email?: string; tenantId?: string } = {}) {
+    const token = generateToken();
+    return db.as(actor, async (c) => {
+      const { rows } = await c.query<{ r: { booking_id: string; invitation_id: string; seats: number } }>(
+        "select public.book_for_deal($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) as r",
+        [
+          opts.tenantId ?? tenant.id,
+          opts.slotId ?? slots[1],
+          token,
+          encryptSecret(`https://meetings.atools.de/b/${token}`),
+          "Daniel Direkt",
+          opts.email ?? "Daniel.Direkt@kunde.example",
+          "Direkt GmbH",
+          deal,
+          5009,
+          opts.seats ?? 2,
+        ],
+      );
+      return rows[0]!.r;
+    });
+  }
+
+  it("bucht über book_slot: Buchung, Bestätigung (keine Einladung), Aktivität im Deal", async () => {
+    const r = await bookFor(sales);
+    const [b] = await db.admin<{ seats: number; email: string; status: string; slot_id: string }>(
+      "select seats, email, status::text, slot_id from bookings where id = $1",
+      [r.booking_id],
+    );
+    expect(b).toEqual({ seats: 2, email: "daniel.direkt@kunde.example", status: "confirmed", slot_id: slots[1] });
+    const [inv] = await db.admin<{ status: string; created_by: string; pipedrive_deal_id: string; sent_at: Date | null }>(
+      "select status::text, created_by, pipedrive_deal_id::text, sent_at from invitations where id = $1",
+      [r.invitation_id],
+    );
+    expect(inv).toMatchObject({ status: "booked", created_by: salesId, pipedrive_deal_id: String(deal), sent_at: null });
+    const mails = await db.admin<{ type: string; to_email: string }>("select type, to_email from email_outbox order by created_at");
+    expect(mails).toEqual([{ type: "confirmation", to_email: "daniel.direkt@kunde.example" }]);
+    const jobs = await db.admin<{ type: string }>("select type from pipedrive_jobs");
+    expect(jobs.map((j) => j.type)).toEqual(["booking_activity"]);
+  });
+
+  it("zweite Direktbuchung desselben Kontakts im Deal -> already_booked", async () => {
+    await expectTb(bookFor(sales), "already_booked");
+  });
+
+  it("nicht genug Plätze / fremder Mandant / Termin eines anderen Mandanten", async () => {
+    await expectTb(bookFor(sales, { email: "viele@kunde.example", seats: 999 }), "not_enough_seats");
+    await expectTb(bookFor(ownerB, { email: "x@kunde.example" }), "forbidden");
+    await expectTb(bookFor(ownerB, { email: "x@kunde.example", tenantId: tenantB }), "slot_not_available");
+  });
+
+  it("anon darf die Funktion nicht aufrufen", async () => {
+    await expect(bookFor(ANON, { email: "anon@kunde.example" })).rejects.toThrow();
+  });
+});

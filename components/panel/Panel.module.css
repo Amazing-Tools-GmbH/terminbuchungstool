@@ -444,26 +444,55 @@
   clip: rect(0 0 0 0);
   white-space: nowrap;
 }
-.dateList {
-  list-style: none;
-  margin: 0;
-  padding: 0;
+.seatsRow {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.dateItem {
-  display: flex;
-  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 4px 8px;
-  padding: 8px 12px;
+  gap: 8px;
+  margin-top: 12px;
+}
+.seatsRow .label {
+  margin: 0;
+}
+.seatsInput {
+  width: 80px;
+  min-height: 36px;
+  padding: 0 8px;
   border: 1px solid var(--p-border);
   border-radius: 4px;
   background: var(--p-card);
+  color: var(--p-text);
 }
-.dateItem[data-full="true"] {
-  background: var(--p-pill-none);
+.orRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 14px 0 10px;
+  font-size: 12px;
+  color: var(--p-muted);
+}
+.orRow::before,
+.orRow::after {
+  content: "";
+  flex: 1;
+  border-top: 1px solid var(--p-border);
+}
+.linkSendBtn {
+  width: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--p-border);
+  border-radius: 4px;
+  background: var(--p-card);
+  color: var(--p-accent);
+  font-weight: 600;
+  cursor: pointer;
+}
+.linkSendBtn:disabled {
   color: var(--p-off);
+  cursor: not-allowed;
 }
