@@ -15,6 +15,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     { href: null, label: at("nav.bookings"), soon },
     { href: "/admin/postfach", label: at("nav.mailbox") },
     ...(canManage(ctx.role) ? [{ href: "/admin/email", label: at("nav.mailSettings") }] : []),
+    ...(canManage(ctx.role) ? [{ href: "/admin/erscheinungsbild", label: at("nav.branding") }] : []),
     { href: null, label: at("nav.templates"), soon },
     { href: null, label: at("nav.pipedrive"), soon },
     ...(canManage(ctx.role) ? [{ href: "/admin/benutzer", label: at("nav.users") }] : []),
@@ -24,8 +25,14 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     <div className={styles.root}>
       <header className={styles.topbar}>
         <div className={styles.brand}>
-          {at("app.title")}
-          <small>{ctx.tenant.name}</small>
+          {ctx.tenant.logoUrl && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={ctx.tenant.logoUrl} alt="" className={styles.topbarLogo} />
+          )}
+          <span>
+            {at("app.title")}
+            <small>{ctx.tenant.name}</small>
+          </span>
         </div>
         <div className={styles.userBox}>
           <span>

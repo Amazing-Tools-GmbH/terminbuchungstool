@@ -152,6 +152,10 @@ Mandantenfähiges Terminbuchungstool mit Pipedrive-Integration. Auftrag und Phas
 - Schriften nur aus der Allowlist (`lib/theme/font-names.ts`), selbst gehostet als Dateien im
   Repository (`public/fonts/`, `app/fonts.css`, erzeugt von `scripts/fonts-download.mjs`) –
   keine Anfragen an Google, weder beim Build noch zur Laufzeit. Nicht `next/font/google`.
+- Admin → Erscheinungsbild (`/admin/erscheinungsbild`, owner/admin): Logo (PNG/JPG/WebP/SVG ≤ 1 MB,
+  Typ am Inhalt geprüft, SVG ohne aktive Inhalte, `lib/admin/branding.ts` → Asset-Storage +
+  `tenants.logo_path`), Claim, Schriften und Grundfarben (`lib/admin/branding-logic.ts`:
+  Merge ins Theme, `themeInputSchema`, Kontrast ≥ 4.5:1, Live-Vorschau).
 - Texte: `lib/texts` mit Varianten `sie`/`ihr`; Mandanten können einzelne Schlüssel über
   `text_overrides` ersetzen. Neue UI-Texte immer dort anlegen, nie hart im JSX.
 - Barrierefreiheit: echte Buttons/Labels, Kontrast ≥ 4.5:1 (`lib/theme/contrast.ts`,
