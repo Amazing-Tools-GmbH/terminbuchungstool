@@ -16,6 +16,10 @@ export const ADMIN_ERROR_CODES = [
   "mail_no_email",
   "mail_no_refresh_token",
   "mail_expired",
+  "logo_invalid",
+  "logo_too_large",
+  "logo_upload_failed",
+  "contrast_too_low",
   "generic",
 ] as const;
 export type AdminErrorCode = (typeof ADMIN_ERROR_CODES)[number];

@@ -9,6 +9,9 @@ const OK: Record<string, AdminTextKey> = {
   smartBcc: "mailbox.ok.smartBcc",
   signature: "mailbox.ok.signature",
   saved: "users.saved",
+  branding: "branding.ok.saved",
+  logo: "branding.ok.logo",
+  logoRemoved: "branding.ok.logoRemoved",
 };
 
 type Search = Record<string, string | string[] | undefined>;

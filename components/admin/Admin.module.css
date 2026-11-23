@@ -32,7 +32,7 @@
   display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
   padding: 12px 24px; background: var(--adm-surface); border-bottom: 1px solid var(--adm-line);
 }
-.brand { font-weight: 700; }
+.brand { font-weight: 700; display: flex; align-items: center; gap: 10px; }
 .brand small { font-weight: 400; color: var(--adm-muted); margin-left: 8px; }
 .userBox { display: flex; align-items: center; gap: 12px; color: var(--adm-muted); font-size: 14px; }
 .layout { display: grid; grid-template-columns: 240px 1fr; gap: 24px; padding: 24px; max-width: 1280px; margin: 0 auto; }
@@ -162,3 +162,33 @@
 .inlineForm { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; }
 .inlineForm input[type="number"] { width: 90px; min-height: 36px; padding: 0 8px; border: 1px solid var(--adm-field, var(--adm-line)); border-radius: 6px; }
 .inlineForm .hint { flex-basis: 100%; }
+
+/* Erscheinungsbild */
+.brandingGrid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, 380px); gap: 24px; align-items: start; }
+@media (max-width: 1000px) { .brandingGrid { grid-template-columns: 1fr; } }
+.brandingFields { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.fieldset legend { font-weight: 700; font-size: 14px; padding: 0 4px; }
+.colorList { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 16px; }
+@media (max-width: 640px) { .colorList { grid-template-columns: 1fr; } }
+.colorRow { display: flex; flex-direction: column; gap: 4px; font-size: 14px; min-width: 0; }
+.colorRow label { font-weight: 600; }
+.colorInputs { display: flex; gap: 8px; align-items: center; }
+.colorInputs input[type="color"] { flex: none; width: 44px; height: 40px; padding: 2px; border: 1px solid #8a929c; border-radius: 8px; background: #fff; cursor: pointer; }
+.colorInputs input:not([type="color"]) { flex: 1; min-width: 0; min-height: 40px; padding: 6px 10px; border: 1px solid #8a929c; border-radius: 8px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; }
+.inputBad { border-color: var(--adm-full) !important; outline: 1px solid var(--adm-full); }
+.fieldError { font-size: 13px; color: var(--adm-full); }
+.previewWrap { position: sticky; top: 16px; display: flex; flex-direction: column; gap: 8px; }
+.previewLabel { font-size: 13px; font-weight: 700; color: var(--adm-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.preview { border: 1px solid var(--adm-line); border-radius: 12px; overflow: hidden; font-size: 14px; }
+.previewHeader { display: flex; align-items: center; gap: 12px; padding: 12px 16px; min-height: 56px; }
+.previewLogo { display: block; height: 36px; width: auto; max-width: 160px; object-fit: contain; }
+.previewClaim { font-weight: 700; font-size: 13px; }
+.previewHero { padding: 18px 16px; display: flex; flex-direction: column; gap: 4px; }
+.previewBody { padding: 16px; display: flex; flex-direction: column; gap: 10px; align-items: flex-start; }
+.previewCard { padding: 12px 14px; width: 100%; font-weight: 600; }
+.previewButton { padding: 10px 16px; font-weight: 700; }
+.logoBox { display: flex; flex-wrap: wrap; gap: 16px; align-items: center; }
+.logoPreview { display: grid; place-items: center; min-width: 160px; min-height: 72px; padding: 12px 16px; border: 1px dashed var(--adm-line); border-radius: 10px; }
+.logoPreview img { display: block; height: 48px; width: auto; max-width: 240px; object-fit: contain; }
+.topbarLogo { display: block; height: 28px; width: auto; max-width: 140px; object-fit: contain; }
+.btn:disabled, .btnGhost:disabled { opacity: 0.55; cursor: not-allowed; }

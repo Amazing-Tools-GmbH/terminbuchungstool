@@ -18,6 +18,8 @@ const nextConfig: NextConfig = {
   // pg ist ein Node-Modul und soll nicht gebündelt werden
   serverExternalPackages: ["pg"],
   poweredByHeader: false,
+  // Logo-Upload im Admin (max. 1 MB Datei + Formular-Overhead)
+  experimental: { serverActions: { bodySizeLimit: "2mb" } },
   // Schlanke Laufzeit-Ausgabe (.next/standalone mit server.js und nur den nötigen Paketen):
   // wird von GitHub Actions gebaut und als Release auf den Server kopiert.
   output: "standalone",
