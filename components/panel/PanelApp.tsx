@@ -1,7 +1,7 @@
 "use client";
 /**
  * Vertriebs-Panel im Pipedrive-Deal (Mock-up 1-pipedrive-panel): Kontakt mit
- * Status, Event, Wochenansicht mit Terminen (Tag + Uhrzeit wählen), Buchungslink
+ * Status, Event, nur die Tage mit Terminen des Events (Tag + Uhrzeit wählen), Buchungslink
  * senden (Standard: gewählter Termin; über ▾ mehrere oder alle Termine des Events),
  * persönlicher Link, freie Plätze. Läuft im iframe von Pipedrive; das SDK
  * wird nur dort initialisiert (Größe anpassen, Hinweise, Sitzung erneuern).
@@ -15,17 +15,10 @@ import { usePipedriveSdk } from "./usePipedriveSdk";
 type Texts = Record<string, string>;
 type Identity = { userId: number; companyId: number; dealId: number };
 
-const DAY = 86_400_000;
 const toDate = (key: string) => {
   const [y, m, d] = key.split("-").map(Number);
   return new Date(Date.UTC(y!, m! - 1, d!));
 };
-const keyOf = (d: Date) => d.toISOString().slice(0, 10);
-const mondayOf = (key: string) => {
-  const d = toDate(key);
-  return keyOf(new Date(d.getTime() - ((d.getUTCDay() + 6) % 7) * DAY));
-};
-const addDays = (key: string, n: number) => keyOf(new Date(toDate(key).getTime() + n * DAY));
 /** „GMT+01:00 Mitteleuropäische Normalzeit“ für die Zeitzone des Mandanten */
 function tzLabel(tz: string): string {
   const part = (style: "longOffset" | "long") =>
@@ -61,7 +54,6 @@ export function PanelApp(props: {
   const initialEvent = ctx.events.find((e) => firstOpen(e)) ?? ctx.events[0];
   const initialSlot = firstOpen(initialEvent);
   const [eventId, setEventId] = useState(initialEvent?.id ?? "");
-  const [week, setWeek] = useState(mondayOf(initialSlot?.dayKey ?? ctx.todayKey));
   const [day, setDay] = useState<string | null>(initialSlot?.dayKey ?? null);
   const [selected, setSelected] = useState<string[]>(initialSlot ? [initialSlot.id] : []);
   const [seats, setSeats] = useState(1);
@@ -139,19 +131,15 @@ export function PanelApp(props: {
   }, [mailPending, ctx, refresh]);
 
   // --- Auswahl -----------------------------------------------------------
-  const weekDays = Array.from({ length: 7 }, (_, i) => addDays(week, i));
+  // Nur Tage, an denen das Event tatsächlich Termine hat (Slots sind nach Beginn sortiert)
+  const eventDays = [...new Set(slots.map((s) => s.dayKey))];
   const slotsOn = (key: string) => slots.filter((s) => s.dayKey === key);
-  const weekHasOpen = weekDays.some((k) => slotsOn(k).some((s) => s.free > 0));
-  const lastKey = slots.length ? slots[slots.length - 1]!.dayKey : ctx.todayKey;
-  const atStart = week <= mondayOf(ctx.todayKey);
-  const atEnd = week >= mondayOf(lastKey);
-  const nextOpen = slots.find((s) => s.free > 0 && s.dayKey >= addDays(week, 7));
+  const thisYear = ctx.todayKey.slice(0, 4);
 
   const pickEvent = (id: string) => {
     const ev = ctx.events.find((e) => e.id === id);
     const s = firstOpen(ev);
     setEventId(id);
-    setWeek(mondayOf(s?.dayKey ?? ctx.todayKey));
     setDay(s?.dayKey ?? null);
     setSelected(s ? [s.id] : []);
     setSeats(1);
@@ -163,7 +151,6 @@ export function PanelApp(props: {
   };
 
   const label = (s: PanelSlot) => `${s.weekdayShort}, ${s.date} · ${s.time}`;
-  const weekLabel = `${fmt({ day: "numeric", month: "short" }).format(toDate(weekDays[0]!))} – ${fmt({ day: "numeric", month: "short", year: "numeric" }).format(toDate(weekDays[6]!))}`;
 
   // --- Status ------------------------------------------------------------
   const inv = ctx.invitation;
@@ -293,68 +280,33 @@ export function PanelApp(props: {
           ) : (
             <div className={styles.picker}>
               <div className={styles.label}>{t("panel.pick")}</div>
-              <div className={styles.weekNav}>
-                <button type="button" className={styles.navBtn} onClick={() => setWeek(addDays(week, -7))} disabled={atStart} aria-label={t("panel.prevWeek")}>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true">
-                    <path d="m15 5-7 7 7 7" />
-                  </svg>
-                </button>
-                <div className={styles.weekLabel} aria-live="polite">
-                  {weekLabel}
-                </div>
-                <button type="button" className={styles.todayBtn} onClick={() => setWeek(mondayOf(ctx.todayKey))}>
-                  {t("panel.today")}
-                </button>
-                <button type="button" className={styles.navBtn} onClick={() => setWeek(addDays(week, 7))} disabled={atEnd} aria-label={t("panel.nextWeek")}>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true">
-                    <path d="m9 5 7 7-7 7" />
-                  </svg>
-                </button>
-              </div>
               <div role="group" aria-label={t("panel.days")} className={styles.days}>
-                {weekDays.map((k) => {
+                {eventDays.map((k) => {
                   const list = slotsOn(k);
-                  const off = list.length === 0;
-                  const full = !off && !list.some((s) => s.free > 0);
+                  const full = !list.some((s) => s.free > 0);
                   const d = toDate(k);
                   const picked = list.some((s) => selected.includes(s.id));
-                  const aria = `${fmt({ weekday: "long", day: "numeric", month: "long" }).format(d)}${off ? `, ${t("panel.day.none")}` : full ? `, ${t("panel.day.full")}` : ""}`;
+                  const otherYear = k.slice(0, 4) !== thisYear;
+                  const aria = `${fmt({ weekday: "long", day: "numeric", month: "long", ...(otherYear ? { year: "numeric" } : {}) }).format(d)}${full ? `, ${t("panel.day.full")}` : ""}`;
                   return (
                     <button
                       key={k}
                       type="button"
                       className={styles.day}
-                      data-off={off}
                       data-full={full}
                       data-picked={picked}
                       aria-pressed={day === k}
                       aria-label={aria}
-                      disabled={off}
                       onClick={() => setDay(k)}
                     >
                       <span className={styles.wd}>{fmt({ weekday: "short" }).format(d).replace(".", "").toUpperCase()}</span>
                       <span className={styles.num}>{d.getUTCDate()}</span>
-                      <span className={styles.sub}>{full ? t("panel.day.fullShort") : fmt({ month: "short" }).format(d)}</span>
+                      <span className={styles.sub}>{full ? t("panel.day.fullShort") : fmt({ month: "short", ...(otherYear ? { year: "2-digit" } : {}) }).format(d)}</span>
                     </button>
                   );
                 })}
               </div>
-              {!weekHasOpen && nextOpen && (
-                <div className={styles.emptyWeek}>
-                  <span>{t("panel.emptyWeek")}</span>
-                  <button
-                    type="button"
-                    className={styles.linkBtn}
-                    onClick={() => {
-                      setWeek(mondayOf(nextOpen.dayKey));
-                      setDay(nextOpen.dayKey);
-                    }}
-                  >
-                    {t("panel.nextSlot", { label: label(nextOpen) })}
-                  </button>
-                </div>
-              )}
-              {day && daySlots.length > 0 && weekDays.includes(day) && (
+              {day && daySlots.length > 0 && (
                 <div className={styles.times}>
                   <div className={styles.label}>{t("panel.time")}</div>
                   {daySlots.map((s) => {
