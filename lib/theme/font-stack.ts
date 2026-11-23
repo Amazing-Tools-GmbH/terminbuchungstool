@@ -4,8 +4,8 @@ const SERIF: ReadonlySet<FontName> = new Set(["Merriweather", "Lora"]);
 
 /**
  * CSS-Schriftstapel für eine Allowlist-Schrift. Verweist auf die
- * CSS-Variable, die next/font für die selbst gehostete Schrift setzt
- * (lib/theme/fonts.ts), mit Systemschrift als Fallback.
+ * CSS-Variable der selbst gehosteten Schrift (app/fonts.css, erzeugt von
+ * scripts/fonts-download.mjs), mit Systemschrift als Fallback.
  */
 export function fontStack(name: FontName): string {
   const fallback = SERIF.has(name) ? "Georgia, 'Times New Roman', serif" : "system-ui, -apple-system, 'Segoe UI', sans-serif";
