@@ -1,7 +1,7 @@
 /**
  * Allowlist der Schriften, die ein Mandant wählen kann.
- * Neue Schrift = hier eintragen UND in lib/theme/fonts.ts laden.
- * (Getrennt von fonts.ts, damit Schema/Tests ohne next/font auskommen.)
+ * Neue Schrift = hier eintragen UND in scripts/fonts-download.mjs ergänzen,
+ * Skript ausführen (legt public/fonts/… und app/fonts.css an), Ergebnis committen.
  */
 export const FONT_NAMES = [
   "Overpass",

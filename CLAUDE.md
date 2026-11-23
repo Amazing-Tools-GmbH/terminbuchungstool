@@ -144,8 +144,9 @@ Mandantenfähiges Terminbuchungstool mit Pipedrive-Integration. Auftrag und Phas
   beschränkt (Hex, `linear-gradient` aus Hex, px/rem) – Schutz gegen CSS-Injection.
 - Zur Laufzeit als CSS-Variablen `--tb-*` (`lib/theme/css.ts`). Komponenten-CSS nutzt nur
   diese Variablen, keine festen Mandantenfarben.
-- Schriften nur aus der Allowlist (`lib/theme/font-names.ts` + `fonts.ts`, selbst gehostet
-  über next/font – keine Laufzeit-Anfragen an Google).
+- Schriften nur aus der Allowlist (`lib/theme/font-names.ts`), selbst gehostet als Dateien im
+  Repository (`public/fonts/`, `app/fonts.css`, erzeugt von `scripts/fonts-download.mjs`) –
+  keine Anfragen an Google, weder beim Build noch zur Laufzeit. Nicht `next/font/google`.
 - Texte: `lib/texts` mit Varianten `sie`/`ihr`; Mandanten können einzelne Schlüssel über
   `text_overrides` ersetzen. Neue UI-Texte immer dort anlegen, nie hart im JSX.
 - Barrierefreiheit: echte Buttons/Labels, Kontrast ≥ 4.5:1 (`lib/theme/contrast.ts`,
