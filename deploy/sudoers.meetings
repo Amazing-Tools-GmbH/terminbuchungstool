@@ -1,3 +1,0 @@
-# /etc/sudoers.d/meetings  (mit: sudo visudo -f /etc/sudoers.d/meetings)
-# Der Deploy-Benutzer darf nur den eigenen Dienst neu starten.
-meetings ALL=(root) NOPASSWD: /usr/bin/systemctl restart meetings, /usr/bin/systemctl is-active meetings

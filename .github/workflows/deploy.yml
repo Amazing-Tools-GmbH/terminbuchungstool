@@ -1,0 +1,130 @@
+# Deployment auf den Hetzner-Server (ohne Docker):
+#   Tests -> Build (Next.js standalone) auf GitHub -> Upload per SSH als deploy-meetings nach
+#   /srv/meetings/releases/<Zeitstempel> -> current umschalten -> sudo systemctl restart meetings
+#   -> Health-Check (bei Fehler automatisch zurück auf das vorige Release).
+#
+# Benötigt im Repository (Settings -> Secrets and variables -> Actions):
+#   Secret   DEPLOY_SSH_KEY      privater SSH-Schlüssel von deploy-meetings
+#   Variable DEPLOY_KNOWN_HOSTS  Host-Schlüssel des Servers (ssh-keyscan -t ed25519 2.31.52.105)
+# Datenbank-Migrationen laufen getrennt (npm run supabase:migrate), vor dem Merge nach main.
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  pull_request:          # nur Tests, kein Deployment
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  test:
+    name: Tests
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: terminbuchung_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/terminbuchung_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npm run typecheck
+      - name: Unit- und DB-Tests
+        run: |
+          export ENCRYPTION_KEY="$(node -e 'console.log(require("crypto").randomBytes(32).toString("base64"))')"
+          npm test
+
+  deploy:
+    name: Build und Deployment
+    needs: test
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    environment:
+      name: production
+      url: https://meetings.atools.de
+    env:
+      DEPLOY_HOST: 2.31.52.105
+      DEPLOY_USER: deploy-meetings
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+
+      - name: Build
+        env:
+          # wird beim Build geprüft (kein Pfad erlaubt); Laufzeitwerte kommen aus /etc/meetings/env
+          APP_BASE_URL: https://meetings.atools.de
+          NEXT_TELEMETRY_DISABLED: "1"
+        run: npm run build
+
+      - name: Release zusammenstellen
+        run: |
+          set -euo pipefail
+          REL=release
+          cp -a .next/standalone "$REL"
+          cp -a .next/static "$REL/.next/static"
+          if [ -d public ]; then cp -a public "$REL/public"; fi
+          install -D -m 0755 deploy/activate.sh "$REL/deploy/activate.sh"
+          # Laufzeit-Cache außerhalb des schreibgeschützten Releases (systemd: CacheDirectory=meetings)
+          rm -rf "$REL/.next/cache" && ln -s /var/cache/meetings "$REL/.next/cache"
+          # niemals Umgebungsdateien mitliefern
+          find "$REL" -maxdepth 1 -name '.env*' -delete
+          echo "$GITHUB_SHA" > "$REL/REVISION"
+          test -f "$REL/server.js"
+          tar -czf release.tgz -C "$REL" .
+          echo "RELEASE=$(date -u +%Y%m%d%H%M%S)" >> "$GITHUB_ENV"
+          du -h release.tgz
+
+      - name: SSH vorbereiten
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ vars.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          if [ -z "$DEPLOY_SSH_KEY" ]; then echo "::error::Secret DEPLOY_SSH_KEY fehlt"; exit 1; fi
+          if [ -z "$DEPLOY_KNOWN_HOSTS" ]; then echo "::error::Variable DEPLOY_KNOWN_HOSTS fehlt (ssh-keyscan -t ed25519 $DEPLOY_HOST)"; exit 1; fi
+          install -d -m 0700 ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 0600 ~/.ssh/deploy_key
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          cat > ~/.ssh/config <<CFG
+          Host meetings-server
+            HostName $DEPLOY_HOST
+            User $DEPLOY_USER
+            IdentityFile ~/.ssh/deploy_key
+            IdentitiesOnly yes
+            StrictHostKeyChecking yes
+            BatchMode yes
+            ServerAliveInterval 15
+          CFG
+
+      - name: Hochladen nach /srv/meetings/releases/<Zeitstempel>
+        run: |
+          ssh meetings-server "umask 027 && mkdir /srv/meetings/releases/$RELEASE && tar -xzf - -C /srv/meetings/releases/$RELEASE" < release.tgz
+
+      - name: Umschalten, Neustart, Health-Check
+        run: |
+          ssh meetings-server "bash /srv/meetings/releases/$RELEASE/deploy/activate.sh $RELEASE"
+
+      - name: Aufräumen
+        if: always()
+        run: rm -f ~/.ssh/deploy_key

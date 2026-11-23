@@ -18,6 +18,9 @@ const nextConfig: NextConfig = {
   // pg ist ein Node-Modul und soll nicht gebündelt werden
   serverExternalPackages: ["pg"],
   poweredByHeader: false,
+  // Schlanke Laufzeit-Ausgabe (.next/standalone mit server.js und nur den nötigen Paketen):
+  // wird von GitHub Actions gebaut und als Release auf den Server kopiert.
+  output: "standalone",
   async headers() {
     return [
       // Das Vertriebs-Panel läuft als iframe in Pipedrive – nur dort (und lokal auf der Dev-Seite) einbettbar

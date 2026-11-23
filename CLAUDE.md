@@ -73,11 +73,13 @@ Mandantenfähiges Terminbuchungstool mit Pipedrive-Integration. Auftrag und Phas
 - Admin-Backend `/admin` (Server Components + Server Actions, zod, `lib/admin`), Texte in
   `lib/texts/admin.ts`. Pipedrive-Benutzerliste über `lib/pipedrive/directory.ts`
   (`PIPEDRIVE_DIRECTORY=api|fake`; `fake` = Seed-Daten, nur lokal).
-- Hosting: Hetzner, kein Docker/Vercel: Node-Prozess unter systemd (Benutzer `meetings`,
-  `/srv/meetings/current` = Symlink auf Release, Konfiguration `/etc/meetings/env`,
-  `next start --hostname 127.0.0.1 --port 3003`, `ProtectSystem=strict`, nur
-  `/var/cache/meetings` beschreibbar), Caddy davor unter `https://meetings.atools.de`, Bau aus
-  GitHub `main` per `deploy/deploy.sh`, Cron per systemd-Timer. Vorlagen in `deploy/`.
+- Hosting: Hetzner, kein Docker/Vercel. Deployment per GitHub Actions (`.github/workflows/deploy.yml`,
+  Push auf `main`): Tests → Build `output: "standalone"` → SSH als `deploy-meetings` nach
+  `/srv/meetings/releases/<Zeitstempel>` → `deploy/activate.sh` (Symlink `/srv/meetings/current`,
+  `sudo systemctl restart meetings`, Health-Check, Rücksprung). Dienst als `meetings` unter systemd:
+  `/usr/bin/node /srv/meetings/current/server.js`, `HOSTNAME=127.0.0.1`, `PORT=3003`,
+  `EnvironmentFile=/etc/meetings/env`, `ProtectSystem=strict` (nur `/var/cache/meetings`
+  beschreibbar), Caddy davor unter `https://meetings.atools.de`, Cron per systemd-Timer.
   `/panel` muss im Pipedrive-iframe laufen: Einbettungs-Header setzt die App
   (`next.config.ts`), nie im Proxy überschreiben. Zur Laufzeit nichts ins Release schreiben.
 - Kein basePath: die App läuft im Root (`APP_BASE_URL` ohne Pfad, sonst bricht der Build ab).

@@ -149,65 +149,73 @@ dem Origin von `APP_BASE_URL` auf (`lib/links.ts`, `lib/auth/urls.ts`).
 | Pipedrive „App settings“ | `https://meetings.atools.de/settings` |
 | **Pipedrive-Panel (Custom Panel im Deal)** | **`https://meetings.atools.de/panel`** |
 | Google/Microsoft (nur `INVITE_MAIL_PROVIDER=oauth`) | `https://meetings.atools.de/api/mail/oauth/google/callback` bzw. `…/microsoft/callback` |
-| Health-Check (nur lokal abfragen) | `http://127.0.0.1:3003/api/health` |
+| Health-Check (auf dem Server) | `http://127.0.0.1:3003/api/health` |
 
 ### Hosting: Hetzner, Node unter systemd, Caddy davor (kein Docker)
 
-Gleiches Muster wie die anderen Panels: Benutzer `meetings`, Code unter
-`/srv/meetings/current` (Symlink auf ein Release), Konfiguration in `/etc/meetings/env`,
-Bau direkt aus GitHub (Branch `main`) auf dem Server.
+Deployment per **GitHub Actions** (`.github/workflows/deploy.yml`) bei jedem Push auf `main`:
+Tests (inkl. DB-Tests gegen Postgres 16) → Build auf GitHub (Next.js `output: "standalone"`,
+~27 MB) → Upload per SSH als `deploy-meetings` nach `/srv/meetings/releases/<Zeitstempel>` →
+`deploy/activate.sh` stellt `/srv/meetings/current` um, `sudo systemctl restart meetings`,
+Health-Check (`/api/health`), bei Fehler automatisch zurück aufs vorige Release; 5 Releases
+bleiben. Auf dem Server wird nichts gebaut (kein git, kein npm nötig). Pull Requests laufen nur
+durch die Tests.
 
 ```
-/srv/meetings/
-  repo.git/                 Spiegel des GitHub-Repos (Deploy-Key des Benutzers meetings)
-  releases/<zeit>-<commit>/ gebaute Releases (die letzten 5 bleiben)
-  current -> releases/…     aktives Release (WorkingDirectory der Unit)
-/etc/meetings/env           Umgebungsvariablen (root:meetings, 0640), Vorlage: .env.example
-/var/cache/meetings/        Next.js-Laufzeit-Cache (einzig beschreibbar, von systemd angelegt)
+/srv/meetings/                deploy-meetings:meetings 2750
+  releases/<Zeitstempel>/     server.js, .next/, node_modules/ (nur Laufzeit), deploy/activate.sh, REVISION
+  current -> releases/…       aktives Release
+/etc/meetings/env             root:meetings 0640 – Umgebungsvariablen (Vorlage: .env.example)
+/var/cache/meetings/          Next.js-Cache, einzig beschreibbar (systemd CacheDirectory)
 ```
 
-Vorlagen in [`deploy/`](deploy/):
-
-| Datei | Zweck |
+| Benutzer | Zweck |
 |---|---|
-| `systemd/meetings.service` | `next start --hostname 127.0.0.1 --port 3003`, `ProtectSystem=strict`, `CacheDirectory=meetings`, weitere Härtung |
-| `systemd/meetings-cron.{service,timer}` | jede Minute `/api/cron/outbox` (Mails + Pipedrive-Aufträge); `CRON_SECRET` per stdin |
-| `Caddyfile` | `meetings.atools.de` → `127.0.0.1:3003` |
-| `deploy.sh` | Release aus `main` bauen, umschalten, neu starten, Health-Check, bei Fehler zurück |
-| `sudoers.meetings` | erlaubt `meetings` nur `systemctl restart meetings` |
+| `meetings` (Gruppe `meetings`) | führt die App aus (systemd), kein Login |
+| `deploy-meetings` | SSH-Login für GitHub Actions; schreibt Releases, darf nur `systemctl restart meetings` |
 
-**Einrichtung (einmalig, als root/sudo):**
+Dienst (`deploy/systemd/meetings.service`):
+
+```
+ExecStart=/usr/bin/node /srv/meetings/current/server.js
+Environment=NODE_ENV=production APP_ENV=production NEXT_TELEMETRY_DISABLED=1 HOSTNAME=127.0.0.1 PORT=3003
+EnvironmentFile=/etc/meetings/env
+User=meetings  Group=meetings  ProtectSystem=strict  CacheDirectory=meetings
+```
+
+Vorlagen in [`deploy/`](deploy/): `systemd/meetings.service`, `systemd/meetings-cron.{service,timer}`
+(jede Minute `/api/cron/outbox`), `Caddyfile`, `sudoers.deploy-meetings`, `activate.sh`.
+
+**GitHub (Settings → Secrets and variables → Actions):**
+- Secret `DEPLOY_SSH_KEY`: privater Schlüssel von `deploy-meetings`
+- Variable `DEPLOY_KNOWN_HOSTS`: Ausgabe von `ssh-keyscan -t ed25519 2.31.52.105` (Host-Schlüssel
+  wird geprüft, nicht blind übernommen)
+
+**Server einrichten (einmalig, als root):**
 
 ```bash
-useradd --system --home-dir /srv/meetings --create-home --shell /usr/sbin/nologin meetings
-install -d -o meetings -g meetings -m 0750 /srv/meetings/releases
+useradd --system --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin meetings
+useradd --create-home --shell /bin/bash deploy-meetings
+install -d -o deploy-meetings -g meetings -m 2750 /srv/meetings /srv/meetings/releases   # 2 = setgid: Uploads erben die Gruppe meetings
 install -d -o root -g meetings -m 0750 /etc/meetings
-# Deploy-Key: Schlüssel für meetings erzeugen, öffentlichen Teil im GitHub-Repo als
-# "Deploy key" (nur lesen) eintragen
-sudo -u meetings ssh-keygen -t ed25519 -N "" -f /srv/meetings/.ssh/id_ed25519
-sudo -u meetings ssh -T git@github.com     # Fingerprint bestätigen
-# Konfiguration: Vorlage aus dem Repo (.env.example), Werte nach den "Produktion:"-Hinweisen
-install -o root -g meetings -m 0640 .env.example /etc/meetings/env && sudoedit /etc/meetings/env
+bash deploy/setup-env.sh                       # legt /etc/meetings/env an (fragt Werte ab, erzeugt Schlüssel)
+# Deploy-Schlüssel: öffentlichen Teil eintragen (privaten als Secret DEPLOY_SSH_KEY in GitHub)
+install -d -o deploy-meetings -g deploy-meetings -m 0700 /home/deploy-meetings/.ssh
+echo 'restrict ssh-ed25519 AAAA… github-actions-meetings' > /home/deploy-meetings/.ssh/authorized_keys
+chown deploy-meetings: /home/deploy-meetings/.ssh/authorized_keys && chmod 0600 /home/deploy-meetings/.ssh/authorized_keys
+visudo -f /etc/sudoers.d/deploy-meetings       # Inhalt aus deploy/sudoers.deploy-meetings
 cp deploy/systemd/meetings* /etc/systemd/system/ && systemctl daemon-reload
-visudo -f /etc/sudoers.d/meetings          # Inhalt aus deploy/sudoers.meetings
-systemctl enable meetings meetings-cron.timer
-# erstes Release (Skript direkt aus GitHub bzw. aus einem Checkout):
-sudo -u meetings bash deploy/deploy.sh main
-systemctl start meetings-cron.timer
-# Caddy: Block aus deploy/Caddyfile übernehmen
-systemctl reload caddy
+systemctl enable meetings meetings-cron.timer  # Start erfolgt mit dem ersten Deployment
+# Caddy: Block aus deploy/Caddyfile übernehmen, dann systemctl reload caddy
 ```
 
-**Update:** Migrationen vorher anwenden (`npm run supabase:migrate`, nicht auf dem Server),
-dann `sudo -u meetings /srv/meetings/current/deploy/deploy.sh`.
+**Manuell zurückschalten:** `sudo -u deploy-meetings bash /srv/meetings/current/deploy/activate.sh <Zeitstempel>`.
+**Migrationen** laufen getrennt (`npm run supabase:migrate`), vor dem Merge nach `main`.
 
 Hinweise:
-- Node 22 LTS unter `/usr/bin/node` (sonst Pfad in `meetings.service` anpassen), `git`, `curl`.
-  Der Build lädt die Schriften einmalig von Google Fonts (ausgehendes HTTPS nötig);
-  zur Laufzeit gibt es keine Anfragen an Google.
+- Node unter `/usr/bin/node` (Server: Node 24; GitHub baut ebenfalls mit Node 24).
 - `ProtectSystem=strict`: Das Release ist zur Laufzeit schreibgeschützt; `.next/cache` ist ein
-  Symlink auf `/var/cache/meetings`. Sonst schreibt die App nichts auf die Platte (Logos liegen
-  in Supabase Storage, `ASSET_STORAGE=supabase`).
+  Symlink auf `/var/cache/meetings`. Logos liegen in Supabase Storage (`ASSET_STORAGE=supabase`).
 - Port 3003 lauscht nur auf `127.0.0.1`; von außen nur über Caddy (Firewall: 80/443).
   Die App wertet `X-Forwarded-Proto`/`X-Forwarded-Host` aus (setzt Caddy standardmäßig),
   um zu erkennen, dass eine Anfrage über `https://meetings.atools.de` kam.

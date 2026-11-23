@@ -1,6 +1,7 @@
 # /etc/systemd/system/meetings.service
 # Terminbuchungstool (Next.js) – Node-Prozess, nur lokal erreichbar; Caddy davor.
-# Code: /srv/meetings/current (Symlink auf das aktuelle Release), Konfiguration: /etc/meetings/env
+# Code: /srv/meetings/current (Symlink auf das aktuelle Release, Next.js standalone, von
+# GitHub Actions als deploy-meetings hochgeladen), Konfiguration: /etc/meetings/env
 [Unit]
 Description=Meetings – Terminbuchungstool (Next.js)
 After=network-online.target
@@ -15,13 +16,16 @@ EnvironmentFile=/etc/meetings/env
 Environment=NODE_ENV=production
 Environment=APP_ENV=production
 Environment=NEXT_TELEMETRY_DISABLED=1
-ExecStart=/usr/bin/node /srv/meetings/current/node_modules/next/dist/bin/next start --hostname 127.0.0.1 --port 3003
+# Adresse/Port des Next.js-Servers (nur lokal; nicht in /etc/meetings/env setzen)
+Environment=HOSTNAME=127.0.0.1
+Environment=PORT=3003
+ExecStart=/usr/bin/node /srv/meetings/current/server.js
 Restart=always
 RestartSec=5
 TimeoutStopSec=20
 
 # Dateisystem: alles schreibgeschützt; einzig beschreibbar ist der Next.js-Cache
-# (/var/cache/meetings, von systemd angelegt; .next/cache im Release zeigt dorthin)
+# (/var/cache/meetings, von systemd angelegt; .next/cache im Release ist ein Symlink dorthin)
 ProtectSystem=strict
 CacheDirectory=meetings
 CacheDirectoryMode=0750
