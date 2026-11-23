@@ -76,7 +76,6 @@
   font-weight: 600;
 }
 .iconBtn,
-.navBtn,
 .moreBtn {
   display: inline-flex;
   align-items: center;
@@ -89,10 +88,6 @@
   background: var(--p-card);
   color: var(--p-accent);
   cursor: pointer;
-}
-.navBtn:disabled {
-  color: var(--p-off);
-  cursor: default;
 }
 .card {
   margin: 0;
@@ -168,19 +163,6 @@
 .picker {
   margin-top: 12px;
 }
-.weekNav {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-bottom: 8px;
-}
-.weekLabel {
-  flex: 1;
-  min-width: 0;
-  font-weight: 600;
-  font-size: 13px;
-}
-.todayBtn,
 .copyBtn {
   min-height: 36px;
   padding: 0 10px;
@@ -193,7 +175,7 @@
 }
 .days {
   display: grid;
-  grid-template-columns: repeat(7, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(64px, 1fr));
   gap: 4px;
 }
 .day {
@@ -213,16 +195,6 @@
 }
 .root[data-theme="dark"] .day {
   border-color: var(--p-border);
-}
-.day[data-off="true"] {
-  background: transparent;
-  box-shadow: none;
-  color: var(--p-off);
-  cursor: default;
-  border-color: transparent;
-}
-.root[data-theme="dark"] .day[data-off="true"] {
-  border-color: transparent;
 }
 .day[data-picked="true"] {
   border-color: var(--p-accent);
@@ -301,22 +273,6 @@
 }
 .free[data-level="full"] {
   color: var(--p-bad);
-}
-.emptyWeek {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 8px;
-  margin-top: 10px;
-  color: var(--p-muted);
-}
-.linkBtn {
-  padding: 0;
-  border: 0;
-  background: none;
-  color: var(--p-accent);
-  text-decoration: underline;
-  cursor: pointer;
-  text-align: left;
 }
 .hint {
   margin-top: 6px;
