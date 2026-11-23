@@ -103,8 +103,34 @@ jobs:
           if [ -z "$DEPLOY_SSH_KEY" ]; then echo "::error::Secret DEPLOY_SSH_KEY fehlt"; exit 1; fi
           if [ -z "$DEPLOY_KNOWN_HOSTS" ]; then echo "::error::Variable DEPLOY_KNOWN_HOSTS fehlt (ssh-keyscan -t ed25519 $DEPLOY_HOST)"; exit 1; fi
           install -d -m 0700 ~/.ssh
-          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
-          chmod 0600 ~/.ssh/deploy_key
+          # Schlüssel normalisieren: Windows-Zeilenenden entfernen, verlorene Zeilenumbrüche
+          # wiederherstellen (Schlüssel in einer Zeile), abschließender Zeilenumbruch
+          (umask 077; python3 - > ~/.ssh/deploy_key <<'PY'
+          import os, re, textwrap
+          k = os.environ["DEPLOY_SSH_KEY"].replace("\r", "").strip()
+          m = re.fullmatch(r"(-----BEGIN [A-Z ]+-----)\s*(.*?)\s*(-----END [A-Z ]+-----)", k, re.S)
+          if m:
+              body = re.sub(r"\s+", "", m.group(2))
+              k = "\n".join([m.group(1), *textwrap.wrap(body, 70), m.group(3)])
+          print(k)
+          PY
+          )
+          if ! ssh-keygen -y -P "" -f ~/.ssh/deploy_key > /tmp/deploy_key.pub 2> /tmp/deploy_key.err; then
+            if grep -q "PuTTY-User-Key-File" ~/.ssh/deploy_key; then
+              echo "::error::DEPLOY_SSH_KEY ist im PuTTY-Format (.ppk). Bitte als OpenSSH-Schlüssel exportieren (PuTTYgen: Conversions -> Export OpenSSH key)."
+            elif grep -qE "^(ssh-ed25519|ssh-rsa|ecdsa-)" ~/.ssh/deploy_key; then
+              echo "::error::DEPLOY_SSH_KEY enthält einen ÖFFENTLICHEN Schlüssel. Ins Secret gehört der private (-----BEGIN OPENSSH PRIVATE KEY----- …)."
+            elif grep -qiE "passphrase" /tmp/deploy_key.err || grep -q "ENCRYPTED" ~/.ssh/deploy_key; then
+              echo "::error::DEPLOY_SSH_KEY ist mit einer Passphrase geschützt. Für das Deployment wird ein Schlüssel ohne Passphrase benötigt."
+            elif ! grep -q "^-----BEGIN .*PRIVATE KEY-----" ~/.ssh/deploy_key; then
+              echo "::error::DEPLOY_SSH_KEY beginnt nicht mit -----BEGIN … PRIVATE KEY-----. Bitte die komplette Schlüsseldatei inkl. Kopf- und Fußzeile eintragen."
+            else
+              echo "::error::DEPLOY_SSH_KEY lässt sich nicht als privater SSH-Schlüssel lesen (unvollständig oder beschädigt)."
+            fi
+            exit 1
+          fi
+          echo "Deploy-Schlüssel: $(ssh-keygen -lf /tmp/deploy_key.pub)"
+          echo "Muss zu einem Eintrag in /home/deploy-meetings/.ssh/authorized_keys passen (ssh-keygen -lf …)."
           printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
           cat > ~/.ssh/config <<CFG
           Host meetings-server
