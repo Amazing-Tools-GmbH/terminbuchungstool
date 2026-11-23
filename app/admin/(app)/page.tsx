@@ -93,8 +93,8 @@ export default async function SlotsPage({ searchParams }: { searchParams: Search
 
       {!event ? (
         <>
-          <p className={styles.card}>{at("slots.noEvents")}</p>
-          {manage && <EventForm open />}
+          {/* owner/admin sehen direkt das Formular; Vertrieb bekommt den Hinweis */}
+          {manage ? <EventForm open today={today} /> : <p className={styles.card}>{at("slots.noEvents")}</p>}
         </>
       ) : (
         <>
@@ -272,37 +272,77 @@ export default async function SlotsPage({ searchParams }: { searchParams: Search
               <p className={styles.muted}>{at("form.readOnly")}</p>
             )}
           </section>
-          {manage && <EventForm open={false} />}
+          {manage && <EventForm open={false} today={today} />}
         </>
       )}
     </>
   );
 }
 
-/** Neue Veranstaltung (owner/admin); bei leerem Mandanten offen */
-function EventForm({ open }: { open: boolean }) {
+/**
+ * Neue Veranstaltung samt erstem Termin (owner/admin) – ein Formular, danach sofort buchbar.
+ * Ohne Veranstaltung offen als Hauptkarte, sonst eingeklappt als „Weitere Veranstaltung anlegen“.
+ */
+function EventForm({ open, today }: { open: boolean; today: string }) {
+  const fields = (
+    <form action={createEventAction} className={styles.form}>
+      <div className={`${styles.field} ${styles.full}`}>
+        <label htmlFor="ev-title">{at("event.form.name")}</label>
+        <input id="ev-title" name="title" type="text" required maxLength={200} />
+      </div>
+      <div className={`${styles.field} ${styles.full}`}>
+        <label htmlFor="ev-location">{at("event.form.location")}</label>
+        <input id="ev-location" name="location" type="text" maxLength={200} />
+      </div>
+      <div className={`${styles.field} ${styles.full}`}>
+        <label htmlFor="ev-description">{at("event.form.description")}</label>
+        <textarea id="ev-description" name="description" rows={3} maxLength={2000} className={styles.textarea} />
+      </div>
+      <fieldset className={`${styles.full} ${styles.fieldset}`} aria-describedby="ev-first-hint">
+        <legend className={styles.h2}>{at("event.form.first")}</legend>
+        <div className={styles.form}>
+          <div className={styles.field}>
+            <label htmlFor="ev-date">{at("form.date")}</label>
+            <input id="ev-date" name="date" type="date" min={today} required />
+          </div>
+          <div className={styles.field}>
+            <label htmlFor="ev-capacity">{at("form.capacity")}</label>
+            <input id="ev-capacity" name="capacity" type="number" min={1} max={10000} defaultValue={12} required />
+          </div>
+          <div className={styles.field}>
+            <label htmlFor="ev-from">{at("form.from")}</label>
+            <input id="ev-from" name="from" type="time" defaultValue="10:00" required />
+          </div>
+          <div className={styles.field}>
+            <label htmlFor="ev-to">{at("form.to")}</label>
+            <input id="ev-to" name="to" type="time" defaultValue="12:00" required />
+          </div>
+        </div>
+        <p id="ev-first-hint" className={styles.hint}>
+          {at("event.form.firstHint")}
+        </p>
+      </fieldset>
+      <div className={styles.full}>
+        <button type="submit" className={`${styles.btn} ${styles.btnLarge}`}>
+          {at("event.form.submit")}
+        </button>
+      </div>
+    </form>
+  );
+  if (open) {
+    return (
+      <section className={styles.card} aria-labelledby="new-event">
+        <h2 className={styles.h2} id="new-event">
+          {at("event.form.title")}
+        </h2>
+        {fields}
+      </section>
+    );
+  }
   return (
-    <details className={`${styles.card} ${styles.details}`} open={open}>
-      <summary>{at("event.form.title")}</summary>
-      <form action={createEventAction} className={styles.form}>
-        <div className={`${styles.field} ${styles.full}`}>
-          <label htmlFor="ev-title">{at("event.form.name")}</label>
-          <input id="ev-title" name="title" type="text" required maxLength={200} />
-        </div>
-        <div className={`${styles.field} ${styles.full}`}>
-          <label htmlFor="ev-location">{at("event.form.location")}</label>
-          <input id="ev-location" name="location" type="text" maxLength={200} />
-        </div>
-        <div className={`${styles.field} ${styles.full}`}>
-          <label htmlFor="ev-description">{at("event.form.description")}</label>
-          <textarea id="ev-description" name="description" rows={3} maxLength={2000} className={styles.textarea} />
-        </div>
-        <div className={styles.full}>
-          <button type="submit" className={styles.btn}>
-            {at("event.form.submit")}
-          </button>
-        </div>
-      </form>
+    <details className={`${styles.card} ${styles.details}`}>
+      <summary>{at("event.form.more")}</summary>
+      {fields}
     </details>
   );
 }

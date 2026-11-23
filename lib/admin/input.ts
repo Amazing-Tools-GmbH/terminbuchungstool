@@ -76,7 +76,9 @@ export const smartBccSchema = z
 export const signatureSchema = z.string().max(2000).transform((v) => v.replace(/\r\n/g, "\n"));
 
 /** Neue Veranstaltung */
-export const createEventSchema = z.object({
+/** Veranstaltung samt erstem Termin (ein Formular, eine Transaktion) */
+export const createEventSchema = z
+  .object({
   title: z.string().trim().min(1).max(200),
   location: z
     .string()
@@ -88,4 +90,10 @@ export const createEventSchema = z.object({
     .trim()
     .max(2000)
     .transform((v) => (v === "" ? null : v)),
-});
+    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    from: time,
+    to: time,
+    capacity: z.coerce.number().int().min(1).max(10000),
+  })
+  .refine((v) => v.to > v.from, { path: ["to"], message: "Ende muss nach dem Beginn liegen" });
+export type CreateEventInput = z.infer<typeof createEventSchema>;
