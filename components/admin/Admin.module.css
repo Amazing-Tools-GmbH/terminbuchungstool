@@ -154,3 +154,5 @@
 @media (max-width: 640px) { .list li { flex-direction: column; gap: 4px; } }
 .fieldset { border: 1px solid var(--adm-line); border-radius: 8px; padding: 12px 14px 14px; margin: 4px 0 0; min-width: 0; }
 .fieldset legend { padding: 0 6px; margin: 0; }
+.subCard { margin-top: 12px; padding: 14px 16px; border: 1px solid var(--adm-line); border-radius: 10px; background: var(--adm-bg, transparent); }
+.h3 { font-size: 15px; font-weight: 600; margin: 0; }

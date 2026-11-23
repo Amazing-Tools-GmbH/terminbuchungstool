@@ -341,7 +341,7 @@
   min-height: 40px;
   padding: 0 12px;
   border: 0;
-  border-radius: 4px 0 0 4px;
+  border-radius: 4px;
   background: #1f7a3d;
   color: #ffffff;
   font-weight: 600;
@@ -443,4 +443,27 @@
   overflow: hidden;
   clip: rect(0 0 0 0);
   white-space: nowrap;
+}
+.dateList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.dateItem {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 8px;
+  padding: 8px 12px;
+  border: 1px solid var(--p-border);
+  border-radius: 4px;
+  background: var(--p-card);
+}
+.dateItem[data-full="true"] {
+  background: var(--p-pill-none);
+  color: var(--p-off);
 }

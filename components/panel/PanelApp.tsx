@@ -1,9 +1,9 @@
 "use client";
 /**
- * Vertriebs-Panel im Pipedrive-Deal (Mock-up 1-pipedrive-panel): Kontakt mit
- * Status, Veranstaltung, Wochenansicht mit Terminen, Buchungslink senden,
- * persönlicher Link, freie Plätze. Läuft im iframe von Pipedrive; das SDK
- * wird nur dort initialisiert (Größe anpassen, Hinweise, Sitzung erneuern).
+ * Vertriebs-Panel im Pipedrive-Deal: Kontakt mit Status, Event wählen, dessen
+ * Termine mit freien Plätzen, Buchungslink senden (gilt für alle kommenden Termine
+ * des Events), persönlicher Link, freie Plätze. Läuft im iframe von Pipedrive;
+ * das SDK wird nur dort initialisiert (Größe anpassen, Hinweise, Sitzung erneuern).
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { PanelContext, PanelEvent, PanelSlot } from "@/lib/panel/context";
@@ -13,24 +13,6 @@ import { usePipedriveSdk } from "./usePipedriveSdk";
 
 type Texts = Record<string, string>;
 type Identity = { userId: number; companyId: number; dealId: number };
-type Mode = "one" | "multi" | "all";
-type Sdk = {
-  execute: (cmd: string, args?: unknown) => Promise<unknown>;
-};
-
-const DAY = 86_400_000;
-const toDate = (key: string) => {
-  const [y, m, d] = key.split("-").map(Number);
-  return new Date(Date.UTC(y!, m! - 1, d!));
-};
-const keyOf = (d: Date) => d.toISOString().slice(0, 10);
-const mondayOf = (key: string) => {
-  const d = toDate(key);
-  return keyOf(new Date(d.getTime() - ((d.getUTCDay() + 6) % 7) * DAY));
-};
-const addDays = (key: string, n: number) => keyOf(new Date(toDate(key).getTime() + n * DAY));
-const fmt = (opts: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat("de-AT", { timeZone: "UTC", ...opts });
-
 function firstOpen(ev: PanelEvent | undefined): PanelSlot | undefined {
   return ev?.slots.find((s) => s.free > 0);
 }
@@ -52,13 +34,7 @@ export function PanelApp(props: {
   const rootRef = useRef<HTMLElement>(null);
 
   const initialEvent = ctx.events.find((e) => firstOpen(e)) ?? ctx.events[0];
-  const initialSlot = firstOpen(initialEvent);
   const [eventId, setEventId] = useState(initialEvent?.id ?? "");
-  const [week, setWeek] = useState(mondayOf(initialSlot?.dayKey ?? ctx.todayKey));
-  const [day, setDay] = useState<string | null>(initialSlot?.dayKey ?? null);
-  const [selected, setSelected] = useState<string[]>(initialSlot ? [initialSlot.id] : []);
-  const [mode, setMode] = useState<Mode>("one");
-  const [optionsOpen, setOptionsOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -131,35 +107,9 @@ export function PanelApp(props: {
     return () => clearTimeout(id);
   }, [mailPending, ctx, refresh]);
 
-  // --- Auswahl -----------------------------------------------------------
-  const weekDays = Array.from({ length: 7 }, (_, i) => addDays(week, i));
-  const slotsOn = (key: string) => slots.filter((s) => s.dayKey === key);
-  const weekHasOpen = weekDays.some((k) => slotsOn(k).some((s) => s.free > 0));
-  const lastKey = slots.length ? slots[slots.length - 1]!.dayKey : ctx.todayKey;
-  const atStart = week <= mondayOf(ctx.todayKey);
-  const atEnd = week >= mondayOf(lastKey);
-  const nextOpen = slots.find((s) => s.free > 0 && s.dayKey >= addDays(week, 7));
-
-  const pickEvent = (id: string) => {
-    const ev = ctx.events.find((e) => e.id === id);
-    const s = firstOpen(ev);
-    setEventId(id);
-    setWeek(mondayOf(s?.dayKey ?? ctx.todayKey));
-    setDay(s?.dayKey ?? null);
-    setSelected(s && mode !== "all" ? [s.id] : []);
-  };
-  const toggleSlot = (s: PanelSlot) => {
-    if (s.free <= 0) return;
-    if (mode === "multi") setSelected((cur) => (cur.includes(s.id) ? cur.filter((x) => x !== s.id) : [...cur, s.id]));
-    else setSelected([s.id]);
-  };
-  const changeMode = (m: Mode) => {
-    setMode(m);
-    if (m === "one") setSelected((cur) => cur.slice(0, 1));
-  };
-
-  const label = (s: PanelSlot) => `${s.weekdayShort}, ${s.date} · ${s.time}`;
-  const weekLabel = `${fmt({ day: "numeric", month: "short" }).format(toDate(weekDays[0]!))} – ${fmt({ day: "numeric", month: "short", year: "numeric" }).format(toDate(weekDays[6]!))}`;
+  // --- Event & Plätze --------------------------------------------------
+  const openSlots = slots.filter((s) => s.free > 0).length;
+  const eventTotals = slots.reduce((acc, s) => ({ free: acc.free + s.free, capacity: acc.capacity + s.capacity }), { free: 0, capacity: 0 });
 
   // --- Status ------------------------------------------------------------
   const inv = ctx.invitation;
@@ -177,17 +127,16 @@ export function PanelApp(props: {
   const mailFailureText = mailFailure?.startsWith("mailError.") ? t("mailError.generic") : mailFailure;
 
   // --- Senden ------------------------------------------------------------
-  const allCount = slots.filter((s) => s.free > 0).length;
-  const canSend = !!event && !!ctx.person?.email && !busy && (mode === "all" ? allCount > 0 : selected.length > 0);
+  const canSend = !!event && !!ctx.person?.email && !busy && openSlots > 0;
   const send = async () => {
     setError(null);
     setNotice(null);
     if (!event) return;
-    if (mode !== "all" && selected.length === 0) return setError(t("panel.nothingSelected"));
     setBusy(true);
     const r = await api<{ email: string }>("/invite", {
       method: "POST",
-      body: JSON.stringify({ eventId: event.id, slotIds: mode === "all" ? null : selected }),
+      // Link gilt für das ganze Event: alle kommenden Termine
+      body: JSON.stringify({ eventId: event.id, slotIds: null }),
     });
     setBusy(false);
     if (!r.ok) return setError(r.message);
@@ -211,7 +160,6 @@ export function PanelApp(props: {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const daySlots = day ? slotsOn(day) : [];
 
   return (
     <main ref={rootRef} className={styles.root} data-theme={props.theme}>
@@ -256,7 +204,7 @@ export function PanelApp(props: {
           <label htmlFor="panel-event" className={styles.label}>
             {t("panel.event")}
           </label>
-          <select id="panel-event" className={styles.select} value={event?.id} onChange={(e) => pickEvent(e.target.value)}>
+          <select id="panel-event" className={styles.select} value={event?.id} onChange={(e) => setEventId(e.target.value)}>
             {ctx.events.map((e) => (
               <option key={e.id} value={e.id}>
                 {e.title}
@@ -264,103 +212,28 @@ export function PanelApp(props: {
             ))}
           </select>
 
-          {mode === "all" ? (
-            <p className={styles.info}>{allCount > 0 ? t("panel.allInfo", { n: allCount }) : t("panel.noSlots")}</p>
-          ) : slots.length === 0 ? (
+          {slots.length === 0 ? (
             <p className={styles.info}>{t("panel.noSlots")}</p>
           ) : (
             <div className={styles.picker}>
-              <div className={styles.label}>{t("panel.pick")}</div>
-              <div className={styles.weekNav}>
-                <button type="button" className={styles.navBtn} onClick={() => setWeek(addDays(week, -7))} disabled={atStart} aria-label={t("panel.prevWeek")}>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true">
-                    <path d="m15 5-7 7 7 7" />
-                  </svg>
-                </button>
-                <div className={styles.weekLabel} aria-live="polite">
-                  {weekLabel}
-                </div>
-                <button type="button" className={styles.todayBtn} onClick={() => setWeek(mondayOf(ctx.todayKey))}>
-                  {t("panel.today")}
-                </button>
-                <button type="button" className={styles.navBtn} onClick={() => setWeek(addDays(week, 7))} disabled={atEnd} aria-label={t("panel.nextWeek")}>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true">
-                    <path d="m9 5 7 7-7 7" />
-                  </svg>
-                </button>
-              </div>
-              <div role="group" aria-label={t("panel.days")} className={styles.days}>
-                {weekDays.map((k) => {
-                  const list = slotsOn(k);
-                  const off = list.length === 0;
-                  const full = !off && !list.some((s) => s.free > 0);
-                  const d = toDate(k);
-                  const picked = list.some((s) => selected.includes(s.id));
-                  const aria = `${fmt({ weekday: "long", day: "numeric", month: "long" }).format(d)}${off ? `, ${t("panel.day.none")}` : full ? `, ${t("panel.day.full")}` : ""}`;
+              <div className={styles.label}>{t("panel.dates")}</div>
+              <ul className={styles.dateList}>
+                {slots.map((s) => {
+                  const full = s.free <= 0;
                   return (
-                    <button
-                      key={k}
-                      type="button"
-                      className={styles.day}
-                      data-off={off}
-                      data-full={full}
-                      data-picked={picked}
-                      aria-pressed={day === k}
-                      aria-label={aria}
-                      disabled={off}
-                      onClick={() => setDay(k)}
-                    >
-                      <span className={styles.wd}>{fmt({ weekday: "short" }).format(d).replace(".", "").toUpperCase()}</span>
-                      <span className={styles.num}>{d.getUTCDate()}</span>
-                      <span className={styles.sub}>{full ? t("panel.day.fullShort") : fmt({ month: "short" }).format(d)}</span>
-                    </button>
+                    <li key={s.id} className={styles.dateItem} data-full={full}>
+                      <span className={styles.range}>
+                        {s.weekdayShort}, {s.date} · {s.time}
+                        {s.location ? <span className={styles.loc}> · {s.location}</span> : null}
+                      </span>
+                      <span className={styles.free} data-level={full ? "full" : s.free <= 3 ? "low" : "ok"}>
+                        {full ? t("panel.full") : t("panel.free", { free: s.free, capacity: s.capacity })}
+                      </span>
+                    </li>
                   );
                 })}
-              </div>
-              {!weekHasOpen && nextOpen && (
-                <div className={styles.emptyWeek}>
-                  <span>{t("panel.emptyWeek")}</span>
-                  <button
-                    type="button"
-                    className={styles.linkBtn}
-                    onClick={() => {
-                      setWeek(mondayOf(nextOpen.dayKey));
-                      setDay(nextOpen.dayKey);
-                    }}
-                  >
-                    {t("panel.nextSlot", { label: label(nextOpen) })}
-                  </button>
-                </div>
-              )}
-              {day && daySlots.length > 0 && weekDays.includes(day) && (
-                <div className={styles.times}>
-                  <div className={styles.label}>{t("panel.time")}</div>
-                  {daySlots.map((s) => {
-                    const full = s.free <= 0;
-                    return (
-                      <button
-                        key={s.id}
-                        type="button"
-                        className={styles.time}
-                        data-full={full}
-                        aria-pressed={selected.includes(s.id)}
-                        disabled={full}
-                        onClick={() => toggleSlot(s)}
-                      >
-                        <span className={styles.range}>
-                          {s.time}
-                          {s.location ? <span className={styles.loc}> · {s.location}</span> : null}
-                        </span>
-                        <span className={styles.free} data-level={full ? "full" : s.free <= 3 ? "low" : "ok"}>
-                          {full ? t("panel.full") : t("panel.free", { free: s.free, capacity: s.capacity })}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
+              </ul>
               <div className={styles.hint}>{t("panel.timezone", { tz: ctx.timezone })}</div>
-              {mode === "multi" && <div className={styles.hint}>{t("panel.selected", { n: selected.length })}</div>}
             </div>
           )}
 
@@ -372,33 +245,12 @@ export function PanelApp(props: {
               </svg>
               {busy ? t("panel.sending") : inv ? t("panel.resend") : t("panel.send")}
             </button>
-            <button
-              type="button"
-              className={styles.moreBtn}
-              aria-expanded={optionsOpen}
-              aria-controls="panel-options"
-              aria-label={t("panel.mode.toggle")}
-              onClick={() => setOptionsOpen((o) => !o)}
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-                <path d="m6 9 6 6 6-6" />
-              </svg>
-            </button>
           </div>
           <div id="panel-send-hint" className={styles.hint}>
-            {ctx.person?.email ? t("panel.sendTo", { email: ctx.person.email }) : null}
+            {t("panel.linkInfo")}
+            {ctx.person?.email ? ` ${t("panel.sendTo", { email: ctx.person.email })}` : null}
             {inv && inv.status === "open" ? ` ${t("panel.resendHint")}` : null}
           </div>
-          {optionsOpen && (
-            <fieldset id="panel-options" className={styles.options}>
-              <legend className={styles.label}>{t("panel.mode.legend")}</legend>
-              {(["one", "multi", "all"] as const).map((m) => (
-                <label key={m} className={styles.radio}>
-                  <input type="radio" name="panel-mode" value={m} checked={mode === m} onChange={() => changeMode(m)} /> {t(`panel.mode.${m}`)}
-                </label>
-              ))}
-            </fieldset>
-          )}
           {error && (
             <p role="alert" className={styles.alert}>
               {error}
@@ -448,7 +300,7 @@ export function PanelApp(props: {
       <div className={styles.totals}>
         <span>{t("panel.totals")}</span>
         <span>
-          <strong>{ctx.totals.free}</strong> <span className={styles.muted}>{t("panel.totalsOf", { n: ctx.totals.capacity })}</span>
+          <strong>{eventTotals.free}</strong> <span className={styles.muted}>{t("panel.totalsOf", { n: eventTotals.capacity })}</span>
         </span>
       </div>
     </main>

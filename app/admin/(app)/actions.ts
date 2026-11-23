@@ -53,14 +53,13 @@ export async function createSlotAction(form: FormData) {
     capacity: str(form, "capacity"),
     open: form.get("open") === "on",
   });
-  let slotId: string | undefined;
   const error = parsed.success
     ? await run(async () => {
-        slotId = await createSlot(ctx, parsed.data);
+        await createSlot(ctx, parsed.data);
       })
     : "invalid_input";
   revalidatePath("/admin");
-  back("/admin", { event: str(form, "eventId"), slot: slotId, error, ok: error ? undefined : "slot" });
+  back("/admin", { event: str(form, "eventId"), error, ok: error ? undefined : "slot" });
 }
 
 export async function enableMemberAction(form: FormData) {
@@ -97,12 +96,12 @@ export async function createEventAction(form: FormData) {
     to: str(form, "to"),
     capacity: str(form, "capacity"),
   });
-  let created: { eventId: string; slotId: string } | undefined;
+  let created: { eventId: string } | undefined;
   const error = parsed.success
     ? await run(async () => {
         created = await createEvent(ctx, parsed.data);
       })
     : "invalid_input";
   revalidatePath("/admin");
-  back("/admin", { event: created?.eventId, slot: created?.slotId, error, ok: error ? undefined : "event" });
+  back("/admin", { event: created?.eventId, error, ok: error ? undefined : "event" });
 }
