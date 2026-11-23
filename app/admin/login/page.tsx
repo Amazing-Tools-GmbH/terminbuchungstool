@@ -16,7 +16,10 @@ export default async function LoginPage({ searchParams }: { searchParams: Search
   if (await getAdminContext()) redirect("/admin");
 
   const sp = await searchParams;
-  const error = loginErrorText(Array.isArray(sp.error) ? sp.error[0] : sp.error);
+  const errorCode = Array.isArray(sp.error) ? sp.error[0] : sp.error;
+  const error = loginErrorText(errorCode);
+  // Firma noch nicht verbunden -> Installation direkt anbieten
+  const offerInstall = errorCode === "not_connected";
   const dev = devToolsEnabled();
   const devUsers = dev
     ? await withActor({ role: "service_role" }, async (db) => {
@@ -51,10 +54,24 @@ export default async function LoginPage({ searchParams }: { searchParams: Search
               {error}
             </p>
           )}
-          <p style={{ margin: 0 }}>{at("login.intro")}</p>
-          <a className={`${styles.btn} ${styles.btnLarge}`} href="/api/auth/pipedrive/start">
-            {at("login.pipedrive")}
-          </a>
+          {offerInstall ? (
+            <>
+              <p style={{ margin: 0 }}>{at("login.install.text")}</p>
+              <a className={`${styles.btn} ${styles.btnLarge}`} href="/api/auth/pipedrive/install">
+                {at("login.install.button")}
+              </a>
+              <a className={styles.btnGhost} href="/api/auth/pipedrive/start">
+                {at("login.pipedrive")}
+              </a>
+            </>
+          ) : (
+            <>
+              <p style={{ margin: 0 }}>{at("login.intro")}</p>
+              <a className={`${styles.btn} ${styles.btnLarge}`} href="/api/auth/pipedrive/start">
+                {at("login.pipedrive")}
+              </a>
+            </>
+          )}
 
           {dev && (
             <section aria-labelledby="dev-login" style={{ borderTop: "1px solid var(--adm-line)", paddingTop: 16 }}>

@@ -45,3 +45,23 @@ describe("Pipedrive-Callback", () => {
     expect(res.headers.get("location")).toBe(`${BASE}/admin/login?error=cancelled`);
   });
 });
+
+describe("Installationslink", () => {
+  it("leitet ohne state zur Pipedrive-Freigabe mit zentralem Callback", async () => {
+    const { GET: install } = await import("@/app/api/auth/pipedrive/install/route");
+    const res = await install();
+    expect(res.status).toBe(307);
+    const loc = new URL(res.headers.get("location")!);
+    expect(loc.origin + loc.pathname).toBe("https://oauth.pipedrive.com/oauth/authorize");
+    expect(loc.searchParams.get("client_id")).toBe("cid");
+    expect(loc.searchParams.get("redirect_uri")).toBe(`${BASE}/api/auth/pipedrive/callback`);
+    expect(loc.searchParams.has("state")).toBe(false);
+  });
+
+  it("ohne OAuth-App -> Login-Seite mit Hinweis", async () => {
+    vi.stubEnv("PIPEDRIVE_CLIENT_ID", "");
+    const { GET: install } = await import("@/app/api/auth/pipedrive/install/route");
+    const res = await install();
+    expect(res.headers.get("location")).toBe(`${BASE}/admin/login?error=not_configured`);
+  });
+});

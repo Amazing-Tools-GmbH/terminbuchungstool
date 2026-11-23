@@ -1,4 +1,5 @@
 import "server-only";
+import type { PoolClient } from "pg";
 /**
  * Termine & Kapazitäten. Alle Zugriffe laufen als angemeldeter Benutzer
  * (withActor) – Lese- und Schreibrechte erzwingt RLS (sales: nur lesen).
@@ -7,7 +8,7 @@ import { withActor } from "@/lib/db";
 import { formatSlot } from "@/lib/datetime";
 import type { AdminContext } from "@/lib/auth/admin";
 import { AdminError, toAdminError } from "./errors";
-import type { CreateSlotInput } from "./input";
+import type { CreateEventInput, CreateSlotInput } from "./input";
 import { dealUrl, slotLevel, type SlotLevel } from "./slot-logic";
 
 export { kpis, type SlotLevel } from "./slot-logic";
@@ -137,37 +138,47 @@ export async function increaseCapacity(ctx: AdminContext, slotId: string, by = 1
 }
 
 /** Neuer Termin; Datum/Uhrzeit gelten in der Zeitzone des Mandanten */
+/** Termin einfügen (in der Transaktion des Aufrufers); Datum/Uhrzeit in der Mandanten-Zeitzone */
+async function insertSlot(
+  db: PoolClient,
+  ctx: AdminContext,
+  s: { eventId: string; date: string; from: string; to: string; capacity: number; location: string | null; open: boolean },
+): Promise<string> {
+  const { rows } = await db.query<{ id: string; in_past: boolean }>(
+    `insert into public.slots (tenant_id, event_id, starts_at, ends_at, capacity, location, status)
+     select $1, e.id, ($3::date + $4::time) at time zone $8, ($3::date + $5::time) at time zone $8, $6,
+            nullif($7, e.location), $9::public.slot_status
+       from public.events e where e.id = $2 and e.tenant_id = $1
+     returning id, starts_at <= now() as in_past`,
+    [ctx.tenant.id, s.eventId, s.date, s.from, s.to, s.capacity, s.location, ctx.tenant.timezone, s.open ? "open" : "closed"],
+  );
+  const row = rows[0];
+  if (!row) throw new AdminError("not_found");
+  // in der Vergangenheit: zurückrollen (Fehler beendet die Transaktion)
+  if (row.in_past) throw new AdminError("slot_in_past");
+  return row.id;
+}
+
 export async function createSlot(ctx: AdminContext, input: CreateSlotInput): Promise<string> {
   try {
-    return await withActor(ctx.actor, async (db) => {
-      const { rows } = await db.query<{ id: string; in_past: boolean }>(
-        `insert into public.slots (tenant_id, event_id, starts_at, ends_at, capacity, location, status)
-         select $1, e.id, ($3::date + $4::time) at time zone $8, ($3::date + $5::time) at time zone $8, $6,
-                nullif($7, e.location), $9::public.slot_status
-           from public.events e where e.id = $2 and e.tenant_id = $1
-         returning id, starts_at <= now() as in_past`,
-        [ctx.tenant.id, input.eventId, input.date, input.from, input.to, input.capacity, input.location, ctx.tenant.timezone, input.open ? "open" : "closed"],
-      );
-      const row = rows[0];
-      if (!row) throw new AdminError("not_found");
-      // in der Vergangenheit: zurückrollen (Fehler beendet die Transaktion)
-      if (row.in_past) throw new AdminError("slot_in_past");
-      return row.id;
-    });
+    return await withActor(ctx.actor, (db) => insertSlot(db, ctx, input));
   } catch (err) {
     throw toAdminError(err);
   }
 }
 
-/** Neue (veröffentlichte) Veranstaltung; Rechte per RLS (owner/admin) */
-export async function createEvent(ctx: AdminContext, input: { title: string; location: string | null; description: string | null }): Promise<string> {
+/** Neue (veröffentlichte) Veranstaltung mit erstem Termin – beides oder nichts; Rechte per RLS (owner/admin) */
+export async function createEvent(ctx: AdminContext, input: CreateEventInput): Promise<{ eventId: string; slotId: string }> {
   try {
     return await withActor(ctx.actor, async (db) => {
       const { rows } = await db.query<{ id: string }>(
         `insert into public.events (tenant_id, title, location, description, status) values ($1, $2, $3, $4, 'published') returning id`,
         [ctx.tenant.id, input.title, input.location, input.description],
       );
-      return rows[0]!.id;
+      const eventId = rows[0]!.id;
+      // Ort des Termins = Ort der Veranstaltung (Termine können später abweichen)
+      const slotId = await insertSlot(db, ctx, { eventId, date: input.date, from: input.from, to: input.to, capacity: input.capacity, location: null, open: true });
+      return { eventId, slotId };
     });
   } catch (err) {
     throw toAdminError(err);

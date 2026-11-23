@@ -13,7 +13,6 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   const items: NavItem[] = [
     { href: "/admin", label: at("nav.slots") },
     { href: null, label: at("nav.bookings"), soon },
-    { href: null, label: at("nav.events"), soon },
     { href: "/admin/postfach", label: at("nav.mailbox") },
     ...(canManage(ctx.role) ? [{ href: "/admin/email", label: at("nav.mailSettings") }] : []),
     { href: null, label: at("nav.templates"), soon },

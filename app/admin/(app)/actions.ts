@@ -53,14 +53,13 @@ export async function createSlotAction(form: FormData) {
     capacity: str(form, "capacity"),
     open: form.get("open") === "on",
   });
-  let slotId: string | undefined;
   const error = parsed.success
     ? await run(async () => {
-        slotId = await createSlot(ctx, parsed.data);
+        await createSlot(ctx, parsed.data);
       })
     : "invalid_input";
   revalidatePath("/admin");
-  back("/admin", { event: str(form, "eventId"), slot: slotId, error, ok: error ? undefined : "slot" });
+  back("/admin", { event: str(form, "eventId"), error, ok: error ? undefined : "slot" });
 }
 
 export async function enableMemberAction(form: FormData) {
@@ -88,13 +87,21 @@ export async function updateMemberAction(form: FormData) {
 
 export async function createEventAction(form: FormData) {
   const ctx = await requireAdmin(["owner", "admin"]);
-  const parsed = createEventSchema.safeParse({ title: str(form, "title"), location: str(form, "location") ?? "", description: str(form, "description") ?? "" });
-  let id: string | undefined;
+  const parsed = createEventSchema.safeParse({
+    title: str(form, "title"),
+    location: str(form, "location") ?? "",
+    description: str(form, "description") ?? "",
+    date: str(form, "date"),
+    from: str(form, "from"),
+    to: str(form, "to"),
+    capacity: str(form, "capacity"),
+  });
+  let created: { eventId: string } | undefined;
   const error = parsed.success
     ? await run(async () => {
-        id = await createEvent(ctx, parsed.data);
+        created = await createEvent(ctx, parsed.data);
       })
     : "invalid_input";
   revalidatePath("/admin");
-  back("/admin", { event: id, error, ok: error ? undefined : "event" });
+  back("/admin", { event: created?.eventId, error, ok: error ? undefined : "event" });
 }

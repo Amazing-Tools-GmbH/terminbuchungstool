@@ -62,7 +62,7 @@ export const TEXTS = {
     ihr: "Dieser Buchungslink ist leider abgelaufen. Bitte meldet euch bei uns, wir schicken euch gern einen neuen.",
     sie: "Dieser Buchungslink ist leider abgelaufen. Bitte melden Sie sich bei uns, wir senden Ihnen gern einen neuen.",
   },
-  "hero.unavailable": same("Für diese Veranstaltung sind derzeit keine Buchungen möglich."),
+  "hero.unavailable": same("Für dieses Event sind derzeit keine Buchungen möglich."),
   "aside.changeTitle": { ihr: "Buchung ändern", sie: "Buchung ändern" },
   "aside.changeSubmit": same("Änderung verbindlich buchen"),
   "aside.changeBack": same("Zurück zur Buchung"),
