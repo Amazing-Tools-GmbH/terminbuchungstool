@@ -5,7 +5,7 @@ import { isAdminErrorCode } from "@/lib/admin/errors";
 import { adminErrorText, at } from "@/lib/texts/admin";
 import { formatDate } from "@/lib/datetime";
 import styles from "@/components/admin/Admin.module.css";
-import { createEventAction, createSlotAction, increaseCapacityAction } from "./actions";
+import { createEventAction, createSlotAction, setCapacityAction } from "./actions";
 
 type Search = Promise<Record<string, string | string[] | undefined>>;
 const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
@@ -166,13 +166,32 @@ function EventPanel(props: {
                         {at("table.bookings")}
                       </Link>
                       {manage && s.level !== "cancelled" && (
-                        <form action={increaseCapacityAction}>
-                          <input type="hidden" name="slotId" value={s.id} />
-                          <input type="hidden" name="event" value={event.id} />
-                          <button type="submit" className={styles.btnGhost} aria-label={at("table.capacityUpLabel", { date: s.date })}>
-                            {at("table.capacityUp")}
-                          </button>
-                        </form>
+                        <details className={styles.inlineEdit}>
+                          <summary className={styles.btnGhost}>{at("table.capacityEdit")}</summary>
+                          <form action={setCapacityAction} className={styles.inlineForm}>
+                            <input type="hidden" name="slotId" value={s.id} />
+                            <input type="hidden" name="event" value={event.id} />
+                            <label htmlFor={`cap-${s.id}`} className={styles.visuallyHidden}>
+                              {at("table.capacityLabel", { date: s.date })}
+                            </label>
+                            <input
+                              id={`cap-${s.id}`}
+                              name="capacity"
+                              type="number"
+                              min={Math.max(1, s.booked)}
+                              max={10000}
+                              defaultValue={s.capacity}
+                              required
+                              aria-describedby={`cap-hint-${s.id}`}
+                            />
+                            <button type="submit" className={styles.btn}>
+                              {at("table.capacitySave")}
+                            </button>
+                            <span id={`cap-hint-${s.id}`} className={styles.hint}>
+                              {at("table.capacityHint", { booked: s.booked })}
+                            </span>
+                          </form>
+                        </details>
                       )}
                     </div>
                   </td>

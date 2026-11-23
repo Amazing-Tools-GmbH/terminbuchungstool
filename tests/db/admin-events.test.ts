@@ -75,3 +75,34 @@ describe("Veranstaltung mit erstem Termin", () => {
     await expect(slots.createEvent(sales, input({ title: "Verboten" }))).rejects.toMatchObject({ code: "forbidden" });
   });
 });
+
+describe("Teilnehmeranzahl ändern", () => {
+  const bookedSlot = async () =>
+    (
+      await db.admin<{ id: string; capacity: number; booked: number }>(
+        `select s.id, s.capacity, coalesce(sum(b.seats), 0)::int as booked
+           from slots s join bookings b on b.slot_id = s.id and b.status = 'confirmed'
+          where s.tenant_id = $1 group by s.id order by booked desc limit 1`,
+        [owner.tenant.id],
+      )
+    )[0]!;
+
+  it("setzt die Zahl direkt (auch verringern bis zur gebuchten Anzahl)", async () => {
+    const s = await bookedSlot();
+    await slots.setCapacity(owner, s.id, s.capacity + 5);
+    await slots.setCapacity(owner, s.id, s.booked);
+    const [r] = await db.admin<{ capacity: number }>("select capacity from slots where id = $1", [s.id]);
+    expect(r!.capacity).toBe(s.booked);
+    await slots.setCapacity(owner, s.id, s.capacity);
+  });
+
+  it("nicht unter die gebuchten Plätze", async () => {
+    const s = await bookedSlot();
+    await expect(slots.setCapacity(owner, s.id, s.booked - 1)).rejects.toMatchObject({ code: "capacity_below_booked" });
+  });
+
+  it("Vertrieb darf nicht ändern (RLS)", async () => {
+    const s = await bookedSlot();
+    await expect(slots.setCapacity(sales, s.id, s.capacity + 1)).rejects.toMatchObject({ code: "forbidden" });
+  });
+});

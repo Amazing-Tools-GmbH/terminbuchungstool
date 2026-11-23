@@ -20,7 +20,7 @@ export const createSlotSchema = z
   .refine((v) => v.to > v.from, { path: ["to"], message: "Ende muss nach dem Beginn liegen" });
 export type CreateSlotInput = z.infer<typeof createSlotSchema>;
 
-export const capacitySchema = z.object({ slotId: z.string().uuid(), by: z.coerce.number().int().min(1).max(1000).default(1) });
+export const capacitySchema = z.object({ slotId: z.string().uuid(), capacity: z.coerce.number().int().min(1).max(10000) });
 
 export const memberRoleSchema = z.enum(["owner", "admin", "sales"]);
 

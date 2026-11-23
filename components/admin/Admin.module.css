@@ -156,3 +156,9 @@
 .fieldset legend { padding: 0 6px; margin: 0; }
 .subCard { margin-top: 12px; padding: 14px 16px; border: 1px solid var(--adm-line); border-radius: 10px; background: var(--adm-bg, transparent); }
 .h3 { font-size: 15px; font-weight: 600; margin: 0; }
+.inlineEdit { display: inline-block; }
+.inlineEdit > summary { list-style: none; display: inline-flex; }
+.inlineEdit > summary::-webkit-details-marker { display: none; }
+.inlineForm { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; }
+.inlineForm input[type="number"] { width: 90px; min-height: 36px; padding: 0 8px; border: 1px solid var(--adm-field, var(--adm-line)); border-radius: 6px; }
+.inlineForm .hint { flex-basis: 100%; }

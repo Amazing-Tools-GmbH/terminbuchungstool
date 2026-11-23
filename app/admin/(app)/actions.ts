@@ -9,7 +9,7 @@ import { revalidatePath } from "next/cache";
 import { requireAdmin } from "@/lib/auth/admin";
 import { toAdminError } from "@/lib/admin/errors";
 import { capacitySchema, createEventSchema, createSlotSchema, enableMemberSchema, updateMemberSchema } from "@/lib/admin/input";
-import { createEvent, createSlot, increaseCapacity } from "@/lib/admin/slots";
+import { createEvent, createSlot, setCapacity } from "@/lib/admin/slots";
 import { enableMember, updateMember } from "@/lib/admin/members";
 
 function back(path: string, params: Record<string, string | undefined>): never {
@@ -33,13 +33,13 @@ const str = (f: FormData, k: string) => {
   return typeof v === "string" ? v : undefined;
 };
 
-export async function increaseCapacityAction(form: FormData) {
+export async function setCapacityAction(form: FormData) {
   const ctx = await requireAdmin();
   const event = str(form, "event");
-  const parsed = capacitySchema.safeParse({ slotId: str(form, "slotId"), by: str(form, "by") ?? 1 });
-  const error = parsed.success ? await run(() => increaseCapacity(ctx, parsed.data.slotId, parsed.data.by)) : "invalid_input";
+  const parsed = capacitySchema.safeParse({ slotId: str(form, "slotId"), capacity: str(form, "capacity") });
+  const error = parsed.success ? await run(() => setCapacity(ctx, parsed.data.slotId, parsed.data.capacity)) : "invalid_input";
   revalidatePath("/admin");
-  back("/admin", { event, slot: parsed.success ? parsed.data.slotId : undefined, error, ok: error ? undefined : "capacity" });
+  back("/admin", { event, error, ok: error ? undefined : "capacity" });
 }
 
 export async function createSlotAction(form: FormData) {

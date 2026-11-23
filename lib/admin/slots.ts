@@ -121,14 +121,14 @@ export async function listSlotBookings(ctx: AdminContext, slotId: string): Promi
   });
 }
 
-export async function increaseCapacity(ctx: AdminContext, slotId: string, by = 1): Promise<void> {
+/**
+ * Teilnehmeranzahl (Kapazität) eines Termins setzen. Nicht unter die gebuchten Plätze
+ * (Trigger in der DB -> TB:capacity_below_booked); Rechte per RLS (owner/admin).
+ */
+export async function setCapacity(ctx: AdminContext, slotId: string, capacity: number): Promise<void> {
   try {
     await withActor(ctx.actor, async (db) => {
-      const res = await db.query("update public.slots set capacity = capacity + $3 where id = $1 and tenant_id = $2", [
-        slotId,
-        ctx.tenant.id,
-        by,
-      ]);
+      const res = await db.query("update public.slots set capacity = $3 where id = $1 and tenant_id = $2", [slotId, ctx.tenant.id, capacity]);
       // keine Zeile: Termin unbekannt oder keine Schreibrechte (RLS)
       if (res.rowCount === 0) throw new AdminError("forbidden");
     });
@@ -137,7 +137,6 @@ export async function increaseCapacity(ctx: AdminContext, slotId: string, by = 1
   }
 }
 
-/** Neuer Termin; Datum/Uhrzeit gelten in der Zeitzone des Mandanten */
 /** Termin einfügen (in der Transaktion des Aufrufers); Datum/Uhrzeit in der Mandanten-Zeitzone */
 async function insertSlot(
   db: PoolClient,
