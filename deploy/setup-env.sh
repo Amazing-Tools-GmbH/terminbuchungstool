@@ -7,6 +7,9 @@
 # - ENCRYPTION_KEY und CRON_SECRET werden hier erzeugt (oder ein vorhandener Schlüssel eingegeben)
 # - alle anderen Werte werden abgefragt; Geheimnisse mit verdeckter Eingabe, nichts landet im
 #   Terminal-Verlauf. Leere Eingabe = später nachtragen (nano /etc/meetings/env)
+# - Datenbank: nur Pooler-Host + Passwort eingeben, die URL wird hier gebaut (Passwort kodiert)
+# WICHTIG: Werte nur eingeben, solange das Skript fragt – nie an der Shell-Eingabe (root@…#)
+#   einfügen (z. B. nach Strg+C): "!" im Passwort startet dort alte Befehle aus dem Verlauf.
 # - Ergebnis: root:meetings, 0640; eine vorhandene Datei wird vorher gesichert
 set -euo pipefail
 
@@ -16,6 +19,7 @@ ENV_GROUP="${ENV_GROUP:-meetings}"
 [ "$(id -u)" -eq 0 ] || [ -n "${ALLOW_NON_ROOT:-}" ] || { echo "Bitte als root ausführen." >&2; exit 1; }
 getent group "$ENV_GROUP" >/dev/null || { echo "Gruppe $ENV_GROUP fehlt." >&2; exit 1; }
 command -v openssl >/dev/null || { echo "openssl fehlt (apt install openssl)." >&2; exit 1; }
+command -v node >/dev/null || { echo "node fehlt." >&2; exit 1; }
 
 ask() {     # ask VAR "Frage" [Vorgabe]
   local __v; read -r -p "$2${3:+ [$3]}: " __v || true
@@ -41,12 +45,19 @@ fi
 
 echo
 echo "== Supabase (Dashboard des Projekts pkegcsgnyicdxzivnijw)"
-echo "   Datenbank-URL: Project Settings -> Database -> Connection string -> Transaction pooler (Port 6543)"
-ask_secret SUPABASE_DB_URL "SUPABASE_DB_URL (postgresql://…)"
-if [ -n "$SUPABASE_DB_URL" ]; then
-  [[ "$SUPABASE_DB_URL" =~ ^postgres(ql)?:// ]] || echo "   !! beginnt nicht mit postgresql:// – bitte prüfen"
-  [[ "$SUPABASE_DB_URL" == *":6543/"* ]] || echo "   !! nicht Port 6543 (Transaction pooler) – bitte prüfen"
-  [[ "$SUPABASE_DB_URL" == *"[YOUR-PASSWORD]"* ]] && echo "   !! enthält noch [YOUR-PASSWORD] – Passwort einsetzen"
+echo "   Datenbank: Connect -> Transaction pooler. Benötigt werden nur der Host"
+echo "   (z. B. aws-0-eu-west-1.pooler.supabase.com) und das Datenbank-Passwort –"
+echo "   die URL baut dieses Skript selbst (Sonderzeichen im Passwort werden kodiert)."
+ask DB_HOST "Pooler-Host" "aws-0-eu-west-1.pooler.supabase.com"
+DB_HOST="${DB_HOST#*@}"; DB_HOST="${DB_HOST%%:*}"; DB_HOST="${DB_HOST%%/*}"
+[[ "$DB_HOST" =~ ^[a-z0-9.-]+\.pooler\.supabase\.com$ ]] || echo "   !! Host sieht nicht wie <…>.pooler.supabase.com aus – bitte prüfen"
+ask_secret DB_PASSWORD "Datenbank-Passwort"
+if [ -n "$DB_PASSWORD" ]; then
+  DB_PASSWORD_ENC=$(DB_PASSWORD="$DB_PASSWORD" node -e 'process.stdout.write(encodeURIComponent(process.env.DB_PASSWORD))')
+  SUPABASE_DB_URL="postgresql://postgres.pkegcsgnyicdxzivnijw:${DB_PASSWORD_ENC}@${DB_HOST}:6543/postgres"
+  unset DB_PASSWORD DB_PASSWORD_ENC
+else
+  SUPABASE_DB_URL=""
 fi
 echo "   API-Schlüssel: Project Settings -> API Keys"
 ask SUPABASE_PUBLISHABLE_KEY "SUPABASE_PUBLISHABLE_KEY (sb_publishable_…)"
