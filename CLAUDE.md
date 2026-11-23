@@ -72,7 +72,12 @@ Mandantenfähiges Terminbuchungstool mit Pipedrive-Integration. Auftrag und Phas
   Einträge in Pipedrive (Aktivität, Notizen) nur über die Warteschlange `pipedrive_jobs`
   (`lib/pipedrive/jobs.ts`, `crm.ts`), nie im Request.
 - Admin-Backend `/admin` (Server Components + Server Actions, zod, `lib/admin`), Texte in
-  `lib/texts/admin.ts`. Pipedrive-Benutzerliste über `lib/pipedrive/directory.ts`
+  `lib/texts/admin.ts`. Buchungen `/admin/buchungen` („Gebucht von“ = `bookings.booked_by`, per
+  Trigger aus `auth.uid()`: Mitarbeiter bei Direktbuchung, null = Kunde selbst). E-Mail-Vorlagen
+  `/admin/vorlagen` (Mailtexte als `text_overrides`, nur Platzhalter des Standardtexts,
+  `lib/admin/mail-templates.ts`). Pipedrive-Verbindung `/admin/pipedrive` (`lib/pipedrive/manage.ts`:
+  Status/Test; owner: trennen = Tokens widerrufen + `revoked`, neu verbinden per OAuth-State
+  `relink` an Mandant + Owner gebunden, andere Firma ⇒ umhängen, übrige Mitglieder neu freischalten). Pipedrive-Benutzerliste über `lib/pipedrive/directory.ts`
   (`PIPEDRIVE_DIRECTORY=api|fake`; `fake` = Seed-Daten, nur lokal).
 - Hosting: Hetzner, kein Docker/Vercel. Deployment per GitHub Actions (`.github/workflows/deploy.yml`,
   Push auf `main`): Tests → Build `output: "standalone"` → SSH als `deploy-meetings` nach

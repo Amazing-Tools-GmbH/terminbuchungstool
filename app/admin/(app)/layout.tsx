@@ -9,7 +9,6 @@ export const metadata: Metadata = { title: "Admin", robots: { index: false, foll
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const ctx = await requireAdmin();
-  const soon = at("nav.soon");
   const items: NavItem[] = [
     { href: "/admin", label: at("nav.slots") },
     { href: "/admin/buchungen", label: at("nav.bookings") },
@@ -17,7 +16,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     ...(canManage(ctx.role) ? [{ href: "/admin/email", label: at("nav.mailSettings") }] : []),
     ...(canManage(ctx.role) ? [{ href: "/admin/erscheinungsbild", label: at("nav.branding") }] : []),
     ...(canManage(ctx.role) ? [{ href: "/admin/vorlagen", label: at("nav.templates") }] : []),
-    { href: null, label: at("nav.pipedrive"), soon },
+    ...(canManage(ctx.role) ? [{ href: "/admin/pipedrive", label: at("nav.pipedrive") }] : []),
     ...(canManage(ctx.role) ? [{ href: "/admin/benutzer", label: at("nav.users") }] : []),
   ];
 

@@ -166,3 +166,23 @@ export async function listUsers(apiDomain: string, accessToken: string, f: Fetch
     return p.success ? [toUser(p.data)] : [];
   });
 }
+
+/**
+ * Token bei Pipedrive widerrufen (Trennen der Verbindung). Best effort:
+ * ein Fehler hier verhindert das Trennen in unserer Datenbank nicht.
+ */
+export async function revokeToken(cfg: OAuthConfig, token: string, hint: "refresh_token" | "access_token", f: Fetch = fetch): Promise<boolean> {
+  try {
+    const res = await f(`${PIPEDRIVE_OAUTH_BASE}/oauth/revoke`, {
+      method: "POST",
+      headers: {
+        authorization: `Basic ${Buffer.from(`${cfg.clientId}:${cfg.clientSecret}`).toString("base64")}`,
+        "content-type": "application/x-www-form-urlencoded",
+      },
+      body: new URLSearchParams({ token, token_type_hint: hint }).toString(),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}

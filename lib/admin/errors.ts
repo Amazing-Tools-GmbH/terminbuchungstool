@@ -21,6 +21,11 @@ export const ADMIN_ERROR_CODES = [
   "logo_upload_failed",
   "contrast_too_low",
   "template_invalid",
+  "pipedrive_not_connected",
+  "pipedrive_unauthorized",
+  "pipedrive_company_in_use",
+  "pipedrive_email_mismatch",
+  "pipedrive_relink_failed",
   "generic",
 ] as const;
 export type AdminErrorCode = (typeof ADMIN_ERROR_CODES)[number];
