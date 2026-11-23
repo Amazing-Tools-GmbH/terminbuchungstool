@@ -33,6 +33,17 @@ export function authorizeUrl(cfg: OAuthConfig, state: string): string {
   return u.toString();
 }
 
+/**
+ * Installationslink der App: Autorisierung OHNE unseren state. Der zentrale Callback
+ * erkennt daran die Installation (Mandant anlegen bzw. übernehmen, Installierende:r = Owner).
+ */
+export function installUrl(cfg: OAuthConfig): string {
+  const u = new URL("/oauth/authorize", PIPEDRIVE_OAUTH_BASE);
+  u.searchParams.set("client_id", cfg.clientId);
+  u.searchParams.set("redirect_uri", cfg.redirectUri);
+  return u.toString();
+}
+
 const tokenSchema = z.object({
   access_token: z.string().min(1),
   refresh_token: z.string().min(1),

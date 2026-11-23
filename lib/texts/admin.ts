@@ -32,6 +32,8 @@ export const ADMIN_TEXTS = {
   "login.error.expired": "Die Anmeldung ist abgelaufen. Bitte erneut anmelden.",
   "login.error.oauth_failed": "Pipedrive hat die Anmeldung nicht bestätigt. Bitte erneut versuchen.",
   "login.error.not_connected": "Für deine Pipedrive-Firma ist das Terminbuchungstool noch nicht installiert.",
+  "login.install.text": "Installiere die App für deine Pipedrive-Firma. Du wirst dabei Owner und kannst danach weitere Benutzer freischalten.",
+  "login.install.button": "App in Pipedrive installieren",
   "login.error.no_access": "Du hast noch keinen Zugriff. Bitte wende dich an einen Owner oder Admin deiner Firma.",
   "login.error.disabled": "Dein Zugriff wurde gesperrt. Bitte wende dich an einen Owner oder Admin deiner Firma.",
   "login.error.install_failed": "Die Installation der Pipedrive-App ist fehlgeschlagen. Bitte erneut versuchen.",
