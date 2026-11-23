@@ -8,6 +8,8 @@ const STATUS: Partial<Record<PanelErrorCode, number>> = {
   disabled: 403,
   invalid_input: 400,
   no_contact: 409,
+  not_enough_seats: 409,
+  already_booked: 409,
   slot_not_available: 409,
   event_not_available: 409,
   pipedrive_unavailable: 503,

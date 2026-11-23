@@ -1,9 +1,10 @@
 "use client";
 /**
- * Vertriebs-Panel im Pipedrive-Deal: Kontakt mit Status, Event wählen, dessen
- * Termine mit freien Plätzen, Buchungslink senden (gilt für alle kommenden Termine
- * des Events), persönlicher Link, freie Plätze. Läuft im iframe von Pipedrive;
- * das SDK wird nur dort initialisiert (Größe anpassen, Hinweise, Sitzung erneuern).
+ * Vertriebs-Panel im Pipedrive-Deal (Mock-up 1-pipedrive-panel): Kontakt mit
+ * Status, Event, Wochenansicht mit Terminen (Tag + Uhrzeit wählen), Buchungslink
+ * senden (Standard: gewählter Termin; über ▾ mehrere oder alle Termine des Events),
+ * persönlicher Link, freie Plätze. Läuft im iframe von Pipedrive; das SDK
+ * wird nur dort initialisiert (Größe anpassen, Hinweise, Sitzung erneuern).
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { PanelContext, PanelEvent, PanelSlot } from "@/lib/panel/context";
@@ -13,6 +14,30 @@ import { usePipedriveSdk } from "./usePipedriveSdk";
 
 type Texts = Record<string, string>;
 type Identity = { userId: number; companyId: number; dealId: number };
+
+const DAY = 86_400_000;
+const toDate = (key: string) => {
+  const [y, m, d] = key.split("-").map(Number);
+  return new Date(Date.UTC(y!, m! - 1, d!));
+};
+const keyOf = (d: Date) => d.toISOString().slice(0, 10);
+const mondayOf = (key: string) => {
+  const d = toDate(key);
+  return keyOf(new Date(d.getTime() - ((d.getUTCDay() + 6) % 7) * DAY));
+};
+const addDays = (key: string, n: number) => keyOf(new Date(toDate(key).getTime() + n * DAY));
+/** „GMT+01:00 Mitteleuropäische Normalzeit“ für die Zeitzone des Mandanten */
+function tzLabel(tz: string): string {
+  const part = (style: "longOffset" | "long") =>
+    new Intl.DateTimeFormat("de-AT", { timeZone: tz, timeZoneName: style }).formatToParts(new Date()).find((p) => p.type === "timeZoneName")?.value ?? "";
+  try {
+    return [part("longOffset"), part("long")].filter(Boolean).join(" ") || tz;
+  } catch {
+    return tz;
+  }
+}
+const fmt = (opts: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat("de-AT", { timeZone: "UTC", ...opts });
+
 function firstOpen(ev: PanelEvent | undefined): PanelSlot | undefined {
   return ev?.slots.find((s) => s.free > 0);
 }
@@ -34,7 +59,13 @@ export function PanelApp(props: {
   const rootRef = useRef<HTMLElement>(null);
 
   const initialEvent = ctx.events.find((e) => firstOpen(e)) ?? ctx.events[0];
+  const initialSlot = firstOpen(initialEvent);
   const [eventId, setEventId] = useState(initialEvent?.id ?? "");
+  const [week, setWeek] = useState(mondayOf(initialSlot?.dayKey ?? ctx.todayKey));
+  const [day, setDay] = useState<string | null>(initialSlot?.dayKey ?? null);
+  const [selected, setSelected] = useState<string[]>(initialSlot ? [initialSlot.id] : []);
+  const [seats, setSeats] = useState(1);
+  const [action, setAction] = useState<"book" | "link" | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -107,9 +138,32 @@ export function PanelApp(props: {
     return () => clearTimeout(id);
   }, [mailPending, ctx, refresh]);
 
-  // --- Event & Plätze --------------------------------------------------
-  const openSlots = slots.filter((s) => s.free > 0).length;
-  const eventTotals = slots.reduce((acc, s) => ({ free: acc.free + s.free, capacity: acc.capacity + s.capacity }), { free: 0, capacity: 0 });
+  // --- Auswahl -----------------------------------------------------------
+  const weekDays = Array.from({ length: 7 }, (_, i) => addDays(week, i));
+  const slotsOn = (key: string) => slots.filter((s) => s.dayKey === key);
+  const weekHasOpen = weekDays.some((k) => slotsOn(k).some((s) => s.free > 0));
+  const lastKey = slots.length ? slots[slots.length - 1]!.dayKey : ctx.todayKey;
+  const atStart = week <= mondayOf(ctx.todayKey);
+  const atEnd = week >= mondayOf(lastKey);
+  const nextOpen = slots.find((s) => s.free > 0 && s.dayKey >= addDays(week, 7));
+
+  const pickEvent = (id: string) => {
+    const ev = ctx.events.find((e) => e.id === id);
+    const s = firstOpen(ev);
+    setEventId(id);
+    setWeek(mondayOf(s?.dayKey ?? ctx.todayKey));
+    setDay(s?.dayKey ?? null);
+    setSelected(s ? [s.id] : []);
+    setSeats(1);
+  };
+  const toggleSlot = (s: PanelSlot) => {
+    if (s.free <= 0) return;
+    setSelected([s.id]);
+    setSeats((n) => Math.min(Math.max(1, n), s.free));
+  };
+
+  const label = (s: PanelSlot) => `${s.weekdayShort}, ${s.date} · ${s.time}`;
+  const weekLabel = `${fmt({ day: "numeric", month: "short" }).format(toDate(weekDays[0]!))} – ${fmt({ day: "numeric", month: "short", year: "numeric" }).format(toDate(weekDays[6]!))}`;
 
   // --- Status ------------------------------------------------------------
   const inv = ctx.invitation;
@@ -126,25 +180,46 @@ export function PanelApp(props: {
   const mailFailure = inv?.mail?.status === "failed" ? t(`mailError.${inv.mail.code ?? "generic"}`) : null;
   const mailFailureText = mailFailure?.startsWith("mailError.") ? t("mailError.generic") : mailFailure;
 
-  // --- Senden ------------------------------------------------------------
-  const canSend = !!event && !!ctx.person?.email && !busy && openSlots > 0;
-  const send = async () => {
-    setError(null);
-    setNotice(null);
-    if (!event) return;
-    setBusy(true);
-    const r = await api<{ email: string }>("/invite", {
-      method: "POST",
-      // Link gilt für das ganze Event: alle kommenden Termine
-      body: JSON.stringify({ eventId: event.id, slotIds: null }),
-    });
-    setBusy(false);
-    if (!r.ok) return setError(r.message);
-    const msg = t("panel.sentOk", { email: r.data.email });
+  // --- Direkt buchen / Link senden ----------------------------------------
+  const chosen = slots.find((x) => x.id === selected[0]) ?? null;
+  const alreadyBooked = inv?.status === "booked";
+  const hasContact = !!ctx.person?.email;
+  const canBook = !!event && hasContact && !busy && !!chosen && chosen.free > 0 && seats >= 1 && seats <= chosen.free && !alreadyBooked;
+  const canLink = !!event && hasContact && !busy && !alreadyBooked && slots.some((x) => x.free > 0);
+
+  const done = (msg: string) => {
     setNotice(msg);
     polls.current = 0;
     void sdk.current?.execute("show_snackbar", { message: msg }).catch(() => {});
     void refresh();
+  };
+
+  /** Termin direkt für den Kontakt buchen – der Kunde erhält die Bestätigung */
+  const book = async () => {
+    setError(null);
+    setNotice(null);
+    if (!chosen) return setError(t("panel.nothingSelected"));
+    setBusy(true);
+    setAction("book");
+    const r = await api<{ email: string }>("/book", { method: "POST", body: JSON.stringify({ slotId: chosen.id, seats }) });
+    setBusy(false);
+    setAction(null);
+    if (!r.ok) return setError(r.message);
+    done(t("panel.bookedOk", { date: label(chosen), seats, email: r.data.email }));
+  };
+
+  /** Buchungslink senden: der Kunde wählt selbst aus allen Terminen des Events */
+  const sendLink = async () => {
+    setError(null);
+    setNotice(null);
+    if (!event) return;
+    setBusy(true);
+    setAction("link");
+    const r = await api<{ email: string }>("/invite", { method: "POST", body: JSON.stringify({ eventId: event.id, slotIds: null }) });
+    setBusy(false);
+    setAction(null);
+    if (!r.ok) return setError(r.message);
+    done(t("panel.sentOk", { email: r.data.email }));
   };
 
   const copy = async () => {
@@ -160,6 +235,7 @@ export function PanelApp(props: {
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const daySlots = day ? slotsOn(day) : [];
 
   return (
     <main ref={rootRef} className={styles.root} data-theme={props.theme}>
@@ -204,7 +280,7 @@ export function PanelApp(props: {
           <label htmlFor="panel-event" className={styles.label}>
             {t("panel.event")}
           </label>
-          <select id="panel-event" className={styles.select} value={event?.id} onChange={(e) => setEventId(e.target.value)}>
+          <select id="panel-event" className={styles.select} value={event?.id} onChange={(e) => pickEvent(e.target.value)}>
             {ctx.events.map((e) => (
               <option key={e.id} value={e.id}>
                 {e.title}
@@ -216,39 +292,141 @@ export function PanelApp(props: {
             <p className={styles.info}>{t("panel.noSlots")}</p>
           ) : (
             <div className={styles.picker}>
-              <div className={styles.label}>{t("panel.dates")}</div>
-              <ul className={styles.dateList}>
-                {slots.map((s) => {
-                  const full = s.free <= 0;
+              <div className={styles.label}>{t("panel.pick")}</div>
+              <div className={styles.weekNav}>
+                <button type="button" className={styles.navBtn} onClick={() => setWeek(addDays(week, -7))} disabled={atStart} aria-label={t("panel.prevWeek")}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true">
+                    <path d="m15 5-7 7 7 7" />
+                  </svg>
+                </button>
+                <div className={styles.weekLabel} aria-live="polite">
+                  {weekLabel}
+                </div>
+                <button type="button" className={styles.todayBtn} onClick={() => setWeek(mondayOf(ctx.todayKey))}>
+                  {t("panel.today")}
+                </button>
+                <button type="button" className={styles.navBtn} onClick={() => setWeek(addDays(week, 7))} disabled={atEnd} aria-label={t("panel.nextWeek")}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true">
+                    <path d="m9 5 7 7-7 7" />
+                  </svg>
+                </button>
+              </div>
+              <div role="group" aria-label={t("panel.days")} className={styles.days}>
+                {weekDays.map((k) => {
+                  const list = slotsOn(k);
+                  const off = list.length === 0;
+                  const full = !off && !list.some((s) => s.free > 0);
+                  const d = toDate(k);
+                  const picked = list.some((s) => selected.includes(s.id));
+                  const aria = `${fmt({ weekday: "long", day: "numeric", month: "long" }).format(d)}${off ? `, ${t("panel.day.none")}` : full ? `, ${t("panel.day.full")}` : ""}`;
                   return (
-                    <li key={s.id} className={styles.dateItem} data-full={full}>
-                      <span className={styles.range}>
-                        {s.weekdayShort}, {s.date} · {s.time}
-                        {s.location ? <span className={styles.loc}> · {s.location}</span> : null}
-                      </span>
-                      <span className={styles.free} data-level={full ? "full" : s.free <= 3 ? "low" : "ok"}>
-                        {full ? t("panel.full") : t("panel.free", { free: s.free, capacity: s.capacity })}
-                      </span>
-                    </li>
+                    <button
+                      key={k}
+                      type="button"
+                      className={styles.day}
+                      data-off={off}
+                      data-full={full}
+                      data-picked={picked}
+                      aria-pressed={day === k}
+                      aria-label={aria}
+                      disabled={off}
+                      onClick={() => setDay(k)}
+                    >
+                      <span className={styles.wd}>{fmt({ weekday: "short" }).format(d).replace(".", "").toUpperCase()}</span>
+                      <span className={styles.num}>{d.getUTCDate()}</span>
+                      <span className={styles.sub}>{full ? t("panel.day.fullShort") : fmt({ month: "short" }).format(d)}</span>
+                    </button>
                   );
                 })}
-              </ul>
-              <div className={styles.hint}>{t("panel.timezone", { tz: ctx.timezone })}</div>
+              </div>
+              {!weekHasOpen && nextOpen && (
+                <div className={styles.emptyWeek}>
+                  <span>{t("panel.emptyWeek")}</span>
+                  <button
+                    type="button"
+                    className={styles.linkBtn}
+                    onClick={() => {
+                      setWeek(mondayOf(nextOpen.dayKey));
+                      setDay(nextOpen.dayKey);
+                    }}
+                  >
+                    {t("panel.nextSlot", { label: label(nextOpen) })}
+                  </button>
+                </div>
+              )}
+              {day && daySlots.length > 0 && weekDays.includes(day) && (
+                <div className={styles.times}>
+                  <div className={styles.label}>{t("panel.time")}</div>
+                  {daySlots.map((s) => {
+                    const full = s.free <= 0;
+                    return (
+                      <button
+                        key={s.id}
+                        type="button"
+                        className={styles.time}
+                        data-full={full}
+                        aria-pressed={selected.includes(s.id)}
+                        disabled={full}
+                        onClick={() => toggleSlot(s)}
+                      >
+                        <span className={styles.range}>
+                          {s.time}
+                          {s.location ? <span className={styles.loc}> · {s.location}</span> : null}
+                        </span>
+                        <span className={styles.free} data-level={full ? "full" : s.free <= 3 ? "low" : "ok"}>
+                          {full ? t("panel.full") : t("panel.free", { free: s.free, capacity: s.capacity })}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+              <div className={styles.hint}>{tzLabel(ctx.timezone)}</div>
+            </div>
+          )}
+
+          {chosen && chosen.free > 0 && (
+            <div className={styles.seatsRow}>
+              <label htmlFor="panel-seats" className={styles.label}>
+                {t("panel.seats")}
+              </label>
+              <input
+                id="panel-seats"
+                className={styles.seatsInput}
+                type="number"
+                min={1}
+                max={chosen.free}
+                value={seats}
+                onChange={(e) => setSeats(Math.max(1, Math.min(chosen.free, Number(e.target.value) || 1)))}
+              />
             </div>
           )}
 
           <div className={styles.sendRow}>
-            <button type="button" className={styles.sendBtn} onClick={() => void send()} disabled={!canSend} aria-describedby="panel-send-hint">
+            <button type="button" className={styles.sendBtn} onClick={() => void book()} disabled={!canBook} aria-describedby="panel-book-hint">
               <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-                <path d="M4 6h16v12H4z" />
-                <path d="m4 7 8 6 8-6" />
+                <rect x="3" y="5" width="18" height="16" rx="2" />
+                <path d="M3 10h18M8 3v4M16 3v4M9 15l2 2 4-4" />
               </svg>
-              {busy ? t("panel.sending") : inv ? t("panel.resend") : t("panel.send")}
+              {action === "book" ? t("panel.booking") : t("panel.book")}
             </button>
           </div>
+          <div id="panel-book-hint" className={styles.hint}>
+            {alreadyBooked ? t("panel.alreadyBookedHint") : chosen ? t("panel.bookHint", { date: label(chosen), email: ctx.person?.email ?? "—" }) : t("panel.nothingSelected")}
+          </div>
+
+          <div className={styles.orRow} aria-hidden="true">
+            <span>{t("panel.or")}</span>
+          </div>
+          <button type="button" className={styles.linkSendBtn} onClick={() => void sendLink()} disabled={!canLink} aria-describedby="panel-send-hint">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+              <path d="M4 6h16v12H4z" />
+              <path d="m4 7 8 6 8-6" />
+            </svg>
+            {action === "link" ? t("panel.sending") : t("panel.sendLink")}
+          </button>
           <div id="panel-send-hint" className={styles.hint}>
             {t("panel.linkInfo")}
-            {ctx.person?.email ? ` ${t("panel.sendTo", { email: ctx.person.email })}` : null}
             {inv && inv.status === "open" ? ` ${t("panel.resendHint")}` : null}
           </div>
           {error && (
@@ -300,7 +478,7 @@ export function PanelApp(props: {
       <div className={styles.totals}>
         <span>{t("panel.totals")}</span>
         <span>
-          <strong>{eventTotals.free}</strong> <span className={styles.muted}>{t("panel.totalsOf", { n: eventTotals.capacity })}</span>
+          <strong>{ctx.totals.free}</strong> <span className={styles.muted}>{t("panel.totalsOf", { n: ctx.totals.capacity })}</span>
         </span>
       </div>
     </main>

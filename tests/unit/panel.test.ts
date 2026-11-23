@@ -65,7 +65,8 @@ describe("Panel-Texte", () => {
   it("alle Fehlercodes haben Texte; Wörterbuch enthält Panel- und Mailfehler-Texte", () => {
     for (const c of PANEL_ERRORS) expect(ADMIN_TEXTS).toHaveProperty(`panel.error.${c}`);
     const t = panelTexts();
-    expect(t["panel.send"]).toBeTruthy();
+    expect(t["panel.book"]).toBeTruthy();
+    expect(t["panel.sendLink"]).toBeTruthy();
     expect(t["mailError.generic"]).toBeTruthy();
     expect(Object.keys(t).every((k) => k.startsWith("panel.") || k.startsWith("mailError."))).toBe(true);
   });
