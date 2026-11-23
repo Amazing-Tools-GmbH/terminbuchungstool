@@ -20,6 +20,7 @@ export const ADMIN_ERROR_CODES = [
   "logo_too_large",
   "logo_upload_failed",
   "contrast_too_low",
+  "template_invalid",
   "generic",
 ] as const;
 export type AdminErrorCode = (typeof ADMIN_ERROR_CODES)[number];
