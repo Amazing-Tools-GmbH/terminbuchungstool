@@ -419,6 +419,37 @@
   background: var(--p-card);
   color: var(--p-text);
 }
+.guests {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 12px 0 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+.guests .label {
+  margin: 0;
+  padding: 0;
+}
+.checkRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  cursor: pointer;
+}
+.checkRow input {
+  width: 18px;
+  height: 18px;
+  margin: 1px 0 0;
+  flex: none;
+  accent-color: var(--p-accent);
+}
+.guestRow {
+  display: grid;
+  gap: 4px;
+  padding-top: 4px;
+}
 .orRow {
   display: flex;
   align-items: center;

@@ -13,6 +13,7 @@ const TABLES = [
   "slots",
   "invitations",
   "bookings",
+  "booking_guests",
   "pipedrive_connections",
   "mail_connections",
   "email_outbox",
@@ -52,6 +53,12 @@ beforeAll(async () => {
       [t, 1000 + i],
     );
     await db.admin("insert into email_outbox (tenant_id, type, to_email) values ($1, 'test', 'x@y.example')", [t]);
+    // weiterer Teilnehmer mit eigener Einladung
+    await db.admin(
+      `insert into booking_guests (tenant_id, booking_id, name, email, token_hash)
+       select tenant_id, id, 'Gast', 'gast@x.example', sha256(convert_to(id::text, 'UTF8')) from bookings where tenant_id = $1 limit 1`,
+      [t],
+    );
   }
 });
 
@@ -86,6 +93,7 @@ describe("Lesen", () => {
       /permission denied/,
     );
     await expect(db.as(userA, (c) => c.query("select token_hash from public.invitations"))).rejects.toThrow(/permission denied/);
+    await expect(db.as(userA, (c) => c.query("select token_hash from public.booking_guests"))).rejects.toThrow(/permission denied/);
   });
 
   it("Benutzer ohne Mitgliedschaft sieht nichts", async () => {
@@ -149,6 +157,23 @@ describe("Schreiben", () => {
         ),
       ),
     ).rejects.toThrow(/foreign key/);
+  });
+
+  it("niemand kann Teilnehmer direkt anlegen oder ändern (nur über book_slot/cancel_guest)", async () => {
+    const [b] = await db.admin<{ id: string }>("select id from bookings where tenant_id = $1 limit 1", [tenantA]);
+    for (const actor of [userA, ANON]) {
+      await expect(
+        db.as(actor, (c) =>
+          c.query("insert into booking_guests (tenant_id, booking_id, name, email, token_hash) values ($1, $2, 'x', 'x@y.at', '\\x00')", [
+            tenantA,
+            b!.id,
+          ]),
+        ),
+      ).rejects.toThrow(/permission denied/);
+    }
+    await expect(db.as(userA, (c) => c.query("update booking_guests set status = 'cancelled', cancelled_at = now()"))).rejects.toThrow(
+      /permission denied/,
+    );
   });
 
   it("niemand kann Buchungen direkt einfügen (nur über book_slot)", async () => {

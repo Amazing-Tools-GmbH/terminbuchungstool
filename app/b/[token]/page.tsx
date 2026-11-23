@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getCurrentTenant } from "@/lib/tenant/current";
-import { loadInvitationContext } from "@/lib/booking/service";
+import { loadBookingGuests, loadGuestContext, loadInvitationContext } from "@/lib/booking/service";
 import { runAnon } from "@/lib/booking/api";
 import { createTranslator, resolveTexts } from "@/lib/texts";
 import { formatDateTime, formatSlot } from "@/lib/datetime";
@@ -10,6 +10,7 @@ import { bookingUrl } from "@/lib/links";
 import { TenantHeader } from "@/components/tenant/TenantHeader";
 import { TenantFooter } from "@/components/tenant/TenantFooter";
 import { BookingApp, type BookingDisplay, type SlotDisplay } from "@/components/booking/BookingApp";
+import { GuestView } from "@/components/booking/GuestView";
 import styles from "@/components/booking/Booking.module.css";
 
 export const dynamic = "force-dynamic";
@@ -27,6 +28,41 @@ export default async function BookingPage({ params }: { params: Promise<{ token:
 
   const t = createTranslator(tenant.anrede, tenant.textOverrides);
   const ctx = await loadInvitationContext(runAnon, tenant.id, token);
+
+  // Link eines weiteren Teilnehmers: nur Termin ansehen und für sich absagen
+  if (!ctx) {
+    const guestCtx = await loadGuestContext(runAnon, tenant.id, token);
+    if (guestCtx) {
+      const g = guestCtx;
+      const when = formatSlot(g.booking.starts_at, g.booking.ends_at, tenant.timezone);
+      const calendar = {
+        title: `${g.event.title} – ${tenant.name}`,
+        start: new Date(g.booking.starts_at),
+        end: new Date(g.booking.ends_at),
+        location: g.booking.location,
+        details: bookingUrl(tenant, token),
+      };
+      return (
+        <>
+          <TenantHeader tenant={tenant} />
+          <GuestView
+            token={token}
+            texts={resolveTexts(tenant.anrede, tenant.textOverrides)}
+            eventTitle={g.event.title}
+            guestName={g.guest.name}
+            booker={g.booker.organization_name ? `${g.booker.name} (${g.booker.organization_name})` : g.booker.name}
+            state={g.booking.status === "cancelled" ? "ended" : g.guest.status === "cancelled" ? "declined" : "active"}
+            when={{ ...when, location: g.booking.location }}
+            canDecline={g.booking.changeable}
+            declineUntil={formatDateTime(g.booking.change_until, tenant.timezone)}
+            googleUrl={googleCalendarUrl(calendar)}
+            outlookUrl={outlookCalendarUrl(calendar)}
+          />
+          <TenantFooter tenant={tenant} t={t} />
+        </>
+      );
+    }
+  }
 
   if (!ctx) {
     return (
@@ -72,6 +108,7 @@ export default async function BookingPage({ params }: { params: Promise<{ token:
       name: b.name,
       email: b.email,
       extraAttendees: b.extra_attendees,
+      guests: await loadBookingGuests(runAnon, tenant.id, token),
       changeUntil: formatDateTime(b.change_until, tz),
       canChange: b.changeable && !ctx.invitation.expired,
       icsUrl: `/b/${encodeURIComponent(token)}/ics`,

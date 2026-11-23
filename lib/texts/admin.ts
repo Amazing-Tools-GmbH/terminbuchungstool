@@ -287,6 +287,11 @@ export const ADMIN_TEXTS = {
   "panel.time": "Zeit auswählen",
   "panel.nothingSelected": "Bitte zuerst Tag und Uhrzeit auswählen.",
   "panel.seats": "Personen",
+  "panel.guests.invite": "Weitere Teilnehmer erhalten eine eigene Einladung",
+  "panel.guests.hint": "Wer eine E-Mail-Adresse hat, bekommt den Termin per E-Mail und kann nur für sich absagen.",
+  "panel.guests.legend": "Weitere Teilnehmer (optional)",
+  "panel.guests.name": "Name Teilnehmer {n}",
+  "panel.guests.email": "E-Mail Teilnehmer {n} (optional)",
   "panel.book": "Termin für Kunden buchen",
   "panel.booking": "Wird gebucht …",
   "panel.bookHint": "Bucht {date} für {email}. Der Kunde erhält die Bestätigung mit Link zum Umbuchen oder Stornieren.",
@@ -322,6 +327,9 @@ export const ADMIN_TEXTS = {
   "panel.error.invalid_input": "Die Eingabe ist ungültig.",
   "panel.error.not_enough_seats": "Für diesen Termin sind nicht mehr genug Plätze frei. Bitte aktualisieren und neu wählen.",
   "panel.error.already_booked": "Für diesen Kontakt gibt es in diesem Deal bereits eine Buchung. Umbuchen oder stornieren kann der Kunde über den Link in seiner Bestätigung.",
+  "panel.error.invalid_attendees": "Es sind mehr weitere Teilnehmer eingetragen als Personen gewählt.",
+  "panel.error.invalid_guest_email": "Bitte gültige, unterschiedliche E-Mail-Adressen angeben (nicht die des Kontakts).",
+  "panel.error.missing_guest_name": "Bitte zu jeder E-Mail-Adresse auch den Namen angeben.",
   "panel.error.generic": "Etwas ist schiefgelaufen. Bitte erneut versuchen.",
 } as const;
 
@@ -374,6 +382,9 @@ export const PANEL_ERRORS = [
   "invalid_input",
   "not_enough_seats",
   "already_booked",
+  "invalid_attendees",
+  "invalid_guest_email",
+  "missing_guest_name",
   "generic",
 ] as const;
 export type PanelErrorCode = (typeof PANEL_ERRORS)[number];

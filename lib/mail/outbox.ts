@@ -25,7 +25,16 @@ import { parseTheme } from "@/lib/theme/schema";
 import { parseTextOverrides } from "@/lib/texts";
 import { assetStorage } from "@/lib/storage";
 import { markUserConnectionError, userPipedriveAccess } from "@/lib/pipedrive/user-connection";
-import { renderCancellation, renderConfirmation, renderInvitation, renderTest, type MailTenant, type RenderedMail } from "./templates";
+import {
+  renderCancellation,
+  renderConfirmation,
+  renderGuestCancellation,
+  renderGuestConfirmation,
+  renderInvitation,
+  renderTest,
+  type MailTenant,
+  type RenderedMail,
+} from "./templates";
 import { defaultSenderFactory, type SenderFactory, type SenderTarget } from "./senders";
 import { MailSendError, type MailAddress, type MailAttachment, type MailConnection, type MailMessage } from "./types";
 import { inviteMailProvider, systemMailConfig, type InviteMailProvider, type SystemMailConfig } from "./config";
@@ -47,6 +56,7 @@ export type OutboxRow = {
   payload: Record<string, unknown>;
   attempts: number;
   mail_connection_id: string | null;
+  created_at: Date;
 };
 
 export type ProcessResult = { sent: number; requeued: number; failed: number; blocked: number };
@@ -85,7 +95,7 @@ export async function processOutbox(pool: pg.Pool, opts: Options = {}): Promise<
            order by next_attempt_at
            limit $1
            for update skip locked)
-        returning id, tenant_id, type, to_email, payload, attempts, mail_connection_id`,
+        returning id, tenant_id, type, to_email, payload, attempts, mail_connection_id, created_at`,
       [limit, STALE_LOCK_MINUTES, opts.tenantId ?? null],
     );
     return rows;
@@ -289,6 +299,8 @@ type InvitationRow = {
 type BookingRow = {
   id: string;
   name: string;
+  /** Name des Hauptbuchers (für Mails an weitere Teilnehmer) */
+  booker_name: string;
   seats: number;
   extra_attendees: string[] | null;
   invitation_id: string;
@@ -300,8 +312,11 @@ type BookingRow = {
   cancelled_at: Date | null;
 };
 
+type GuestRow = { id: string; name: string; email: string };
+
 type MailContext = {
   tenantRow: TenantRow;
+  guest: GuestRow | null;
   inviter: (Inviter & { signature: string | null }) | null;
   invitation: InvitationRow | null;
   booking: BookingRow | null;
@@ -314,7 +329,7 @@ async function loadContext(pool: pg.Pool, row: OutboxRow): Promise<MailContext> 
     let booking: BookingRow | null = null;
     if (typeof row.payload.booking_id === "string") {
       const { rows } = await c.query<BookingRow>(
-        `select b.id, b.name, b.seats, b.extra_attendees, b.invitation_id,
+        `select b.id, b.name, b.name as booker_name, b.seats, b.extra_attendees, b.invitation_id,
                 s.starts_at, s.ends_at, coalesce(s.location, e.location) as location, e.title,
                 b.created_at, b.cancelled_at
            from public.bookings b
@@ -325,6 +340,15 @@ async function loadContext(pool: pg.Pool, row: OutboxRow): Promise<MailContext> 
       );
       booking = rows[0] ?? null;
       if (!booking) throw new Error(`Buchung ${row.payload.booking_id} nicht gefunden`);
+    }
+    let guest: GuestRow | null = null;
+    if (typeof row.payload.guest_id === "string") {
+      const { rows } = await c.query<GuestRow>("select id, name, email from public.booking_guests where id = $1 and tenant_id = $2", [
+        row.payload.guest_id,
+        row.tenant_id,
+      ]);
+      guest = rows[0] ?? null;
+      if (!guest) throw new Error(`Teilnehmer ${row.payload.guest_id} nicht gefunden`);
     }
     const invitationId = typeof row.payload.invitation_id === "string" ? row.payload.invitation_id : (booking?.invitation_id ?? null);
     let invitation: InvitationRow | null = null;
@@ -348,7 +372,7 @@ async function loadContext(pool: pg.Pool, row: OutboxRow): Promise<MailContext> 
         inviter = { userId: invitation.created_by, name: m.display_name, email: m.email, active: m.status === "active", signature: m.mail_signature };
       }
     }
-    return { tenantRow: t[0], inviter, invitation, booking };
+    return { tenantRow: t[0], guest, inviter, invitation, booking };
   });
 }
 
@@ -494,7 +518,44 @@ function buildMessage(row: OutboxRow, plan: Plan, ctx: MailContext): MailMessage
   const attachments: MailAttachment[] = [];
   let dealId: number | null = null;
 
-  if (row.type === "confirmation" || row.type === "cancellation") {
+  if ((row.type === "confirmation" || row.type === "cancellation") && ctx.guest) {
+    // weiterer Teilnehmer: eigener Kalendereintrag, Link nur zum Absagen für sich
+    const b = ctx.booking;
+    if (!b) throw new Error("Buchung fehlt");
+    const g = ctx.guest;
+    toName = g.name;
+    const guestUrl = row.type === "confirmation" ? openLink(row.payload) : null;
+    const icsFilename = `termin-${ctx.tenantRow.slug}.ics`;
+    const cancelled = row.type === "cancellation";
+    attachments.push({
+      filename: icsFilename,
+      contentType: "text/calendar; charset=utf-8",
+      content: bookingIcs({
+        tenantName: tenant.name,
+        invitationId: b.invitation_id,
+        guestEmail: g.email,
+        title: b.title,
+        start: new Date(b.starts_at),
+        end: new Date(b.ends_at),
+        location: b.location,
+        url: guestUrl,
+        organizer: { name: plan.from.name ?? tenant.name, email: plan.from.email },
+        versionAt: cancelled ? new Date(row.created_at) : new Date(b.created_at),
+        cancelled,
+      }),
+    });
+    const base = { eventTitle: b.title, startsAt: new Date(b.starts_at), endsAt: new Date(b.ends_at), name: g.name };
+    rendered = cancelled
+      ? renderGuestCancellation(tenant, base)
+      : renderGuestConfirmation(tenant, {
+          ...base,
+          location: b.location,
+          bookerName: b.booker_name,
+          guestUrl,
+          icsFilename,
+          changed: row.payload.changed === true,
+        });
+  } else if (row.type === "confirmation" || row.type === "cancellation") {
     const b = ctx.booking;
     if (!b) throw new Error("Buchung fehlt");
     toName = b.name;
@@ -516,7 +577,13 @@ function buildMessage(row: OutboxRow, plan: Plan, ctx: MailContext): MailMessage
     const base = { eventTitle: b.title, startsAt: new Date(b.starts_at), endsAt: new Date(b.ends_at), location: b.location, seats: b.seats, name: b.name, bookingUrl };
     rendered =
       row.type === "confirmation"
-        ? renderConfirmation(tenant, { ...base, extraAttendees: b.extra_attendees ?? [], icsFilename, changed: Boolean(row.payload.replaces_booking_id) })
+        ? renderConfirmation(tenant, {
+            ...base,
+            extraAttendees: b.extra_attendees ?? [],
+            icsFilename,
+            changed: Boolean(row.payload.replaces_booking_id) || typeof row.payload.guest_cancelled === "string",
+            guestCancelled: typeof row.payload.guest_cancelled === "string" ? row.payload.guest_cancelled : null,
+          })
         : renderCancellation(tenant, base);
   } else if (row.type === "invitation") {
     const inv = ctx.invitation;

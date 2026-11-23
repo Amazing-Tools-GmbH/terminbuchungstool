@@ -98,6 +98,8 @@ export type BookingMailData = {
   bookingUrl: string | null;
   icsFilename: string;
   changed: boolean;
+  /** Ein weiterer Teilnehmer hat für sich abgesagt (Hinweis an den Hauptbucher) */
+  guestCancelled?: string | null;
 };
 
 export function renderConfirmation(tenant: MailTenant, d: BookingMailData): RenderedMail {
@@ -117,6 +119,7 @@ export function renderConfirmation(tenant: MailTenant, d: BookingMailData): Rend
     [tr("done.seats"), persons],
     ...(d.extraAttendees.length ? ([[tr("done.attendees"), d.extraAttendees.join(", ")]] as [string, string][]) : []),
   ];
+  const note = d.guestCancelled ? tr("mail.guestCancelled", { name: d.guestCancelled, persons }) : null;
   const changeLine = d.bookingUrl
     ? tr("mail.change", { hours: tenant.changeDeadlineHours, link: "\u0000" })
     : null;
@@ -128,6 +131,7 @@ export function renderConfirmation(tenant: MailTenant, d: BookingMailData): Rend
     `<p style="margin:0 0 4px;font-size:14px;color:${t.muted}">${escapeHtml(d.eventTitle)}</p>
 <h1 style="margin:0 0 16px;font-size:24px;line-height:1.25;color:${t.ink}">${escapeHtml(title)}</h1>
 <p style="margin:0 0 8px">${escapeHtml(tr("mail.greeting", { name: d.name }))}</p>
+${note ? `<p style="margin:0 0 8px">${escapeHtml(note)}</p>` : ""}
 ${summaryTable(t, rows)}
 <p style="margin:0 0 16px;font-size:14px;color:${t.muted}">📅 ${escapeHtml(d.icsFilename)} – ${escapeHtml(tr("mail.ics.hint"))}</p>
 ${changeHtml ? `<p style="margin:0 0 20px;font-size:14px">${changeHtml}</p>` : ""}`,
@@ -137,6 +141,7 @@ ${changeHtml ? `<p style="margin:0 0 20px;font-size:14px">${changeHtml}</p>` : "
     tr("mail.greeting", { name: d.name }),
     "",
     `${title} – ${d.eventTitle}`,
+    ...(note ? ["", note] : []),
     "",
     ...rows.map(([k, v]) => `${k}: ${v}`),
     "",
@@ -177,6 +182,97 @@ ${again ? `<p style="margin:0 0 20px;font-size:14px">${escapeHtml(again).replace
     `${title} – ${d.eventTitle}`,
     ...rows.map(([k, v]) => `${k}: ${v}`),
     ...(again && d.bookingUrl ? ["", again.replace("\u0000", tr("mail.changeLink")) + `\n${d.bookingUrl}`] : []),
+    "",
+    tenant.contactLine ?? "",
+  ].join("\n");
+  return { subject, html, text };
+}
+
+// ---------------------------------------------------------------------------
+// Weitere Teilnehmer mit eigener Einladung
+
+export type GuestMailData = {
+  eventTitle: string;
+  startsAt: Date;
+  endsAt: Date;
+  location: string | null;
+  name: string;
+  bookerName: string;
+  /** eigener Link des Teilnehmers (nur Absage für sich) */
+  guestUrl: string | null;
+  icsFilename: string;
+  changed: boolean;
+};
+
+export function renderGuestConfirmation(tenant: MailTenant, d: GuestMailData): RenderedMail {
+  const tr = createTranslator(tenant.anrede, tenant.textOverrides);
+  const t = tenant.theme;
+  const when = formatSlot(d.startsAt, d.endsAt, tenant.timezone);
+  const subject = tr(d.changed ? "mail.guest.changedSubject" : "mail.guest.subject", { event: d.eventTitle, date: when.date });
+  const title = tr(d.changed ? "mail.guest.changedTitle" : "mail.guest.title");
+  const intro = tr("mail.guest.text", { booker: d.bookerName });
+  const rows: [string, string][] = [
+    [tr("done.date"), `${when.weekdayShort}, ${when.date}`],
+    [tr("done.time"), when.time],
+    ...(d.location ? ([[tr("done.place"), d.location]] as [string, string][]) : []),
+  ];
+  const decline = d.guestUrl ? tr("mail.guest.decline", { hours: tenant.changeDeadlineHours, link: "\u0000" }) : null;
+  const html = layout(
+    tenant,
+    `<p style="margin:0 0 4px;font-size:14px;color:${t.muted}">${escapeHtml(d.eventTitle)}</p>
+<h1 style="margin:0 0 16px;font-size:24px;line-height:1.25;color:${t.ink}">${escapeHtml(title)}</h1>
+<p style="margin:0 0 8px">${escapeHtml(tr("mail.greeting", { name: d.name }))}</p>
+<p style="margin:0 0 8px">${escapeHtml(intro)}</p>
+${summaryTable(t, rows)}
+<p style="margin:0 0 16px;font-size:14px;color:${t.muted}">📅 ${escapeHtml(d.icsFilename)} – ${escapeHtml(tr("mail.ics.hint"))}</p>
+${decline ? `<p style="margin:0 0 20px;font-size:14px">${escapeHtml(decline).replace("\u0000", link(t, d.guestUrl!, tr("mail.guest.declineLink")))}</p>` : ""}`,
+    `${title}: ${when.weekdayShort}, ${when.date}, ${when.time}`,
+  );
+  const text = [
+    tr("mail.greeting", { name: d.name }),
+    "",
+    intro,
+    "",
+    `${title} – ${d.eventTitle}`,
+    ...rows.map(([k, v]) => `${k}: ${v}`),
+    "",
+    `${tr("done.ics")}: ${d.icsFilename}`,
+    ...(decline && d.guestUrl ? ["", decline.replace("\u0000", tr("mail.guest.declineLink")) + `\n${d.guestUrl}`] : []),
+    "",
+    tenant.contactLine ?? "",
+  ].join("\n");
+  return { subject, html, text };
+}
+
+export function renderGuestCancellation(
+  tenant: MailTenant,
+  d: { eventTitle: string; startsAt: Date; endsAt: Date; name: string },
+): RenderedMail {
+  const tr = createTranslator(tenant.anrede, tenant.textOverrides);
+  const t = tenant.theme;
+  const when = formatSlot(d.startsAt, d.endsAt, tenant.timezone);
+  const subject = tr("mail.guest.cancelled.subject", { event: d.eventTitle, date: when.date });
+  const title = tr("mail.guest.cancelled.title");
+  const rows: [string, string][] = [
+    [tr("done.date"), `${when.weekdayShort}, ${when.date}`],
+    [tr("done.time"), when.time],
+  ];
+  const html = layout(
+    tenant,
+    `<p style="margin:0 0 4px;font-size:14px;color:${t.muted}">${escapeHtml(d.eventTitle)}</p>
+<h1 style="margin:0 0 16px;font-size:24px;line-height:1.25">${escapeHtml(title)}</h1>
+<p style="margin:0 0 8px">${escapeHtml(tr("mail.greeting", { name: d.name }))}</p>
+<p style="margin:0 0 8px">${escapeHtml(tr("mail.guest.cancelled.text"))}</p>
+${summaryTable(t, rows)}`,
+    title,
+  );
+  const text = [
+    tr("mail.greeting", { name: d.name }),
+    "",
+    tr("mail.guest.cancelled.text"),
+    "",
+    `${title} – ${d.eventTitle}`,
+    ...rows.map(([k, v]) => `${k}: ${v}`),
     "",
     tenant.contactLine ?? "",
   ].join("\n");

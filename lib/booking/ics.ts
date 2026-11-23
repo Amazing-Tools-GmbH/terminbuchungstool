@@ -1,8 +1,11 @@
+import { createHash } from "node:crypto";
 import { buildIcs } from "@/lib/calendar/ics";
 
 export type BookingIcsInput = {
   tenantName: string;
   invitationId: string;
+  /** weiterer Teilnehmer: eigener Kalendereintrag je E-Mail (bleibt bei Umbuchung gleich) */
+  guestEmail?: string | null;
   title: string;
   start: Date;
   end: Date;
@@ -22,7 +25,9 @@ export type BookingIcsInput = {
 export function bookingIcs(i: BookingIcsInput): string {
   return buildIcs(
     {
-      uid: `${i.invitationId}@terminbuchung`,
+      uid: i.guestEmail
+        ? `${i.invitationId}-${createHash("sha256").update(i.guestEmail.toLowerCase()).digest("hex").slice(0, 16)}@terminbuchung`
+        : `${i.invitationId}@terminbuchung`,
       sequence: Math.floor(i.versionAt.getTime() / 1000),
       start: i.start,
       end: i.end,

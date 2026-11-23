@@ -3,7 +3,7 @@
 import { useEffect, useId, useRef, useState, useTransition, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { formatText, type ResolvedTexts, type TextKey } from "@/lib/texts";
-import { splitAttendees } from "@/lib/booking/input";
+import { checkAttendees } from "@/lib/booking/input";
 import styles from "./Booking.module.css";
 
 export type SlotDisplay = {
@@ -32,6 +32,8 @@ export type BookingDisplay = {
   name: string;
   email: string;
   extraAttendees: string[];
+  /** weitere Teilnehmer mit eigener Einladung */
+  guests: { name: string; email: string }[];
   changeUntil: string;
   canChange: boolean;
   icsUrl: string;
@@ -139,12 +141,13 @@ function SelectionView(
   const [seats, setSeats] = useState(changing ? (booking?.seats ?? 1) : 1);
   const [name, setName] = useState(changing ? (booking?.name ?? props.invitation.name) : props.invitation.name);
   const [email, setEmail] = useState(changing ? (booking?.email ?? props.invitation.email) : props.invitation.email);
-  const [extra, setExtra] = useState(changing ? (booking?.extraAttendees.join(", ") ?? "") : "");
+  const [attendees, setAttendees] = useState<{ name: string; email: string }[]>(() => (changing && booking ? initialAttendees(booking) : []));
+  const [inviteGuests, setInviteGuests] = useState(changing ? (booking?.guests.length ?? 0) > 0 : false);
   const [posting, setPosting] = useState(false);
   const submitting = posting || props.refreshing;
   const [error, setError] = useState<string | null>(null);
   const asideRef = useRef<HTMLElement>(null);
-  const ids = { seats: useId(), name: useId(), email: useId(), extra: useId(), extraHint: useId(), error: useId() };
+  const ids = { seats: useId(), name: useId(), email: useId(), extra: useId(), invite: useId(), inviteHint: useId(), error: useId() };
 
   const selected = slots.find((s) => s.id === selectedId) ?? null;
   // eigene bisherige Plätze sind beim Umbuchen wieder verfügbar
@@ -167,18 +170,19 @@ function SelectionView(
   async function submit(e: FormEvent) {
     e.preventDefault();
     if (!selected || submitting) return;
-    const extraAttendees = splitAttendees(extra);
-    if (extraAttendees.length > seats - 1) {
-      setError(t("error.invalid_attendees"));
+    const checked = checkAttendees(attendees.slice(0, seats - 1), seats, inviteGuests && seats > 1, email);
+    if (!checked.ok) {
+      setError(t(`error.${checked.error}`));
       return;
     }
+    const { extraAttendees, guests } = checked;
     setPosting(true);
     setError(null);
     try {
       const res = await fetch("/api/bookings", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ token: props.token, slotId: selected.id, seats, name, email, extraAttendees }),
+        body: JSON.stringify({ token: props.token, slotId: selected.id, seats, name, email, extraAttendees, guests }),
       });
       const data = (await res.json().catch(() => ({}))) as { ok?: boolean; message?: string };
       if (!res.ok || !data.ok) {
@@ -295,23 +299,54 @@ function SelectionView(
               />
             </div>
 
-            <div className={styles.field}>
-              <label htmlFor={ids.extra} className={styles.label}>
-                {t("aside.extra")}
-              </label>
-              <input
-                id={ids.extra}
-                className={styles.input}
-                value={extra}
-                onChange={(e) => setExtra(e.target.value)}
-                placeholder={t("aside.extraPlaceholder")}
-                aria-describedby={ids.extraHint}
-                disabled={seats <= 1}
-              />
-              <span id={ids.extraHint} className={styles.hint}>
-                {t("aside.extraHint")}
-              </span>
-            </div>
+            {seats > 1 && (
+              <fieldset className={styles.guests}>
+                <legend className={styles.label}>{t("aside.extra")}</legend>
+                <label className={styles.checkRow}>
+                  <input
+                    id={ids.invite}
+                    type="checkbox"
+                    checked={inviteGuests}
+                    onChange={(e) => setInviteGuests(e.target.checked)}
+                    aria-describedby={ids.inviteHint}
+                  />
+                  <span>{t("aside.guestsInvite")}</span>
+                </label>
+                <span id={ids.inviteHint} className={styles.hint}>
+                  {t("aside.guestsInviteHint")}
+                </span>
+                {Array.from({ length: seats - 1 }, (_, i) => {
+                  const row = attendees[i] ?? { name: "", email: "" };
+                  const update = (patch: Partial<typeof row>) =>
+                    setAttendees((list) => {
+                      const next = Array.from({ length: Math.max(list.length, i + 1) }, (_, k) => list[k] ?? { name: "", email: "" });
+                      next[i] = { ...row, ...patch };
+                      return next;
+                    });
+                  return (
+                    <div key={i} className={styles.guestRow}>
+                      <label className={styles.field}>
+                        <span className={styles.label}>{t("aside.guestName", { n: i + 2 })}</span>
+                        <input className={styles.input} value={row.name} maxLength={200} onChange={(e) => update({ name: e.target.value })} />
+                      </label>
+                      {inviteGuests && (
+                        <label className={styles.field}>
+                          <span className={styles.label}>{t("aside.guestEmail", { n: i + 2 })}</span>
+                          <input
+                            className={styles.input}
+                            type="email"
+                            autoComplete="off"
+                            value={row.email}
+                            maxLength={254}
+                            onChange={(e) => update({ email: e.target.value })}
+                          />
+                        </label>
+                      )}
+                    </div>
+                  );
+                })}
+              </fieldset>
+            )}
 
             {error && (
               <p id={ids.error} className={styles.error} role="alert">
@@ -477,7 +512,14 @@ function Confirmation({
         {booking.extraAttendees.length > 0 && (
           <div className={styles.summaryWide}>
             <dt>{t("done.attendees")}</dt>
-            <dd>{booking.extraAttendees.join(", ")}</dd>
+            <dd>
+              {initialAttendees(booking).map((a, i) => (
+                <span key={i} className={styles.attendee}>
+                  {a.name}
+                  {a.email && <span className={styles.attendeeNote}>{` · ${t("done.guestInvited", { email: a.email })}`}</span>}
+                </span>
+              ))}
+            </dd>
           </div>
         )}
       </dl>
@@ -531,4 +573,14 @@ function Confirmation({
       )}
     </main>
   );
+}
+
+/** Namen der weiteren Teilnehmer mit ggf. E-Mail der eigenen Einladung (Zuordnung über den Namen) */
+function initialAttendees(b: BookingDisplay): { name: string; email: string }[] {
+  const open = [...b.guests];
+  return b.extraAttendees.map((name) => {
+    const i = open.findIndex((g) => g.name === name);
+    const email = i >= 0 ? open.splice(i, 1)[0]!.email : "";
+    return { name, email };
+  });
 }

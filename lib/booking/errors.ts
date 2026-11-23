@@ -9,6 +9,7 @@ export const BOOKING_ERROR_CODES = [
   "invalid_email",
   "invalid_seats",
   "invalid_attendees",
+  "invalid_guest_email",
   "change_deadline_passed",
   "slot_not_allowed",
   "slot_not_available",
@@ -78,6 +79,8 @@ export function messageKeyFor(code: BookingErrorCode): TextKey {
       return "error.invalid_name";
     case "invalid_attendees":
       return "error.invalid_attendees";
+    case "invalid_guest_email":
+      return "error.invalid_guest_email";
     default:
       return "error.generic";
   }

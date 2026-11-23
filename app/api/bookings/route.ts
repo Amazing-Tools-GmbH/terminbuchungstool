@@ -17,7 +17,13 @@ export async function POST(req: Request) {
     const t = createTranslator(tenant.anrede, tenant.textOverrides);
     const field = parsed.error.issues[0]?.path[0];
     const message =
-      field === "email" ? t("error.invalid_email") : field === "name" ? t("error.invalid_name") : t("error.generic");
+      field === "email"
+        ? t("error.invalid_email")
+        : field === "name"
+          ? t("error.invalid_name")
+          : field === "guests"
+            ? t("error.invalid_guest_email")
+            : t("error.generic");
     return Response.json({ ok: false, error: "invalid_input", field, message }, { status: 400 });
   }
 

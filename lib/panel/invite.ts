@@ -8,6 +8,8 @@ import { withActor, type DbActor } from "@/lib/db";
 import { encryptSecret } from "@/lib/crypto/secretbox";
 import { generateToken, hashToken } from "@/lib/booking/tokens";
 import { bookingUrl } from "@/lib/links";
+import { guestsForDb } from "@/lib/booking/service";
+import type { GuestInput } from "@/lib/booking/input";
 import type { PanelSession } from "@/lib/auth/session";
 import type { PublicTenant } from "@/lib/tenant/types";
 import type { PanelErrorCode } from "@/lib/texts/admin";
@@ -34,6 +36,8 @@ const DB_CODES: Record<string, PanelErrorCode> = {
   "TB:invalid_email": "no_contact",
   "TB:not_enough_seats": "not_enough_seats",
   "TB:already_booked": "already_booked",
+  "TB:invalid_attendees": "invalid_attendees",
+  "TB:invalid_guest_email": "invalid_guest_email",
 };
 
 export function toPanelError(err: unknown): PanelError {
@@ -50,7 +54,7 @@ export async function createPanelBooking(
   s: PanelSession,
   actor: DbActor,
   tenant: PublicTenant,
-  input: { slotId: string; seats: number },
+  input: { slotId: string; seats: number; extraAttendees: string[]; guests: GuestInput[] },
 ): Promise<{ bookingId: string; email: string }> {
   let contact: Awaited<ReturnType<typeof dealContact>>;
   try {
@@ -66,8 +70,21 @@ export async function createPanelBooking(
   try {
     const r = await withActor(actor, async (db) => {
       const { rows } = await db.query<{ r: { booking_id: string } }>(
-        "select public.book_for_deal($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) as r",
-        [tenant.id, input.slotId, token, linkEnc, person.name, person.email, contact.organization, s.deal, person.id, input.seats],
+        "select public.book_for_deal($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb) as r",
+        [
+          tenant.id,
+          input.slotId,
+          token,
+          linkEnc,
+          person.name,
+          person.email,
+          contact.organization,
+          s.deal,
+          person.id,
+          input.seats,
+          input.extraAttendees,
+          guestsForDb({ id: tenant.id, slug: tenant.slug, customDomain: tenant.customDomain }, input.guests),
+        ],
       );
       return rows[0]!.r;
     });

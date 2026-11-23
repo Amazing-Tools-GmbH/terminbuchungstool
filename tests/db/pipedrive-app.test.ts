@@ -259,4 +259,36 @@ describe("book_for_deal (Direktbuchung aus dem Panel)", () => {
   it("anon darf die Funktion nicht aufrufen", async () => {
     await expect(bookFor(ANON, { email: "anon@kunde.example" })).rejects.toThrow();
   });
+
+  it("mit weiteren Teilnehmern: Namen in der Buchung, eigene Einladung je E-Mail", async () => {
+    await db.admin("delete from email_outbox");
+    const token = generateToken();
+    const guestToken = generateToken();
+    const r = await db.as(sales, async (c) => {
+      const { rows } = await c.query<{ r: { booking_id: string } }>(
+        "select public.book_for_deal($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb) as r",
+        [
+          tenant.id,
+          slots[1],
+          token,
+          encryptSecret(`https://meetings.atools.de/b/${token}`),
+          "Gerda Gruppe",
+          "gerda@kunde.example",
+          "Gruppe GmbH",
+          deal,
+          5010,
+          3,
+          ["Hans Gast", "Ida ohne Mail"],
+          JSON.stringify([
+            { name: "Hans Gast", email: "hans@gast.example", token: guestToken, link_enc: encryptSecret(`https://meetings.atools.de/b/${guestToken}`) },
+          ]),
+        ],
+      );
+      return rows[0]!.r;
+    });
+    const [b] = await db.admin<{ seats: number; extra_attendees: string[] }>("select seats, extra_attendees from bookings where id = $1", [r.booking_id]);
+    expect(b).toEqual({ seats: 3, extra_attendees: ["Hans Gast", "Ida ohne Mail"] });
+    const mails = await db.admin<{ to_email: string }>("select to_email from email_outbox where type = 'confirmation' order by to_email");
+    expect(mails.map((m) => m.to_email)).toEqual(["gerda@kunde.example", "hans@gast.example"]);
+  });
 });
