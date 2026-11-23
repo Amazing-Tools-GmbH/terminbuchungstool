@@ -34,8 +34,7 @@ export const TEXTS = {
   "aside.seatsMax": same("max. {max}"),
   "aside.name": same("Name"),
   "aside.email": same("E-Mail"),
-  "aside.extra": same("Namen weiterer Teilnehmer (optional)"),
-  "aside.extraPlaceholder": same("z. B. Max Beispiel, Eva Probe"),
+  "aside.extra": same("Weitere Teilnehmer (optional)"),
   "aside.submit": same("Verbindlich buchen"),
   "aside.help": {
     ihr: "Ihr bekommt sofort eine Bestätigung mit Kalenderdatei per E-Mail.",
@@ -67,7 +66,6 @@ export const TEXTS = {
   "aside.changeSubmit": same("Änderung verbindlich buchen"),
   "aside.changeBack": same("Zurück zur Buchung"),
   "aside.submitting": same("Wird gebucht …"),
-  "aside.extraHint": same("Mehrere Namen mit Komma trennen."),
   "error.generic": {
     ihr: "Das hat leider nicht geklappt. Bitte versucht es noch einmal.",
     sie: "Das hat leider nicht geklappt. Bitte versuchen Sie es noch einmal.",
@@ -97,6 +95,8 @@ export const TEXTS = {
     sie: "Bitte geben Sie Ihren Namen ein.",
   },
   "error.invalid_attendees": same("Es sind mehr weitere Teilnehmer eingetragen als Plätze gewählt."),
+  "error.invalid_guest_email": same("Bitte gültige, unterschiedliche E-Mail-Adressen für die Teilnehmer angeben (nicht die eigene)."),
+  "error.missing_guest_name": same("Bitte zu jeder E-Mail-Adresse auch den Namen angeben."),
   "done.seatsValue": same("{n}"),
   "done.attendees": same("Weitere Teilnehmer"),
   "done.changeUntil": {
@@ -117,6 +117,35 @@ export const TEXTS = {
     ihr: "Eure Buchung wurde storniert. Ihr könnt jederzeit einen neuen Termin wählen.",
     sie: "Ihre Buchung wurde storniert. Sie können jederzeit einen neuen Termin wählen.",
   },
+  "aside.guestsInvite": same("Weitere Teilnehmer erhalten eine eigene Einladung"),
+  "aside.guestsInviteHint": same("Wer eine E-Mail-Adresse hat, bekommt den Termin per E-Mail und kann nur für sich absagen."),
+  "aside.guestName": same("Name Teilnehmer {n}"),
+  "aside.guestEmail": same("E-Mail Teilnehmer {n} (optional)"),
+  "done.guestInvited": same("Einladung an {email}"),
+  "guest.eyebrow": same("Einladung"),
+  "guest.title": same("Anmeldung bestätigt"),
+  "guest.text": {
+    ihr: "{booker} hat euch für diesen Termin angemeldet.",
+    sie: "{booker} hat Sie für diesen Termin angemeldet.",
+  },
+  "guest.decline": same("Für mich absagen"),
+  "guest.declineUntil": same("Absage bis {until} möglich."),
+  "guest.declineConfirm": {
+    ihr: "Wollt ihr eure Teilnahme wirklich absagen?",
+    sie: "Möchten Sie Ihre Teilnahme wirklich absagen?",
+  },
+  "guest.declineYes": same("Ja, absagen"),
+  "guest.deadlinePassed": {
+    ihr: "Die Frist für eine Absage ist abgelaufen. Bitte meldet euch bei {booker}.",
+    sie: "Die Frist für eine Absage ist abgelaufen. Bitte wenden Sie sich an {booker}.",
+  },
+  "guest.declined.title": same("Teilnahme abgesagt"),
+  "guest.declined.text": {
+    ihr: "Eure Teilnahme ist abgesagt. {booker} bekommt eine Nachricht.",
+    sie: "Ihre Teilnahme ist abgesagt. {booker} bekommt eine Nachricht.",
+  },
+  "guest.bookingEnded.title": same("Termin nicht mehr aktuell"),
+  "guest.bookingEnded.text": same("Dieser Termin wurde abgesagt oder geändert. Bei einer Änderung kommt eine neue Einladung per E-Mail."),
   "notFound.title": same("Link ungültig"),
   "notFound.text": {
     ihr: "Diesen Buchungslink kennen wir leider nicht. Bitte prüft den Link aus eurer Einladung.",
@@ -152,6 +181,29 @@ export const TEXTS = {
   "mail.cancellation.text": {
     ihr: "Über {link} könnt ihr jederzeit einen neuen Termin wählen.",
     sie: "Über {link} können Sie jederzeit einen neuen Termin wählen.",
+  },
+  "mail.guestCancelled": {
+    ihr: "{name} hat die Teilnahme abgesagt. Eure Buchung umfasst jetzt {persons}.",
+    sie: "{name} hat die Teilnahme abgesagt. Ihre Buchung umfasst jetzt {persons}.",
+  },
+  "mail.guest.subject": same("Einladung: {event} am {date}"),
+  "mail.guest.changedSubject": same("Geänderter Termin: {event} am {date}"),
+  "mail.guest.title": same("Anmeldung bestätigt"),
+  "mail.guest.changedTitle": same("Der Termin wurde geändert"),
+  "mail.guest.text": {
+    ihr: "{booker} hat euch für diesen Termin angemeldet.",
+    sie: "{booker} hat Sie für diesen Termin angemeldet.",
+  },
+  "mail.guest.decline": {
+    ihr: "Könnt ihr nicht teilnehmen? Bis {hours} Stunden vorher könnt ihr über {link} für euch absagen.",
+    sie: "Können Sie nicht teilnehmen? Bis {hours} Stunden vorher können Sie über {link} für sich absagen.",
+  },
+  "mail.guest.declineLink": same("diesen Link"),
+  "mail.guest.cancelled.subject": same("Abgesagt: {event} am {date}"),
+  "mail.guest.cancelled.title": same("Teilnahme abgesagt"),
+  "mail.guest.cancelled.text": {
+    ihr: "eure Teilnahme an diesem Termin ist abgesagt.",
+    sie: "Ihre Teilnahme an diesem Termin ist abgesagt.",
   },
   "mail.test.subject": same("Testnachricht: Postfach verbunden"),
   "mail.test.text": same("Dieses Postfach ist jetzt mit der Terminbuchung verbunden. Einladungen und Buchungsbestätigungen werden ab sofort von hier versendet."),

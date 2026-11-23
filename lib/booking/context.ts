@@ -56,3 +56,19 @@ export const invitationContextSchema = z.object({
 export type InvitationContext = z.infer<typeof invitationContextSchema>;
 export type SlotView = z.infer<typeof slotSchema>;
 export type BookingView = NonNullable<InvitationContext["booking"]>;
+
+/** Ergebnis von public.get_guest_context (Link eines weiteren Teilnehmers) */
+export const guestContextSchema = z.object({
+  guest: z.object({ name: z.string(), email: z.string(), status: z.enum(["confirmed", "cancelled"]) }),
+  booker: z.object({ name: z.string(), organization_name: z.string().nullable() }),
+  event: z.object({ title: z.string() }),
+  booking: z.object({
+    status: z.enum(["confirmed", "cancelled"]),
+    starts_at: ts,
+    ends_at: ts,
+    location: z.string().nullable(),
+    change_until: ts,
+    changeable: z.boolean(),
+  }),
+});
+export type GuestContext = z.infer<typeof guestContextSchema>;

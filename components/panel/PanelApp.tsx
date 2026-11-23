@@ -57,6 +57,8 @@ export function PanelApp(props: {
   const [day, setDay] = useState<string | null>(initialSlot?.dayKey ?? null);
   const [selected, setSelected] = useState<string[]>(initialSlot ? [initialSlot.id] : []);
   const [seats, setSeats] = useState(1);
+  const [attendees, setAttendees] = useState<{ name: string; email: string }[]>([]);
+  const [inviteGuests, setInviteGuests] = useState(false);
   const [action, setAction] = useState<"book" | "link" | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -143,6 +145,8 @@ export function PanelApp(props: {
     setDay(s?.dayKey ?? null);
     setSelected(s ? [s.id] : []);
     setSeats(1);
+    setAttendees([]);
+    setInviteGuests(false);
   };
   const toggleSlot = (s: PanelSlot) => {
     if (s.free <= 0) return;
@@ -188,10 +192,16 @@ export function PanelApp(props: {
     if (!chosen) return setError(t("panel.nothingSelected"));
     setBusy(true);
     setAction("book");
-    const r = await api<{ email: string }>("/book", { method: "POST", body: JSON.stringify({ slotId: chosen.id, seats }) });
+    const rows = attendees.slice(0, seats - 1);
+    const r = await api<{ email: string }>("/book", {
+      method: "POST",
+      body: JSON.stringify({ slotId: chosen.id, seats, attendees: rows, inviteGuests: inviteGuests && seats > 1 }),
+    });
     setBusy(false);
     setAction(null);
     if (!r.ok) return setError(r.message);
+    setAttendees([]);
+    setInviteGuests(false);
     done(t("panel.bookedOk", { date: label(chosen), seats, email: r.data.email }));
   };
 
@@ -352,6 +362,49 @@ export function PanelApp(props: {
                 onChange={(e) => setSeats(Math.max(1, Math.min(chosen.free, Number(e.target.value) || 1)))}
               />
             </div>
+          )}
+
+          {chosen && chosen.free > 0 && seats > 1 && (
+            <fieldset className={styles.guests}>
+              <legend className={styles.label}>{t("panel.guests.legend")}</legend>
+              <label className={styles.checkRow}>
+                <input type="checkbox" checked={inviteGuests} onChange={(e) => setInviteGuests(e.target.checked)} />
+                <span>{t("panel.guests.invite")}</span>
+              </label>
+              {inviteGuests && <div className={styles.hint}>{t("panel.guests.hint")}</div>}
+              {Array.from({ length: seats - 1 }, (_, i) => {
+                const row = attendees[i] ?? { name: "", email: "" };
+                const update = (patch: Partial<typeof row>) =>
+                  setAttendees((list) => {
+                    const next = Array.from({ length: Math.max(list.length, i + 1) }, (_, k) => list[k] ?? { name: "", email: "" });
+                    next[i] = { ...row, ...patch };
+                    return next;
+                  });
+                return (
+                  <div key={i} className={styles.guestRow}>
+                    <input
+                      className={styles.select}
+                      aria-label={t("panel.guests.name", { n: i + 2 })}
+                      placeholder={t("panel.guests.name", { n: i + 2 })}
+                      value={row.name}
+                      maxLength={200}
+                      onChange={(e) => update({ name: e.target.value })}
+                    />
+                    {inviteGuests && (
+                      <input
+                        className={styles.select}
+                        type="email"
+                        aria-label={t("panel.guests.email", { n: i + 2 })}
+                        placeholder={t("panel.guests.email", { n: i + 2 })}
+                        value={row.email}
+                        maxLength={254}
+                        onChange={(e) => update({ email: e.target.value })}
+                      />
+                    )}
+                  </div>
+                );
+              })}
+            </fieldset>
           )}
 
           <div className={styles.sendRow}>
