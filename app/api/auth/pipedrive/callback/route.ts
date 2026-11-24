@@ -10,6 +10,7 @@ import { z } from "zod";
 import { LOGIN_NONCE_COOKIE, loginStateSchema, relinkStateSchema, unseal, type RelinkState } from "@/lib/auth/session";
 import { getAdminContext, sessionCookie } from "@/lib/auth/admin";
 import { relinkFromOAuth } from "@/lib/pipedrive/manage";
+import { recordAccessRequest } from "@/lib/access-requests";
 import { appUrl } from "@/lib/auth/urls";
 import { syncCompanyDomain, installFromOAuth, uninstallCompany } from "@/lib/pipedrive/install";
 
@@ -79,6 +80,7 @@ export async function GET(req: NextRequest) {
           me.email,
         ]);
       }),
+    onNoAccess: (tid, me) => recordAccessRequest({ id: tid }, me.id, { name: me.name, email: me.email }),
     storeUserTokens: async (tid, uid, me, tokens) => {
       await storeUserTokens(getPool(), tid, uid, me, tokens);
       await syncCompanyDomain(me.companyId, me.companyDomain).catch((err) => console.error("Pipedrive-Domain nicht aktualisiert", err));

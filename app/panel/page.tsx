@@ -7,6 +7,7 @@ import { tenantForMember } from "@/lib/tenant/current";
 import { at, panelTexts, type PanelErrorCode } from "@/lib/texts/admin";
 import { PanelApp } from "@/components/panel/PanelApp";
 import { PanelError } from "@/components/panel/PanelError";
+import { recordAccessRequest } from "@/lib/access-requests";
 
 export const dynamic = "force-dynamic";
 // Token in der Adresse nicht als Referrer weitergeben
@@ -42,7 +43,13 @@ export default async function PanelPage({ searchParams }: { searchParams: Search
   let start: Awaited<ReturnType<typeof startPanelSession>>;
   try {
     start = await startPanelSession(v.entry);
-    if (!start.ok) return reject(start.error);
+    if (!start.ok) {
+      if (start.error === "no_access" && start.tid) {
+        await recordAccessRequest({ id: start.tid }, v.entry.userId);
+        return reject("access_requested");
+      }
+      return reject(start.error);
+    }
     const tenant = await tenantForMember(start.session.uid, start.session.tid);
     if (!tenant) return reject("no_access", "tenant");
     context = await loadPanelContext(start.session, { role: "authenticated", userId: start.session.uid }, tenant);

@@ -1,7 +1,9 @@
 /**
  * Versandwege (explizit über Umgebungsvariablen, siehe .env.example):
  *
- *   INVITE_MAIL_PROVIDER = pipedrive (Standard) | oauth | smtp
+ *   INVITE_MAIL_PROVIDER = smtp (Standard) | oauth | pipedrive
+ *     pipedrive geht mit unserer Pipedrive-App NICHT: Pipedrive bietet Apps keinen
+ *     Scope zum Senden (nur mail:read / mail:full). Bleibt nur für Tests/Altbestand.
  *     Weg für Einladungen. Schlägt er fehl, gibt es eine Meldung – nie einen
  *     stillen Wechsel auf einen anderen Weg.
  *   SYSTEM_MAIL_TRANSPORT = smtp | dev
@@ -18,7 +20,7 @@ export type InviteMailProvider = "pipedrive" | "oauth" | "smtp";
 
 export function inviteMailProvider(env: Env = process.env): InviteMailProvider {
   const v = env.INVITE_MAIL_PROVIDER?.trim();
-  if (!v) return "pipedrive";
+  if (!v) return "smtp";
   if (v === "pipedrive" || v === "oauth" || v === "smtp") return v;
   throw new Error(`INVITE_MAIL_PROVIDER ungültig: ${v} (pipedrive | oauth | smtp)`);
 }

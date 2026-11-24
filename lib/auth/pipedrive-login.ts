@@ -28,6 +28,8 @@ export type LoginDeps = {
   refreshMemberCache: (tenantId: string, userId: string, me: PipedriveMe) => Promise<void>;
   /** Tokens des Mitarbeiters speichern (Versand von Einladungen über Pipedrive) */
   storeUserTokens: (tenantId: string, userId: string, me: PipedriveMe, tokens: PipedriveTokens) => Promise<void>;
+  /** Noch nicht freigeschaltet: Zugriffsanfrage festhalten (Owner/Admins werden informiert) */
+  onNoAccess?: (tenantId: string, me: PipedriveMe) => Promise<unknown>;
 };
 
 export type LoginResult = { ok: true; session: Session } | { ok: false; error: LoginError };
@@ -46,7 +48,10 @@ export async function completePipedriveLogin(code: string, deps: LoginDeps): Pro
   if (!tid) return { ok: false, error: "not_connected" };
 
   const member = await deps.lookupMember(tid, me.id);
-  if (!member) return { ok: false, error: "no_access" };
+  if (!member) {
+    await deps.onNoAccess?.(tid, me);
+    return { ok: false, error: "no_access" };
+  }
   if (member.status !== "active") return { ok: false, error: "disabled" };
   if ((member.authEmail ?? "").toLowerCase() !== me.email.toLowerCase()) return { ok: false, error: "email_mismatch" };
 

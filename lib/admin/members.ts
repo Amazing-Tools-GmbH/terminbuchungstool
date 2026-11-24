@@ -10,6 +10,7 @@ import { ensureAuthUser } from "@/lib/auth/users";
 import type { AdminContext, MemberRole } from "@/lib/auth/admin";
 import { listPipedriveUsers } from "@/lib/pipedrive/directory";
 import { AdminError, toAdminError } from "./errors";
+import { closeAccessRequest, listOpenAccessRequests } from "@/lib/access-requests";
 
 import { mergeTeam, type MemberRow, type Team } from "./team";
 
@@ -53,15 +54,20 @@ export async function loadTeam(ctx: AdminContext): Promise<Team> {
 export async function enableMember(ctx: AdminContext, pipedriveUserId: number, role: MemberRole): Promise<void> {
   try {
     const dir = await listPipedriveUsers(ctx.tenant);
-    if (!dir.ok) throw new AdminError("pipedrive_unavailable");
-    // Name und E-Mail kommen aus Pipedrive, nie aus dem Formular
-    const user = dir.users.find((u) => u.id === pipedriveUserId && u.active);
-    if (!user) throw new AdminError("pipedrive_user_not_found");
+    // Name und E-Mail kommen aus Pipedrive (bzw. aus der Zugriffsanfrage, die beim
+    // Pipedrive-Login entstanden ist), nie aus dem Formular
+    let user = dir.ok ? dir.users.find((u) => u.id === pipedriveUserId && u.active) : undefined;
+    if (!user) {
+      const req = (await listOpenAccessRequests(ctx)).find((r) => r.pipedriveUserId === pipedriveUserId && r.email && r.name);
+      if (req) user = { id: pipedriveUserId, name: req.name!, email: req.email!, isAdmin: false, active: true };
+    }
+    if (!user) throw new AdminError(dir.ok ? "pipedrive_user_not_found" : "pipedrive_unavailable");
 
     const existing = (await listMembers(ctx)).find((m) => m.pipedriveUserId === pipedriveUserId);
     if (existing) {
       if (existing.userId === ctx.userId) throw new AdminError("self");
       await updateMember(ctx, existing.userId, { role, status: "active" });
+      await closeAccessRequest(ctx, pipedriveUserId, true).catch(() => false);
       return;
     }
     const userId = await ensureAuthUser(user.email, user.name);
@@ -72,6 +78,8 @@ export async function enableMember(ctx: AdminContext, pipedriveUserId: number, r
         [ctx.tenant.id, userId, role, pipedriveUserId, user.name.slice(0, 200), user.email],
       );
     });
+    // offene Zugriffsanfrage erledigt -> Mail „freigeschaltet“ an den Benutzer
+    await closeAccessRequest(ctx, pipedriveUserId, true).catch(() => false);
   } catch (err) {
     // 23505: dieser auth-Benutzer ist bereits Mitglied (unter anderer Pipedrive-ID)
     if ((err as { code?: string })?.code === "23505") throw new AdminError("already_member");

@@ -4,6 +4,7 @@ import { settingsJwtSecret, verifySettingsToken } from "@/lib/pipedrive/settings
 import { tenantIdForCompany } from "@/lib/pipedrive/connection";
 import { sessionCookie } from "@/lib/auth/admin";
 import { appUrl } from "@/lib/auth/urls";
+import { recordAccessRequest } from "@/lib/access-requests";
 
 export const dynamic = "force-dynamic";
 
@@ -31,7 +32,10 @@ export async function GET(req: NextRequest) {
     );
     return rows[0] ?? null;
   });
-  if (!member) return fail("no_access");
+  if (!member) {
+    await recordAccessRequest({ id: tid }, v.identity.userId);
+    return fail("no_access");
+  }
   if (member.status !== "active") return fail("disabled");
 
   const res = NextResponse.redirect(appUrl("/admin"));

@@ -9,7 +9,9 @@ import { PANEL_TTL_SECONDS, seal, type PanelSession } from "@/lib/auth/session";
 import { tenantIdForPipedriveCompany } from "@/lib/pipedrive/runtime";
 import type { PanelEntry } from "./token";
 
-export type PanelStart = { ok: true; session: PanelSession; bearer: string } | { ok: false; error: "not_connected" | "no_access" | "disabled" };
+export type PanelStart =
+  | { ok: true; session: PanelSession; bearer: string }
+  | { ok: false; error: "not_connected" | "no_access" | "disabled"; tid?: string };
 
 export async function startPanelSession(entry: PanelEntry): Promise<PanelStart> {
   const tid = await tenantIdForPipedriveCompany(entry.companyId);
@@ -21,7 +23,7 @@ export async function startPanelSession(entry: PanelEntry): Promise<PanelStart> 
     );
     return rows[0] ?? null;
   });
-  if (!member) return { ok: false, error: "no_access" };
+  if (!member) return { ok: false, error: "no_access", tid };
   if (member.status !== "active") return { ok: false, error: "disabled" };
   const session: PanelSession = { uid: member.user_id, tid, pd: entry.userId, deal: entry.dealId };
   return { ok: true, session, bearer: seal("panel", session, PANEL_TTL_SECONDS) };

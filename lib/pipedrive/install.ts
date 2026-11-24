@@ -19,6 +19,7 @@ import type { PipedriveMe, PipedriveTokens } from "./client";
 import { tenantSlugFromPipedrive } from "./domain";
 import { storeUserTokens } from "./user-connection";
 import { syncCompanyDomainOn } from "./domain-sync";
+import { recordAccessRequest } from "@/lib/access-requests";
 
 export type InstallResult =
   | { ok: true; created: boolean; adopted: boolean; session: Session }
@@ -132,7 +133,11 @@ export async function installFromOAuth(me: PipedriveMe, t: PipedriveTokens): Pro
     return { tid, created: true, adopted: false, uid: authUserId };
   });
 
-  if (!res.uid) return { ok: false, error: "no_access", created: res.created };
+  if (!res.uid) {
+    // weiterer Benutzer einer bereits verbundenen Firma: Anfrage an Owner/Admins
+    await recordAccessRequest({ id: res.tid }, me.id, { name: me.name, email: me.email });
+    return { ok: false, error: "no_access", created: res.created };
+  }
   await storeUserTokens(getPool(), res.tid, res.uid, me, t);
   return { ok: true, created: res.created, adopted: res.adopted, session: { uid: res.uid, tid: res.tid, pd: me.id } };
 }

@@ -71,6 +71,13 @@ Mandantenfähiges Terminbuchungstool mit Pipedrive-Integration. Auftrag und Phas
   `panel`; `lib/panel`, `components/panel`), Einladungen nur über `public.create_invitation`.
   Einträge in Pipedrive (Aktivität, Notizen) nur über die Warteschlange `pipedrive_jobs`
   (`lib/pipedrive/jobs.ts`, `crm.ts`), nie im Request.
+- Zugriffsanfragen (`access_requests`, `lib/access-requests.ts`): Pipedrive-Benutzer ohne
+  Freischaltung (Installation/Login, Panel, App-Einstellungen) ⇒ `record_access_request` +
+  Mail an alle aktiven Owner/Admins (Outbox `access_request`, System-Adresse); Freischalten
+  schließt die Anfrage (`close_access_request`, Mail `access_granted`). Eingebettete
+  App-Einstellungen `/app-settings` (Custom UI in Pipedrive, iframe, Bearer Zweck `app-settings`,
+  `lib/app-settings.ts`, API `/api/app-settings`): Nutzerverwaltung für owner/admin; `/settings`
+  bleibt der Einstieg ins Admin (neuer Tab).
 - Admin-Backend `/admin` (Server Components + Server Actions, zod, `lib/admin`), Texte in
   `lib/texts/admin.ts`. Buchungen `/admin/buchungen` („Gebucht von“ = `bookings.booked_by`, per
   Trigger aus `auth.uid()`: Mitarbeiter bei Direktbuchung, null = Kunde selbst). E-Mail-Vorlagen
@@ -144,16 +151,21 @@ Mandantenfähiges Terminbuchungstool mit Pipedrive-Integration. Auftrag und Phas
   Vorlagen in `templates.ts` (Inline-Styles, kein SVG/Verlauf), Verarbeitung in `outbox.ts`
   (SKIP LOCKED, Backoff, Postfach-Fehler ⇒ Mail bleibt queued). Links in Mails nur über
   `lib/links.ts`; der Buchungslink steht verschlüsselt im Outbox-Payload (`link_enc`).
+- **Kein Mailversand über die Pipedrive-App (entschieden, nicht erneut vorschlagen):** Pipedrive
+  bietet Apps nur die Scopes `mail:read`/`mail:full` (lesen/ändern), KEINEN Scope zum Senden
+  (`mail-sending:full` ist im Developer Hub nicht wählbar; der Live-Versand am 19.11.2026 lief nur
+  über den Claude-MCP-Connector). Mails gehen daher nie „über das Pipedrive-Postfach“.
 - Versandwege (`lib/mail/routing.ts`, Konfiguration `lib/mail/config.ts`):
-  Einladung über `INVITE_MAIL_PROVIDER` = `pipedrive` (Standard; Postfach des Mitarbeiters in
-  Pipedrive, OAuth-Token aus seinem Login in `pipedrive_user_connections`, Scope
-  `mail-sending:full`, `lib/pipedrive/mail.ts` über MCP oder REST) | `oauth` (eigenes
-  Google/Microsoft-Postfach, Buttons nur dann sichtbar) | `smtp` (System-Adresse, Anzeigename +
-  Reply-To = Mitarbeiter). Bestätigung/Stornierung immer System-SMTP (`SYSTEM_MAIL_*`),
+  Einladung über `INVITE_MAIL_PROVIDER` = `smtp` (Standard; System-Adresse, Anzeigename +
+  Reply-To = Mitarbeiter) | `oauth` (eigenes Postfach des Mitarbeiters unter „Mein Postfach“) |
+  `pipedrive` (nicht nutzbar, s. o.). Bestätigung/Stornierung über System-SMTP (`SYSTEM_MAIL_*`),
   Reply-To = einladender Mitarbeiter. Fällt der Weg aus: `email_outbox.error_code` + Meldung,
   NIE ein stiller Wechsel des Weges. Smart BCC (`tenants.smart_bcc_email`, nur
-  `@pipedrivemail.com`) für alle Kundenmails außer Pipedrive-Versand. Signatur je Mitarbeiter
+  `@pipedrivemail.com`) bringt Kundenmails in den Deal. Signatur je Mitarbeiter
   (`tenant_members.mail_signature`, Klartext) unter Einladungen.
+- Pipedrive-Scopes der App (Developer Hub): base, deals:full, activities:full, contacts:read,
+  mail:full, **users:read** (Nutzerverwaltung; fehlt er ⇒ Hinweis `users.dir.missing_scope`).
+  Neue Scopes gelten erst nach erneuter Autorisierung.
 - Postfach verbinden (nur Weg `oauth`, `/admin/postfach`): Speichern über
   `public.save_mail_connection` (Status `pending`), aktiv erst nach zugestellter Testmail.
   OAuth wie der Login: Start auf Mandanten-Host (Nonce), zentraler Callback →

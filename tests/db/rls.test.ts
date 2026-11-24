@@ -15,6 +15,7 @@ const TABLES = [
   "bookings",
   "booking_guests",
   "activity_log",
+  "access_requests",
   "pipedrive_connections",
   "mail_connections",
   "email_outbox",
@@ -54,6 +55,7 @@ beforeAll(async () => {
       [t, 1000 + i],
     );
     await db.admin("insert into email_outbox (tenant_id, type, to_email) values ($1, 'test', 'x@y.example')", [t]);
+    await db.admin("insert into access_requests (tenant_id, pipedrive_user_id, name) values ($1, $2, 'Anfrage')", [t, 990000 + i]);
     // Verlauf: Terminänderung durch das Team
     await db.admin(
       `insert into activity_log (tenant_id, invitation_id, kind)
@@ -166,8 +168,12 @@ describe("Schreiben", () => {
     ).rejects.toThrow(/foreign key/);
   });
 
-  it("Verlauf: sales sieht nichts, niemand schreibt direkt", async () => {
+  it("Verlauf/Zugriffsanfragen: sales sieht nichts, niemand schreibt direkt", async () => {
     expect(await tenantIdsVisible(salesA, "activity_log")).toEqual([]);
+    expect(await tenantIdsVisible(salesA, "access_requests")).toEqual([]);
+    await expect(
+      db.as(userA, (c) => c.query("insert into access_requests (tenant_id, pipedrive_user_id) values ($1, 1)", [tenantA])),
+    ).rejects.toThrow(/permission denied/);
     await expect(
       db.as(userA, (c) => c.query("insert into activity_log (tenant_id, invitation_id, kind) select tenant_id, id, 'slot_changed' from invitations limit 1")),
     ).rejects.toThrow(/permission denied/);
