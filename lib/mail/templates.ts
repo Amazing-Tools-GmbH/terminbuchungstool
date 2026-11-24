@@ -100,6 +100,8 @@ export type BookingMailData = {
   changed: boolean;
   /** Ein weiterer Teilnehmer hat für sich abgesagt (Hinweis an den Hauptbucher) */
   guestCancelled?: string | null;
+  /** Veranstalter hat Datum/Uhrzeit/Ort geändert */
+  organizerChanged?: boolean;
 };
 
 export function renderConfirmation(tenant: MailTenant, d: BookingMailData): RenderedMail {
@@ -119,7 +121,11 @@ export function renderConfirmation(tenant: MailTenant, d: BookingMailData): Rend
     [tr("done.seats"), persons],
     ...(d.extraAttendees.length ? ([[tr("done.attendees"), d.extraAttendees.join(", ")]] as [string, string][]) : []),
   ];
-  const note = d.guestCancelled ? tr("mail.guestCancelled", { name: d.guestCancelled, persons }) : null;
+  const note = d.organizerChanged
+    ? tr("mail.rescheduled")
+    : d.guestCancelled
+      ? tr("mail.guestCancelled", { name: d.guestCancelled, persons })
+      : null;
   const changeLine = d.bookingUrl
     ? tr("mail.change", { hours: tenant.changeDeadlineHours, link: "\u0000" })
     : null;
@@ -155,11 +161,12 @@ ${changeHtml ? `<p style="margin:0 0 20px;font-size:14px">${changeHtml}</p>` : "
 
 export function renderCancellation(
   tenant: MailTenant,
-  d: Omit<BookingMailData, "changed" | "icsFilename" | "extraAttendees">,
+  d: Omit<BookingMailData, "changed" | "icsFilename" | "extraAttendees"> & { byOrganizer?: boolean },
 ): RenderedMail {
   const tr = createTranslator(tenant.anrede, tenant.textOverrides);
   const t = tenant.theme;
   const when = formatSlot(d.startsAt, d.endsAt, tenant.timezone);
+  const note = d.byOrganizer ? tr("mail.cancellation.byOrganizer") : null;
   const subject = tr("mail.cancellation.subject", { event: d.eventTitle, date: when.date });
   const title = tr("mail.cancellation.title");
   const rows: [string, string][] = [
@@ -172,6 +179,7 @@ export function renderCancellation(
     `<p style="margin:0 0 4px;font-size:14px;color:${t.muted}">${escapeHtml(d.eventTitle)}</p>
 <h1 style="margin:0 0 16px;font-size:24px;line-height:1.25">${escapeHtml(title)}</h1>
 <p style="margin:0 0 8px">${escapeHtml(tr("mail.greeting", { name: d.name }))}</p>
+${note ? `<p style="margin:0 0 8px">${escapeHtml(note)}</p>` : ""}
 ${summaryTable(t, rows)}
 ${again ? `<p style="margin:0 0 20px;font-size:14px">${escapeHtml(again).replace("\u0000", link(t, d.bookingUrl!, tr("mail.changeLink")))}</p>` : ""}`,
     title,
@@ -180,6 +188,7 @@ ${again ? `<p style="margin:0 0 20px;font-size:14px">${escapeHtml(again).replace
     tr("mail.greeting", { name: d.name }),
     "",
     `${title} – ${d.eventTitle}`,
+    ...(note ? [note] : []),
     ...rows.map(([k, v]) => `${k}: ${v}`),
     ...(again && d.bookingUrl ? ["", again.replace("\u0000", tr("mail.changeLink")) + `\n${d.bookingUrl}`] : []),
     "",
@@ -202,6 +211,7 @@ export type GuestMailData = {
   guestUrl: string | null;
   icsFilename: string;
   changed: boolean;
+  organizerChanged?: boolean;
 };
 
 export function renderGuestConfirmation(tenant: MailTenant, d: GuestMailData): RenderedMail {
@@ -210,7 +220,7 @@ export function renderGuestConfirmation(tenant: MailTenant, d: GuestMailData): R
   const when = formatSlot(d.startsAt, d.endsAt, tenant.timezone);
   const subject = tr(d.changed ? "mail.guest.changedSubject" : "mail.guest.subject", { event: d.eventTitle, date: when.date });
   const title = tr(d.changed ? "mail.guest.changedTitle" : "mail.guest.title");
-  const intro = tr("mail.guest.text", { booker: d.bookerName });
+  const intro = d.organizerChanged ? tr("mail.rescheduled") : tr("mail.guest.text", { booker: d.bookerName });
   const rows: [string, string][] = [
     [tr("done.date"), `${when.weekdayShort}, ${when.date}`],
     [tr("done.time"), when.time],
@@ -246,7 +256,7 @@ ${decline ? `<p style="margin:0 0 20px;font-size:14px">${escapeHtml(decline).rep
 
 export function renderGuestCancellation(
   tenant: MailTenant,
-  d: { eventTitle: string; startsAt: Date; endsAt: Date; name: string },
+  d: { eventTitle: string; startsAt: Date; endsAt: Date; name: string; byOrganizer?: boolean },
 ): RenderedMail {
   const tr = createTranslator(tenant.anrede, tenant.textOverrides);
   const t = tenant.theme;
@@ -262,14 +272,14 @@ export function renderGuestCancellation(
     `<p style="margin:0 0 4px;font-size:14px;color:${t.muted}">${escapeHtml(d.eventTitle)}</p>
 <h1 style="margin:0 0 16px;font-size:24px;line-height:1.25">${escapeHtml(title)}</h1>
 <p style="margin:0 0 8px">${escapeHtml(tr("mail.greeting", { name: d.name }))}</p>
-<p style="margin:0 0 8px">${escapeHtml(tr("mail.guest.cancelled.text"))}</p>
+<p style="margin:0 0 8px">${escapeHtml(tr(d.byOrganizer ? "mail.cancellation.byOrganizer" : "mail.guest.cancelled.text"))}</p>
 ${summaryTable(t, rows)}`,
     title,
   );
   const text = [
     tr("mail.greeting", { name: d.name }),
     "",
-    tr("mail.guest.cancelled.text"),
+    tr(d.byOrganizer ? "mail.cancellation.byOrganizer" : "mail.guest.cancelled.text"),
     "",
     `${title} – ${d.eventTitle}`,
     ...rows.map(([k, v]) => `${k}: ${v}`),

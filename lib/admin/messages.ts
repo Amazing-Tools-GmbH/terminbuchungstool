@@ -11,6 +11,7 @@ const OK: Record<string, AdminTextKey> = {
   saved: "users.saved",
   branding: "branding.ok.saved",
   templates: "templates.ok",
+  bookingCancelled: "manage.ok.bookingCancelled",
   pdConnected: "pd.ok.connected",
   pdChanged: "pd.ok.changed",
   pdDisconnected: "pd.ok.disconnected",

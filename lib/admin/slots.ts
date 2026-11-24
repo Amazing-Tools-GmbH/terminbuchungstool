@@ -13,7 +13,7 @@ import { dealUrl, slotLevel, type SlotLevel } from "./slot-logic";
 
 export { kpis, type SlotLevel } from "./slot-logic";
 
-export type AdminEvent = { id: string; title: string; location: string | null; status: string };
+export type AdminEvent = { id: string; title: string; location: string | null; description: string | null; status: string };
 
 export type AdminSlot = {
   id: string;
@@ -24,9 +24,13 @@ export type AdminSlot = {
   location: string | null;
   capacity: number;
   booked: number;
+  /** Anzahl bestätigter Buchungen (nicht Plätze) */
+  bookingCount: number;
   free: number;
   pct: number;
   level: SlotLevel;
+  /** Werte fürs Bearbeiten (Mandanten-Zeitzone): YYYY-MM-DD, HH:MM, eigener Ort (null = Ort des Events) */
+  edit: { date: string; from: string; to: string; location: string | null };
 };
 
 export type AdminBooking = {
@@ -42,7 +46,7 @@ export type AdminBooking = {
 export async function listEvents(ctx: AdminContext): Promise<AdminEvent[]> {
   return withActor(ctx.actor, async (db) => {
     const { rows } = await db.query<AdminEvent>(
-      `select id, title, location, status::text as status from public.events
+      `select id, title, location, description, status::text as status from public.events
         where tenant_id = $1 and status <> 'archived' order by created_at`,
       [ctx.tenant.id],
     );
@@ -58,17 +62,25 @@ export async function listSlots(ctx: AdminContext, eventId: string): Promise<Adm
       starts_at: Date;
       ends_at: Date;
       location: string | null;
+      own_location: string | null;
+      d: string;
+      f: string;
+      t: string;
       capacity: number;
       status: string;
       booked: number;
+      booking_count: number;
     }>(
-      `select s.id, s.starts_at, s.ends_at, coalesce(s.location, e.location) as location, s.capacity, s.status::text as status,
+      `select s.id, s.starts_at, s.ends_at, coalesce(s.location, e.location) as location, s.location as own_location,
+              to_char(s.starts_at at time zone $3, 'YYYY-MM-DD') as d, to_char(s.starts_at at time zone $3, 'HH24:MI') as f,
+              to_char(s.ends_at at time zone $3, 'HH24:MI') as t, s.capacity, s.status::text as status,
               coalesce((select sum(b.seats) from public.bookings b
-                         where b.slot_id = s.id and b.status = 'confirmed'), 0)::int as booked
+                         where b.slot_id = s.id and b.status = 'confirmed'), 0)::int as booked,
+              (select count(*) from public.bookings b where b.slot_id = s.id and b.status = 'confirmed')::int as booking_count
          from public.slots s join public.events e on e.id = s.event_id
         where s.tenant_id = $1 and s.event_id = $2 and s.ends_at > now()
         order by s.starts_at`,
-      [ctx.tenant.id, eventId],
+      [ctx.tenant.id, eventId, ctx.tenant.timezone],
     );
     return rows;
   });
@@ -83,9 +95,11 @@ export async function listSlots(ctx: AdminContext, eventId: string): Promise<Adm
       location: r.location,
       capacity: r.capacity,
       booked: r.booked,
+      bookingCount: r.booking_count,
       free: Math.max(0, r.capacity - r.booked),
       pct: r.capacity ? Math.min(100, Math.round((r.booked / r.capacity) * 100)) : 100,
       level: slotLevel(r.status, r.capacity, r.booked),
+      edit: { date: r.d, from: r.f, to: r.t, location: r.own_location },
     };
   });
 }

@@ -1,5 +1,7 @@
 import Link from "next/link";
-import { requireAdmin } from "@/lib/auth/admin";
+import { canManage, requireAdmin } from "@/lib/auth/admin";
+import { flashMessages } from "@/lib/admin/messages";
+import { cancelBookingAction } from "../actions";
 import { BOOKING_VIEWS, listBookings, type BookingView } from "@/lib/admin/bookings";
 import { listEvents } from "@/lib/admin/slots";
 import { formatDateTime } from "@/lib/datetime";
@@ -20,6 +22,8 @@ export default async function BookingsPage({ searchParams }: { searchParams: Sea
   const tz = ctx.tenant.timezone;
   const href = (v: BookingView) => `/admin/buchungen?${new URLSearchParams({ view: v, ...(eventId ? { event: eventId } : {}) })}`;
   const seats = items.reduce((n, b) => n + b.seats, 0);
+  const manage = canManage(ctx.role) && view === "upcoming";
+  const { ok, error } = flashMessages(sp);
 
   return (
     <>
@@ -31,6 +35,17 @@ export default async function BookingsPage({ searchParams }: { searchParams: Sea
           </p>
         </div>
       </div>
+
+      {error && (
+        <p role="alert" className={styles.error}>
+          {error}
+        </p>
+      )}
+      {ok && (
+        <p role="status" className={styles.notice}>
+          {ok}
+        </p>
+      )}
 
       <div className={styles.filterBar}>
         <nav aria-label={at("bookingList.views")} className={styles.tabs}>
@@ -82,6 +97,7 @@ export default async function BookingsPage({ searchParams }: { searchParams: Sea
                   <th scope="col">{at("bookingList.col.seats")}</th>
                   <th scope="col">{at("bookingList.col.bookedBy")}</th>
                   <th scope="col">{view === "cancelled" ? at("bookingList.col.cancelledAt") : at("bookingList.col.bookedAt")}</th>
+                  {manage && <th scope="col">{at("table.actions")}</th>}
                 </tr>
               </thead>
               <tbody>
@@ -121,6 +137,25 @@ export default async function BookingsPage({ searchParams }: { searchParams: Sea
                     <td data-label={view === "cancelled" ? at("bookingList.col.cancelledAt") : at("bookingList.col.bookedAt")} className={styles.nowrap}>
                       {formatDateTime(view === "cancelled" && b.cancelledAt ? b.cancelledAt : b.createdAt, tz)}
                     </td>
+                    {manage && (
+                      <td data-label={at("table.actions")}>
+                        <details className={styles.inlineEdit}>
+                          <summary className={styles.btnGhost}>{at("manage.booking.cancel")}</summary>
+                          <form action={cancelBookingAction} className={`${styles.brandingFields} ${styles.popover}`}>
+                            <input type="hidden" name="bookingId" value={b.id} />
+                            <input type="hidden" name="back" value="list" />
+                            <label className={styles.check}>
+                              <input type="checkbox" name="notify" defaultChecked /> {at("manage.notify")}
+                            </label>
+                            <div>
+                              <button type="submit" className={styles.btnDanger}>
+                                {at("manage.booking.cancelSubmit")}
+                              </button>
+                            </div>
+                          </form>
+                        </details>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
