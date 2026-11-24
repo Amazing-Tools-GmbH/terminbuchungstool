@@ -172,3 +172,14 @@ Testadresse des Auftraggebers, Deal 501.
 - B: App als MCP-Client gegen `mcp.pipedrive.ai/mcp` (offiziell angebotene Schnittstelle),
   einmalige Freigabe je Vertriebsmitarbeiter; Tools `createMailDraft`/`sendMailDraft`.
   Host ist in der Cloud-Umgebung derzeit nicht freigegeben.
+
+---
+
+## Nachtrag 24.11.2026: Entscheidung
+
+Im Developer Hub sind für Mail nur „Read only“ (`mail:read`) und „Full access“ (`mail:full`,
+Threads lesen/ändern/löschen) wählbar – **kein Scope zum Senden**. Der Live-Versand vom
+19.11.2026 lief ausschließlich über den Claude-MCP-Connector, nicht über unsere App.
+Damit: kein Mailversand über das Pipedrive-Postfach. Einladungen standardmäßig über die
+System-Adresse (`INVITE_MAIL_PROVIDER=smtp`), Mitarbeiter-Absender nur über ein eigenes
+Postfach („Mein Postfach“); Deal-Verlauf über Smart BCC.

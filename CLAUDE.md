@@ -144,16 +144,21 @@ Mandantenfähiges Terminbuchungstool mit Pipedrive-Integration. Auftrag und Phas
   Vorlagen in `templates.ts` (Inline-Styles, kein SVG/Verlauf), Verarbeitung in `outbox.ts`
   (SKIP LOCKED, Backoff, Postfach-Fehler ⇒ Mail bleibt queued). Links in Mails nur über
   `lib/links.ts`; der Buchungslink steht verschlüsselt im Outbox-Payload (`link_enc`).
+- **Kein Mailversand über die Pipedrive-App (entschieden, nicht erneut vorschlagen):** Pipedrive
+  bietet Apps nur die Scopes `mail:read`/`mail:full` (lesen/ändern), KEINEN Scope zum Senden
+  (`mail-sending:full` ist im Developer Hub nicht wählbar; der Live-Versand am 19.11.2026 lief nur
+  über den Claude-MCP-Connector). Mails gehen daher nie „über das Pipedrive-Postfach“.
 - Versandwege (`lib/mail/routing.ts`, Konfiguration `lib/mail/config.ts`):
-  Einladung über `INVITE_MAIL_PROVIDER` = `pipedrive` (Standard; Postfach des Mitarbeiters in
-  Pipedrive, OAuth-Token aus seinem Login in `pipedrive_user_connections`, Scope
-  `mail-sending:full`, `lib/pipedrive/mail.ts` über MCP oder REST) | `oauth` (eigenes
-  Google/Microsoft-Postfach, Buttons nur dann sichtbar) | `smtp` (System-Adresse, Anzeigename +
-  Reply-To = Mitarbeiter). Bestätigung/Stornierung immer System-SMTP (`SYSTEM_MAIL_*`),
+  Einladung über `INVITE_MAIL_PROVIDER` = `smtp` (Standard; System-Adresse, Anzeigename +
+  Reply-To = Mitarbeiter) | `oauth` (eigenes Postfach des Mitarbeiters unter „Mein Postfach“) |
+  `pipedrive` (nicht nutzbar, s. o.). Bestätigung/Stornierung über System-SMTP (`SYSTEM_MAIL_*`),
   Reply-To = einladender Mitarbeiter. Fällt der Weg aus: `email_outbox.error_code` + Meldung,
   NIE ein stiller Wechsel des Weges. Smart BCC (`tenants.smart_bcc_email`, nur
-  `@pipedrivemail.com`) für alle Kundenmails außer Pipedrive-Versand. Signatur je Mitarbeiter
+  `@pipedrivemail.com`) bringt Kundenmails in den Deal. Signatur je Mitarbeiter
   (`tenant_members.mail_signature`, Klartext) unter Einladungen.
+- Pipedrive-Scopes der App (Developer Hub): base, deals:full, activities:full, contacts:read,
+  mail:full, **users:read** (Nutzerverwaltung; fehlt er ⇒ Hinweis `users.dir.missing_scope`).
+  Neue Scopes gelten erst nach erneuter Autorisierung.
 - Postfach verbinden (nur Weg `oauth`, `/admin/postfach`): Speichern über
   `public.save_mail_connection` (Status `pending`), aktiv erst nach zugestellter Testmail.
   OAuth wie der Login: Start auf Mandanten-Host (Nonce), zentraler Callback →

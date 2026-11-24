@@ -394,6 +394,7 @@ export const ADMIN_TEXTS = {
     "Owner: alles inkl. Owner verwalten · Admin: Termine, Kapazitäten und Benutzer (außer Owner) · Vertrieb: Einladungen senden und Belegung sehen.",
   "users.dir.not_connected": "Pipedrive ist für diese Firma noch nicht verbunden – es werden nur bereits freigeschaltete Benutzer angezeigt.",
   "users.dir.unavailable": "Die Benutzer konnten gerade nicht aus Pipedrive geladen werden. Bitte später erneut versuchen.",
+  "users.dir.missing_scope": "Der App fehlt in Pipedrive die Berechtigung „Users: read“. Bitte im Pipedrive Developer Hub ergänzen und die App neu autorisieren (Admin → Pipedrive-Verbindung → „Mit Pipedrive verbinden“).",
   "users.dir.fake": "Entwicklung: Beispiel-Benutzer aus dem Seed statt Pipedrive (PIPEDRIVE_DIRECTORY=fake).",
 
   "nav.mailbox": "Mein Postfach",

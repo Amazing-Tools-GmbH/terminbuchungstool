@@ -9,12 +9,12 @@ import "server-only";
  */
 import { isProduction } from "@/lib/env-mode";
 import { SEED_TENANTS } from "@/seed/tenants";
-import { listUsers, type PipedriveUser } from "./client";
+import { listUsers, PipedriveError, type PipedriveUser } from "./client";
 import { pipedriveAccess } from "./connection";
 
 export type DirectoryResult =
   | { ok: true; users: PipedriveUser[]; source: "api" | "fake" }
-  | { ok: false; reason: "not_connected" | "unavailable" };
+  | { ok: false; reason: "not_connected" | "unavailable" | "missing_scope" };
 
 export type DirectoryTenant = { id: string; slug: string };
 
@@ -46,6 +46,8 @@ export async function listPipedriveUsers(tenant: DirectoryTenant): Promise<Direc
     return { ok: true, source: "api", users: await listUsers(access.apiDomain, access.accessToken) };
   } catch (err) {
     console.error("Pipedrive-Benutzer konnten nicht geladen werden:", (err as Error).message);
+    // 403: der App fehlt die Berechtigung „Users: read“ (users:read) – neu autorisieren
+    if (err instanceof PipedriveError && err.status === 403) return { ok: false, reason: "missing_scope" };
     return { ok: false, reason: "unavailable" };
   }
 }

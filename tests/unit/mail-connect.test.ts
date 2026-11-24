@@ -267,8 +267,8 @@ describe("Versandweg", () => {
 });
 
 describe("Konfiguration", () => {
-  it("INVITE_MAIL_PROVIDER: Standard pipedrive, ungültig -> Fehler", () => {
-    expect(inviteMailProvider({})).toBe("pipedrive");
+  it("INVITE_MAIL_PROVIDER: Standard smtp, ungültig -> Fehler", () => {
+    expect(inviteMailProvider({})).toBe("smtp");
     expect(inviteMailProvider({ INVITE_MAIL_PROVIDER: "smtp" })).toBe("smtp");
     expect(() => inviteMailProvider({ INVITE_MAIL_PROVIDER: "gmail" })).toThrow(/INVITE_MAIL_PROVIDER/);
   });

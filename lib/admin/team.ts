@@ -20,7 +20,7 @@ export type TeamEntry = {
   isSelf: boolean;
 };
 
-export type Team = { entries: TeamEntry[]; directory: "ok" | "not_connected" | "unavailable"; source: "api" | "fake" | null };
+export type Team = { entries: TeamEntry[]; directory: "ok" | "not_connected" | "unavailable" | "missing_scope"; source: "api" | "fake" | null };
 
 const ROLE_ORDER: Record<MemberRole, number> = { owner: 0, admin: 1, sales: 2 };
 
