@@ -14,7 +14,7 @@ import { AdminError, toAdminError } from "@/lib/admin/errors";
 import { oauthCredentialsSchema, revokeMailAccess, type ConnectedMailbox, type MailOAuthProviderId } from "./oauth";
 import type { MailState } from "@/lib/auth/session";
 import type { SmtpCredentials } from "./senders/smtp";
-import { canSendMail } from "@/lib/pipedrive/scopes";
+import { parseMailRoute, type MailRouteSetting } from "./routing";
 
 export type MailScope = "user" | "tenant";
 
@@ -56,78 +56,65 @@ const toView = (r: Row): MailboxView => ({
 });
 const COLS = "id, scope::text as scope, provider::text as provider, sender_email, sender_name, status::text as status, last_error, last_verified_at, user_id";
 
-export type PipedriveSendStatus = {
-  /** "ready" | "missing_scope" | "error" | "none" (noch nie über Pipedrive angemeldet) */
-  state: "ready" | "missing_scope" | "error" | "none";
-  lastError: string | null;
-  updatedAt: Date | null;
-};
+/** Versandweg der Firma (tenants.mail_route) */
+async function readMailRoute(db: { query: (sql: string, params: unknown[]) => Promise<{ rows: { mail_route: string }[] }> }, tenantId: string) {
+  const { rows } = await db.query("select mail_route from public.tenants where id = $1", [tenantId]);
+  return parseMailRoute(rows[0]?.mail_route);
+}
 
-type PdRow = { user_id: string; scopes: string | null; status: string; last_error: string | null; updated_at: Date };
-const pdStatus = (r: PdRow | undefined): PipedriveSendStatus => {
-  if (!r) return { state: "none", lastError: null, updatedAt: null };
-  if (r.status === "error") return { state: "error", lastError: r.last_error, updatedAt: r.updated_at };
-  return { state: canSendMail(r.scopes) ? "ready" : "missing_scope", lastError: null, updatedAt: r.updated_at };
-};
-
-/** Eigener Versandstatus: Pipedrive-Zugang, eigenes Postfach (oauth), Signatur */
+/** Eigener Versandstatus: Versandweg der Firma, eigenes Postfach, Signatur */
 export async function loadMyMailbox(ctx: AdminContext) {
   return withActor(ctx.actor, async (db) => {
     const { rows } = await db.query<Row>(
       `select ${COLS} from public.mail_connections where tenant_id = $1 and scope = 'user' and user_id = $2`,
       [ctx.tenant.id, ctx.userId],
     );
-    const { rows: pd } = await db.query<PdRow>(
-      "select user_id, scopes, status, last_error, updated_at from public.pipedrive_user_connections where tenant_id = $1 and user_id = $2",
-      [ctx.tenant.id, ctx.userId],
-    );
     const { rows: m } = await db.query<{ mail_signature: string | null }>(
       "select mail_signature from public.tenant_members where tenant_id = $1 and user_id = $2",
       [ctx.tenant.id, ctx.userId],
     );
-    return { mine: rows[0] ? toView(rows[0]) : null, pipedrive: pdStatus(pd[0]), signature: m[0]?.mail_signature ?? "" };
+    return { mine: rows[0] ? toView(rows[0]) : null, mailRoute: await readMailRoute(db, ctx.tenant.id), signature: m[0]?.mail_signature ?? "" };
   });
 }
 
 export type MailSettings = {
   smartBccEmail: string | null;
-  team: { userId: string; name: string; role: string; pipedrive: PipedriveSendStatus; mailbox: MailboxView | null }[];
-  failedInvitations: { at: Date; toEmail: string; code: string | null }[];
+  mailRoute: MailRouteSetting;
+  team: { userId: string; name: string; role: string; mailbox: MailboxView | null }[];
+  failedMails: { at: Date; type: string; toEmail: string; code: string | null }[];
 };
 
 /** E-Mail-Einstellungen der Firma (owner/admin; RLS liefert sonst nichts) */
 export async function loadMailSettings(ctx: AdminContext): Promise<MailSettings> {
   return withActor(ctx.actor, async (db) => {
     const { rows: conns } = await db.query<Row>(`select ${COLS} from public.mail_connections where tenant_id = $1 and scope = 'user'`, [ctx.tenant.id]);
-    const { rows: pd } = await db.query<PdRow>(
-      "select user_id, scopes, status, last_error, updated_at from public.pipedrive_user_connections where tenant_id = $1",
+    const { rows: t } = await db.query<{ smart_bcc_email: string | null; mail_route: string }>(
+      "select smart_bcc_email, mail_route from public.tenants where id = $1",
       [ctx.tenant.id],
     );
-    const { rows: t } = await db.query<{ smart_bcc_email: string | null }>("select smart_bcc_email from public.tenants where id = $1", [
-      ctx.tenant.id,
-    ]);
     const { rows: members } = await db.query<{ user_id: string; display_name: string | null; email: string | null; role: string }>(
       `select user_id, display_name, email, role::text from public.tenant_members
         where tenant_id = $1 and status = 'active' order by role, display_name`,
       [ctx.tenant.id],
     );
-    const { rows: failed } = await db.query<{ created_at: Date; to_email: string; error_code: string | null }>(
-      `select created_at, to_email, error_code from public.email_outbox
-        where tenant_id = $1 and type = 'invitation' and status = 'failed' and created_at > now() - interval '30 days'
+    const { rows: failed } = await db.query<{ created_at: Date; type: string; to_email: string; error_code: string | null }>(
+      `select created_at, type::text, to_email, error_code from public.email_outbox
+        where tenant_id = $1 and type in ('invitation', 'confirmation', 'cancellation') and status = 'failed'
+          and created_at > now() - interval '30 days'
         order by created_at desc limit 20`,
       [ctx.tenant.id],
     );
     const views = conns.map(toView);
     return {
       smartBccEmail: t[0]?.smart_bcc_email ?? null,
+      mailRoute: parseMailRoute(t[0]?.mail_route),
       team: members.map((m) => ({
         userId: m.user_id,
         name: m.display_name ?? m.email ?? "—",
         role: m.role,
-        pipedrive: pdStatus(pd.find((p) => p.user_id === m.user_id)),
         mailbox: views.find((v) => v.userId === m.user_id) ?? null,
       })),
-      failedInvitations: failed.map((f) => ({ at: f.created_at, toEmail: f.to_email, code: f.error_code })),
+      failedMails: failed.map((f) => ({ at: f.created_at, type: f.type, toEmail: f.to_email, code: f.error_code })),
     };
   });
 }
@@ -280,6 +267,19 @@ export async function disconnectMailbox(ctx: AdminContext, connectionId: string)
         // Widerruf ist best effort – die Verbindung ist bei uns bereits gelöscht
       }
     }
+  } catch (err) {
+    throw toAdminError(err);
+  }
+}
+
+/** Versandweg der Firma (owner/admin, RLS tenants_update) */
+export async function saveMailRoute(ctx: AdminContext, route: MailRouteSetting): Promise<void> {
+  if (ctx.role === "sales") throw new AdminError("forbidden");
+  try {
+    await withActor(ctx.actor, async (db) => {
+      const res = await db.query("update public.tenants set mail_route = $2 where id = $1", [ctx.tenant.id, route]);
+      if (res.rowCount === 0) throw new AdminError("forbidden");
+    });
   } catch (err) {
     throw toAdminError(err);
   }

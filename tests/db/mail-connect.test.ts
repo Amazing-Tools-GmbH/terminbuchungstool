@@ -1,8 +1,8 @@
 /**
- * Versandwege: Rechte (Postfach speichern/testen/trennen, Signatur),
- * Einladungen über pipedrive | oauth | smtp mit verständlichen Fehlercodes
- * (kein stiller Wechsel), Bestätigungen über den System-Absender mit Reply-To
- * auf den Einladenden, Smart BCC, Testmail schaltet ein Postfach aktiv.
+ * Versandwege: Rechte (Postfach speichern/testen/trennen, Signatur, Versandweg),
+ * Weg "system" (System-Adresse, Reply-To = Einladender) und "employee" (alle
+ * Kundenmails über das eigene Postfach, sonst verständlicher Fehlercode – kein
+ * stiller Wechsel), Smart BCC, .ics, Testmail schaltet ein Postfach aktiv.
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { ANON, type DbActor } from "@/lib/db/actor";
@@ -26,7 +26,7 @@ let slotId: string;
 
 type Sent = { via: SenderTarget; viaId: string; message: MailMessage };
 let sent: Sent[] = [];
-/** Fehler für ein Ziel: Postfach-ID, "system" oder "pipedrive" */
+/** Fehler für ein Ziel: Postfach-ID oder "system" */
 let failFor: { target: string; error: MailSendError } | null = null;
 const targetId = (t: SenderTarget) => (t.kind === "connection" ? t.connection.id : t.kind);
 const recorder: SenderFactory = (target) => ({
@@ -72,7 +72,7 @@ beforeEach(async () => {
     "update mail_connections set provider = 'dev', sender_email = 'termine@antenne-vorarlberg.example', credentials_enc = null where tenant_id = $1 and scope = 'tenant'",
     [tenantA.id],
   );
-  await db.admin("update tenants set smart_bcc_email = null");
+  await db.admin("update tenants set smart_bcc_email = null, mail_route = 'system'");
   await db.admin("delete from pipedrive_user_connections");
   await db.admin("update tenant_members set mail_signature = null, status = 'active'");
 });
@@ -190,14 +190,6 @@ describe("Bestätigung/Stornierung: System-Absender", () => {
     expect((await outboxRow()).send_channel).toBe("system");
   });
 
-  it("auch wenn Einladungen über Pipedrive laufen und das Postfach des Mitarbeiters gestört ist", async () => {
-    const userConn = await save(sales, tenantA.id, "user");
-    await db.admin("update mail_connections set status = 'error' where id = $1", [userConn]);
-    await bookInvitedBy(salesId);
-    expect((await run({ inviteProvider: "pipedrive" })).sent).toBe(1);
-    expect(sent[0]!.viaId).toBe("system");
-  });
-
   it("ohne Einladenden: Reply-To der Firma (falls gesetzt)", async () => {
     await db.admin("update tenants set reply_to_email = 'info@firma.example' where id = $1", [tenantA.id]);
     try {
@@ -210,99 +202,120 @@ describe("Bestätigung/Stornierung: System-Absender", () => {
   });
 });
 
-describe("Einladung über Pipedrive (Standard)", () => {
-  it("über den Pipedrive-Zugang des Einladenden, mit Deal, Signatur, ohne Smart BCC", async () => {
+describe("Weg System-Adresse: Einladung", () => {
+  it("System-Adresse mit Namen des Mitarbeiters, Reply-To an ihn, Smart BCC, Signatur, Notiz im Deal", async () => {
     await db.admin("update tenants set smart_bcc_email = 'firma@pipedrivemail.com' where id = $1", [tenantA.id]);
     await db.as(sales, (c) => c.query("select public.set_my_mail_signature($1, $2)", [tenantA.id, "Markus Fink\nVertrieb <ANTENNE>\n0800 10 36 36"]));
     const token = await queueInvitation(salesId);
-    expect((await run({ inviteProvider: "pipedrive" })).sent).toBe(1);
-    const s0 = sent[0]!;
-    expect(s0.viaId).toBe("pipedrive");
-    expect(s0.message.pipedriveDealId).toBe(501);
-    expect(s0.message.bcc).toBeUndefined();
-    expect(s0.message.attachments).toEqual([]);
-    expect(s0.message.html).toContain(`/b/${token}`);
-    // Signatur escaped und mit Zeilenumbrüchen
-    expect(s0.message.html).toContain("Markus Fink<br>Vertrieb &lt;ANTENNE&gt;<br>0800 10 36 36");
-    expect(s0.message.text).toContain("Vertrieb <ANTENNE>");
-    expect(await outboxRow()).toMatchObject({ status: "sent", send_channel: "pipedrive", error_code: null });
-  });
-
-  it("kein Postfach in Pipedrive: verständlicher Fehler, KEIN anderer Weg", async () => {
-    await queueInvitation(salesId);
-    failFor = { target: "pipedrive", error: new MailSendError("permanent", "In Pipedrive ist kein Postfach verbunden", "pipedrive_no_mailbox") };
-    expect((await run({ inviteProvider: "pipedrive" })).failed).toBe(1);
-    expect(sent).toHaveLength(0);
-    expect(await outboxRow()).toMatchObject({ status: "failed", error_code: "pipedrive_no_mailbox" });
-  });
-
-  it("Anmeldung abgelaufen: Pipedrive-Zugang -> error, Meldung 'neu anmelden'", async () => {
-    await db.admin(
-      `insert into pipedrive_user_connections (tenant_id, user_id, pipedrive_user_id, api_domain, access_token_enc, refresh_token_enc, expires_at)
-       values ($1, $2, 7200002, 'https://x.pipedrive.com', 'enc', 'enc', now() + interval '1 hour')`,
-      [tenantA.id, salesId],
-    );
-    await queueInvitation(salesId);
-    failFor = { target: "pipedrive", error: new MailSendError("auth", "abgelaufen", "pipedrive_reauth") };
-    expect((await run({ inviteProvider: "pipedrive" })).failed).toBe(1);
-    expect((await outboxRow()).error_code).toBe("pipedrive_reauth");
-    const [pc] = await db.admin<{ status: string }>("select status from pipedrive_user_connections where user_id = $1", [salesId]);
-    expect(pc!.status).toBe("error");
-  });
-
-  it("Pipedrive vorübergehend nicht erreichbar: später erneut versuchen", async () => {
-    await queueInvitation(salesId);
-    failFor = { target: "pipedrive", error: new MailSendError("transient", "503", "pipedrive_unavailable") };
-    expect((await run({ inviteProvider: "pipedrive" })).requeued).toBe(1);
-    expect(await outboxRow()).toMatchObject({ status: "queued", error_code: "pipedrive_unavailable" });
-  });
-
-  it("gesperrter Einladender: Fehler statt Versand", async () => {
-    await queueInvitation(salesId);
-    await db.admin("update tenant_members set status = 'disabled' where user_id = $1", [salesId]);
-    expect((await run({ inviteProvider: "pipedrive" })).failed).toBe(1);
-    expect((await outboxRow()).error_code).toBe("no_inviter");
-  });
-});
-
-describe("Einladung über oauth bzw. smtp (Einstellung)", () => {
-  it("oauth: ohne eigenes Postfach Meldung statt Versand", async () => {
-    await queueInvitation(salesId);
-    expect((await run({ inviteProvider: "oauth" })).failed).toBe(1);
-    expect(sent).toHaveLength(0);
-    expect((await outboxRow()).error_code).toBe("no_user_mailbox");
-  });
-
-  it("oauth: über das aktive eigene Postfach, mit Smart BCC", async () => {
-    await db.admin("update tenants set smart_bcc_email = 'firma@pipedrivemail.com' where id = $1", [tenantA.id]);
-    const id = await save(sales, tenantA.id, "user", "google", "markus@firma.example");
-    await db.admin("update mail_connections set status = 'active' where id = $1", [id]);
-    await queueInvitation(salesId);
-    expect((await run({ inviteProvider: "oauth" })).sent).toBe(1);
-    expect(sent[0]!.viaId).toBe(id);
-    expect(sent[0]!.message.from.email).toBe("markus@firma.example");
-    expect(sent[0]!.message.bcc).toEqual([{ email: "firma@pipedrivemail.com" }]);
-    expect(await outboxRow()).toMatchObject({ send_channel: "oauth", mail_connection_id: id });
-  });
-
-  it("oauth: gestörtes Postfach -> Meldung, kein Wechsel", async () => {
-    const id = await save(sales, tenantA.id, "user", "google");
-    await db.admin("update mail_connections set status = 'error' where id = $1", [id]);
-    await queueInvitation(salesId);
-    expect((await run({ inviteProvider: "oauth" })).failed).toBe(1);
-    expect((await outboxRow()).error_code).toBe("user_mailbox_error");
-  });
-
-  it("smtp: System-Adresse mit Namen des Mitarbeiters, Reply-To an ihn, Smart BCC", async () => {
-    await db.admin("update tenants set smart_bcc_email = 'firma@pipedrivemail.com' where id = $1", [tenantA.id]);
-    await queueInvitation(salesId);
-    expect((await run({ inviteProvider: "smtp" })).sent).toBe(1);
+    expect((await run()).sent).toBe(1);
     const m = sent[0]!.message;
     expect(sent[0]!.viaId).toBe("system");
     expect(m.from).toEqual({ email: "termine@system.example", name: "Markus Fink" });
     expect(m.replyTo).toEqual({ email: "markus.fink@antenne-vorarlberg.example", name: "Markus Fink" });
     expect(m.bcc).toEqual([{ email: "firma@pipedrivemail.com" }]);
+    expect(m.html).toContain(`/b/${token}`);
+    // Signatur escaped und mit Zeilenumbrüchen
+    expect(m.html).toContain("Markus Fink<br>Vertrieb &lt;ANTENNE&gt;<br>0800 10 36 36");
+    expect(m.text).toContain("Vertrieb <ANTENNE>");
     expect((await outboxRow()).send_channel).toBe("smtp");
+    const jobs = await db.admin<{ type: string }>("select type from pipedrive_jobs where tenant_id = $1 and type = 'invitation_note'", [tenantA.id]);
+    expect(jobs.length).toBeGreaterThan(0);
+  });
+
+  it("gesperrter Einladender: Fehler statt Versand", async () => {
+    await queueInvitation(salesId);
+    await db.admin("update tenant_members set status = 'disabled' where user_id = $1", [salesId]);
+    expect((await run()).failed).toBe(1);
+    expect((await outboxRow()).error_code).toBe("no_inviter");
+  });
+});
+
+describe("Weg eigenes Postfach (employee)", () => {
+  beforeEach(async () => {
+    await db.admin("update tenants set mail_route = 'employee' where id = $1", [tenantA.id]);
+  });
+  const activeMailbox = async () => {
+    const id = await save(sales, tenantA.id, "user", "google", "markus@firma.example");
+    await db.admin("update mail_connections set status = 'active' where id = $1", [id]);
+    return id;
+  };
+
+  it("Einladung über das aktive eigene Postfach, mit Smart BCC", async () => {
+    await db.admin("update tenants set smart_bcc_email = 'firma@pipedrivemail.com' where id = $1", [tenantA.id]);
+    const id = await activeMailbox();
+    await queueInvitation(salesId);
+    expect((await run()).sent).toBe(1);
+    expect(sent[0]!.viaId).toBe(id);
+    expect(sent[0]!.message.from).toEqual({ email: "markus@firma.example", name: "X" });
+    expect(sent[0]!.message.replyTo).toBeNull();
+    expect(sent[0]!.message.bcc).toEqual([{ email: "firma@pipedrivemail.com" }]);
+    expect(await outboxRow()).toMatchObject({ send_channel: "oauth", mail_connection_id: id });
+  });
+
+  it("Bestätigung ebenfalls über das eigene Postfach, mit .ics (Organisator = Mitarbeiter) und Smart BCC", async () => {
+    await db.admin("update tenants set smart_bcc_email = 'firma@pipedrivemail.com' where id = $1", [tenantA.id]);
+    const id = await activeMailbox();
+    await bookInvitedBy(salesId);
+    expect((await run()).sent).toBe(1);
+    const m = sent[0]!.message;
+    expect(sent[0]!.viaId).toBe(id);
+    expect(m.from.email).toBe("markus@firma.example");
+    expect(m.bcc).toEqual([{ email: "firma@pipedrivemail.com" }]);
+    const ics = m.attachments?.[0];
+    expect(ics?.filename).toMatch(/\.ics$/);
+    expect(String(ics?.content)).toMatch(/ORGANIZER[^\r\n]*mailto:markus@firma\.example/i);
+    expect(await outboxRow()).toMatchObject({ send_channel: "oauth", mail_connection_id: id });
+  });
+
+  it("ohne eigenes Postfach: Einladung und Bestätigung scheitern sichtbar, KEIN Wechsel auf die System-Adresse", async () => {
+    await queueInvitation(salesId);
+    expect((await run()).failed).toBe(1);
+    expect((await outboxRow()).error_code).toBe("no_user_mailbox");
+    await db.admin("delete from email_outbox");
+    await bookInvitedBy(salesId);
+    expect((await run()).failed).toBe(1);
+    expect(sent).toHaveLength(0);
+    expect((await outboxRow()).error_code).toBe("no_user_mailbox");
+  });
+
+  it("gestörtes Postfach -> Meldung, kein Wechsel", async () => {
+    const id = await save(sales, tenantA.id, "user", "google");
+    await db.admin("update mail_connections set status = 'error' where id = $1", [id]);
+    await bookInvitedBy(salesId);
+    expect((await run()).failed).toBe(1);
+    expect(sent).toHaveLength(0);
+    expect((await outboxRow()).error_code).toBe("user_mailbox_error");
+  });
+
+  it("Anmeldefehler beim Senden: Postfach gestört, Mail mit Meldung", async () => {
+    const id = await activeMailbox();
+    await bookInvitedBy(salesId);
+    failFor = { target: id, error: new MailSendError("auth", "invalid_grant") };
+    expect((await run()).failed).toBe(1);
+    expect((await outboxRow()).error_code).toBe("user_mailbox_error");
+    const [c] = await db.admin<{ status: string }>("select status::text from mail_connections where id = $1", [id]);
+    expect(c!.status).toBe("error");
+  });
+
+  it("Zugriffsanfragen gehen weiterhin über die System-Adresse", async () => {
+    await db.admin("select public.record_access_request($1, 99887766, 'Neu Ling', 'neu@firma.example')", [tenantA.id]);
+    const r = await run();
+    expect(r.sent).toBeGreaterThan(0);
+    expect(sent.every((x) => x.viaId === "system")).toBe(true);
+    await db.admin("delete from access_requests where pipedrive_user_id = 99887766");
+  });
+});
+
+describe("Versandweg einstellen", () => {
+  it("owner/admin dürfen, sales nicht; nur gültige Werte", async () => {
+    await db.as(owner, (c) => c.query("update tenants set mail_route = 'employee' where id = $1", [tenantA.id]));
+    const [t] = await db.admin<{ mail_route: string }>("select mail_route from tenants where id = $1", [tenantA.id]);
+    expect(t!.mail_route).toBe("employee");
+    const upd = await db.as(sales, (c) => c.query("update tenants set mail_route = 'system' where id = $1", [tenantA.id]));
+    expect(upd.rowCount).toBe(0);
+    await expect(db.as(owner, (c) => c.query("update tenants set mail_route = 'pipedrive' where id = $1", [tenantA.id]))).rejects.toThrow(/check constraint/);
+    const other = await db.as(ownerB, (c) => c.query("update tenants set mail_route = 'system' where id = $1", [tenantA.id]));
+    expect(other.rowCount).toBe(0);
   });
 });
 

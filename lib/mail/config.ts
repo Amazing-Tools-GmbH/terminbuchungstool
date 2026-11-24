@@ -1,14 +1,13 @@
 /**
- * Versandwege (explizit über Umgebungsvariablen, siehe .env.example):
+ * Versand-Konfiguration aus Umgebungsvariablen (siehe .env.example).
+ * Den Weg für Kundenmails wählt jeder Mandant selbst (tenants.mail_route,
+ * lib/mail/routing.ts); hier steht nur, was der Betreiber einrichtet:
  *
- *   INVITE_MAIL_PROVIDER = smtp (Standard) | oauth | pipedrive
- *     pipedrive geht mit unserer Pipedrive-App NICHT: Pipedrive bietet Apps keinen
- *     Scope zum Senden (nur mail:read / mail:full). Bleibt nur für Tests/Altbestand.
- *     Weg für Einladungen. Schlägt er fehl, gibt es eine Meldung – nie einen
- *     stillen Wechsel auf einen anderen Weg.
  *   SYSTEM_MAIL_TRANSPORT = smtp | dev
- *     System-Absender für Bestätigungen (und Einladungen bei "smtp").
- *     dev = nur in der DB ablegen (/dev/mails).
+ *     System-Absender (Bestätigungen, Einladungen beim Weg "system",
+ *     Zugriffsanfragen). dev = nur in der DB ablegen (/dev/mails).
+ *   GOOGLE_CLIENT_* / MICROSOFT_CLIENT_*
+ *     Zugangsdaten für "Mit Google/Microsoft verbinden" unter „Mein Postfach“.
  */
 import { isProduction } from "@/lib/env-mode";
 import { z } from "zod";
@@ -16,21 +15,11 @@ import { smtpCredentialsSchema, type SmtpCredentials } from "./senders/smtp";
 
 type Env = Record<string, string | undefined>;
 
-export type InviteMailProvider = "pipedrive" | "oauth" | "smtp";
-
-export function inviteMailProvider(env: Env = process.env): InviteMailProvider {
-  const v = env.INVITE_MAIL_PROVIDER?.trim();
-  if (!v) return "smtp";
-  if (v === "pipedrive" || v === "oauth" || v === "smtp") return v;
-  throw new Error(`INVITE_MAIL_PROVIDER ungültig: ${v} (pipedrive | oauth | smtp)`);
-}
-
-/** Sind die Google-/Microsoft-Buttons sichtbar? Nur bei "oauth" und eingetragenen Zugangsdaten. */
+/** Sind die Google-/Microsoft-Buttons sichtbar? Nur mit eingetragenen Zugangsdaten. */
 export function oauthProvidersVisible(env: Env = process.env): { google: boolean; microsoft: boolean } {
-  const on = inviteMailProvider(env) === "oauth";
   return {
-    google: on && Boolean(env.GOOGLE_CLIENT_ID?.trim() && env.GOOGLE_CLIENT_SECRET?.trim()),
-    microsoft: on && Boolean(env.MICROSOFT_CLIENT_ID?.trim() && env.MICROSOFT_CLIENT_SECRET?.trim()),
+    google: Boolean(env.GOOGLE_CLIENT_ID?.trim() && env.GOOGLE_CLIENT_SECRET?.trim()),
+    microsoft: Boolean(env.MICROSOFT_CLIENT_ID?.trim() && env.MICROSOFT_CLIENT_SECRET?.trim()),
   };
 }
 
@@ -57,12 +46,4 @@ export function systemMailConfig(env: Env = process.env): SystemMailConfig | nul
     pass: env.SYSTEM_SMTP_PASS,
   });
   return smtp.success ? { transport: "smtp", fromEmail, fromName, smtp: smtp.data } : null;
-}
-
-export type PipedriveMailTransportKind = "mcp" | "rest";
-
-/** Wie die App über Pipedrive sendet (beides OAuth mit mail-sending:full; siehe lib/pipedrive/mail.ts) */
-export function pipedriveMailTransport(env: Env = process.env): PipedriveMailTransportKind {
-  const v = env.PIPEDRIVE_MAIL_TRANSPORT?.trim();
-  return v === "rest" ? "rest" : "mcp";
 }

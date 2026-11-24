@@ -37,6 +37,8 @@ export type PanelContext = {
   events: PanelEvent[];
   invitation: PanelInvitation | null;
   totals: { free: number; capacity: number };
+  /** Versandweg "eigenes Postfach", aber das Postfach des Mitarbeiters ist nicht aktiv */
+  mailboxMissing: boolean;
 };
 
 const dayKeyOf = (d: Date, tz: string) =>
@@ -98,7 +100,14 @@ export async function loadPanelContext(s: PanelSession, actor: DbActor, tenant: 
           booking = { date: `${f.weekdayShort}, ${f.date}`, time: f.time, seats: b[0].seats };
         }
       }
-      return { slots, i, booking };
+      const { rows: mb } = await db.query<{ missing: boolean }>(
+        `select t.mail_route = 'employee' and not exists (
+                  select 1 from public.mail_connections c
+                   where c.tenant_id = t.id and c.scope = 'user' and c.user_id = $2 and c.status = 'active') as missing
+           from public.tenants t where t.id = $1`,
+        [tenant.id, s.uid],
+      );
+      return { slots, i, booking, mailboxMissing: mb[0]?.missing === true };
     }),
   ]);
   // Versandstatus der Einladungsmail (Outbox ist für sales nicht lesbar -> Server, nur für die eigene sichtbare Einladung)
@@ -159,5 +168,6 @@ export async function loadPanelContext(s: PanelSession, actor: DbActor, tenant: 
         }
       : null,
     totals: { free, capacity },
+    mailboxMissing: data.mailboxMissing,
   };
 }
