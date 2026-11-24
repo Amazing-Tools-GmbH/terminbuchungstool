@@ -127,7 +127,6 @@ chmod 0600 "$TMP"
   echo "PIPEDRIVE_DIRECTORY=api"
   echo
   echo "# Mailversand"
-  echo "INVITE_MAIL_PROVIDER=pipedrive"
   echo "SYSTEM_MAIL_TRANSPORT=smtp"
   echo "SYSTEM_MAIL_FROM=$(q "$SYSTEM_MAIL_FROM")"
   echo "SYSTEM_MAIL_FROM_NAME=$(q "$SYSTEM_MAIL_FROM_NAME")"

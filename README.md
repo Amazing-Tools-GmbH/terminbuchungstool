@@ -148,7 +148,7 @@ dem Origin von `APP_BASE_URL` auf (`lib/links.ts`, `lib/auth/urls.ts`).
 | Pipedrive-Callback (Login, Installation, Deinstallation) | `https://meetings.atools.de/api/auth/pipedrive/callback` |
 | Pipedrive „App settings“ | `https://meetings.atools.de/settings` |
 | **Pipedrive-Panel (Custom Panel im Deal)** | **`https://meetings.atools.de/panel`** |
-| Google/Microsoft (nur `INVITE_MAIL_PROVIDER=oauth`) | `https://meetings.atools.de/api/mail/oauth/google/callback` bzw. `…/microsoft/callback` |
+| Google/Microsoft („Mein Postfach“) | `https://meetings.atools.de/api/mail/oauth/google/callback` bzw. `…/microsoft/callback` |
 | Health-Check (auf dem Server) | `http://127.0.0.1:3003/api/health` |
 
 ### Hosting: Hetzner, Node unter systemd, Caddy davor (kein Docker)
@@ -272,25 +272,21 @@ Kunde aus seiner Pipedrive-Identität bzw. aus dem Buchungslink:
 
 ## Mailversand
 
-| Mail | Weg | Bei Problemen |
-|---|---|---|
-| Einladung | `INVITE_MAIL_PROVIDER=pipedrive` (Standard): über das in Pipedrive verbundene Postfach des Mitarbeiters – steht im Deal-Verlauf und in „Gesendet“ | Meldung an den Mitarbeiter (z. B. „In Pipedrive ist kein Postfach verbunden“), kein anderer Weg |
-| | `oauth`: über sein per Google/Microsoft verbundenes Postfach | Meldung, kein anderer Weg |
-| | `smtp`: System-Adresse, Anzeigename + Reply-To = Mitarbeiter, Smart BCC | wartet, bis der System-Absender funktioniert |
-| Bestätigung/Stornierung (.ics) | immer System-SMTP (`SYSTEM_MAIL_*`), Reply-To = einladender Mitarbeiter, Smart BCC | wartet, bis der System-Absender funktioniert |
+Den Weg wählt jede Firma unter **Admin → E-Mail** (`tenants.mail_route`):
 
-- **Pipedrive-Versand:** Die App speichert beim „Mit Pipedrive anmelden“ die Tokens des
-  Mitarbeiters (verschlüsselt). Voraussetzungen: Pipedrive-App mit Scope `mail-sending:full`
-  und ein in Pipedrive verbundenes Postfach. Versand über Pipedrives offiziellen MCP-Server
-  (`PIPEDRIVE_MAIL_TRANSPORT=mcp`, Standard – so ging der Live-Test raus) oder die REST-API
-  (`rest`). Beide sind nicht in der API-Referenz dokumentiert; der genaue Aufruf mit dem
-  Token unserer App wird live geprüft, sobald die Pipedrive-App existiert. Details:
-  [`docs/research/pipedrive-mailversand.md`](docs/research/pipedrive-mailversand.md).
-- **Mein Postfach** (`/admin/postfach`): Versandstatus, Signatur (wird unter Einladungen
-  gesetzt), bei `oauth` die Buttons „Mit Google/Microsoft verbinden“ (nur mit eingetragenen
-  Zugangsdaten).
-- **E-Mail-Einstellungen** (`/admin/email`, Owner/Admin): Versandwege, Smart BCC (eine
-  Adresse je Pipedrive-Firma), Versandstatus im Team, nicht versendete Einladungen.
+| Weg | Einladung | Bestätigung/Stornierung (.ics) | Bei Problemen |
+|---|---|---|---|
+| System-Adresse (Standard) | System-SMTP (`SYSTEM_MAIL_*`), Anzeigename + Reply-To = Mitarbeiter | System-SMTP, Reply-To = einladender Mitarbeiter | wartet, bis der System-Absender funktioniert |
+| Eigenes Postfach | Postfach des einladenden Mitarbeiters („Mein Postfach“: Google, Microsoft oder SMTP) | ebenfalls über sein Postfach | Meldung im Verlauf/Panel, kein anderer Weg; nach der Behebung „Erneut versuchen“ |
+
+- Smart BCC (eine `@pipedrivemail.com`-Adresse je Firma) legt Kundenmails im Deal ab – auf beiden Wegen.
+- Kein Versand über Pipedrive: Pipedrive bietet Apps keinen Scope zum Senden
+  ([`docs/research/pipedrive-mailversand.md`](docs/research/pipedrive-mailversand.md)).
+- Zugriffsanfragen und Freischaltungen gehen immer über die System-Adresse.
+- **Mein Postfach** (`/admin/postfach`): eigenes Postfach verbinden (Google/Microsoft nur mit
+  eingetragenen Zugangsdaten, SMTP immer), Testmail, Signatur (unter Einladungen).
+- **E-Mail-Einstellungen** (`/admin/email`, Owner/Admin): Versandweg, Smart BCC,
+  Postfächer im Team, nicht versendete Kundenmails.
 - Lokal: `SYSTEM_MAIL_TRANSPORT=dev` – Mails landen unter `/dev/mails`.
 
 ## Pipedrive-App (Phase 4)
@@ -303,7 +299,7 @@ Kunde aus seiner Pipedrive-Identität bzw. aus dem Buchungslink:
 | App-Deinstallation (Webhook) | dieselbe Callback-URL (Pipedrive ruft sie mit `DELETE` und Basic-Auth auf) |
 | App settings (eigene Seite) | `https://meetings.atools.de/settings` |
 | App-Erweiterung „Custom panel“, Deal-Detailansicht | `https://meetings.atools.de/panel`, JWT-Secret = `PIPEDRIVE_JWT_SECRET` (oder leer = Client-Secret) |
-| Scopes | Basis, Deals (voll), Kontakte (lesen), Aktivitäten (voll), Benutzer (lesen), `mail-sending:full` |
+| Scopes | Basis, Deals (voll), Kontakte (lesen), Aktivitäten (voll), Benutzer (lesen), Mail (voll) – einen Scope zum Senden gibt es für Apps nicht |
 
 - **Installation:** Die Installation läuft über dieselbe Callback-URL (ohne `state`). Neue
   Pipedrive-Firma ⇒ Mandant (Slug = Unternehmensdomain, Name/Zeitzone aus Pipedrive),
@@ -380,8 +376,6 @@ Siehe [`.env.example`](.env.example). Keine Secrets committen.
 | `CRON_SECRET` | schützt den Outbox-Cron-Endpunkt |
 | `AUTH_ADMIN` | `local` (Shim per SQL) oder `supabase` (Auth-Admin-API) – Anlegen von Benutzern beim Freischalten |
 | `PIPEDRIVE_CLIENT_ID`, `PIPEDRIVE_CLIENT_SECRET` | OAuth-App aus dem Pipedrive Developer Hub (Login, Installation) |
-| `INVITE_MAIL_PROVIDER` | Weg für Einladungen: `pipedrive` (Standard) \| `oauth` \| `smtp` |
-| `PIPEDRIVE_MAIL_TRANSPORT` | Pipedrive-Versand über `mcp` (Standard) oder `rest` |
 | `SYSTEM_MAIL_TRANSPORT`, `SYSTEM_MAIL_FROM`, `SYSTEM_MAIL_FROM_NAME`, `SYSTEM_SMTP_HOST/PORT/SECURE/USER/PASS` | System-Absender (Bestätigungen; Einladungen bei `smtp`); `dev` nur lokal |
-| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `MICROSOFT_CLIENT_ID`, `MICROSOFT_CLIENT_SECRET` | OAuth-Apps für „Postfach verbinden“ (nur bei `INVITE_MAIL_PROVIDER=oauth`) |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `MICROSOFT_CLIENT_ID`, `MICROSOFT_CLIENT_SECRET` | OAuth-Apps für „Postfach verbinden“ (leer = nur SMTP) |
 | `PIPEDRIVE_DIRECTORY` | `api` (Pipedrive, Server) oder `fake` (Seed-Benutzer, nur lokal) – Benutzerliste der Nutzerverwaltung |

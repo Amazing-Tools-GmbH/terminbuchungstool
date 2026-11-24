@@ -270,6 +270,12 @@ export function PanelApp(props: {
         )}
       </section>
 
+      {ctx.mailboxMissing && (
+        <p role="alert" className={styles.alert}>
+          {t("panel.mailboxMissing")}
+        </p>
+      )}
+
       {ctx.events.length === 0 ? (
         <p className={styles.card}>{t("panel.noEvents")}</p>
       ) : (

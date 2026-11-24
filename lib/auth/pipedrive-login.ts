@@ -8,8 +8,8 @@
  *   1. zu einer Pipedrive-Firma gehört, die mit einem Mandanten verbunden ist,
  *   2. dort in der Nutzerverwaltung freigeschaltet ist (status active),
  *   3. dieselbe E-Mail hat wie der freigeschaltete auth-Benutzer.
- * Die Benutzer-Tokens werden verschlüsselt gespeichert: Mit dem Scope
- * mail-sending:full verschickt die App Einladungen in seinem Namen über Pipedrive.
+ * Die Benutzer-Tokens werden verschlüsselt gespeichert (Einträge in Pipedrive
+ * in seinem Namen, z. B. Aktivität und Notiz).
  */
 import type { PipedriveMe, PipedriveTokens } from "@/lib/pipedrive/client";
 import type { Session } from "./session";

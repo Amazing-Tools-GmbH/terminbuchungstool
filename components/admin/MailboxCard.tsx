@@ -81,7 +81,7 @@ export function MailboxCard({ scope, mailbox, providers, dev, timezone, showSmtp
       </div>
 
       {showSmtp && (
-      <details className={styles.details}>
+      <details className={styles.details} open={!mailbox && !providers.google && !providers.microsoft}>
         <summary>{at("mailbox.smtp.summary")}</summary>
         <p className={styles.hint}>{at("mailbox.smtp.hint")}</p>
         <form action={saveSmtpAction} className={styles.form} autoComplete="off">

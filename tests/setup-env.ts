@@ -12,4 +12,3 @@ process.env.ASSET_STORAGE = "local";
 process.env.SYSTEM_MAIL_TRANSPORT = "dev";
 process.env.SYSTEM_MAIL_FROM = "termine@system.example";
 process.env.SYSTEM_MAIL_FROM_NAME = "";
-delete process.env.INVITE_MAIL_PROVIDER;

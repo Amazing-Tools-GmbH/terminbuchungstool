@@ -4,16 +4,16 @@
  *
  * - Aufruf per Cron (/api/cron/outbox) und direkt nach Buchung/Einladung (after()).
  * - Parallel sicher: Zeilen werden mit FOR UPDATE SKIP LOCKED beansprucht.
- * - Weg (lib/mail/routing.ts):
- *     Einladung      INVITE_MAIL_PROVIDER = pipedrive | oauth | smtp
- *     Bestätigung/   System-SMTP (SYSTEM_MAIL_*), Reply-To = Einladender
- *     Stornierung
+ * - Weg (lib/mail/routing.ts, Einstellung tenants.mail_route):
+ *     system         Einladung + Bestätigung/Stornierung über System-SMTP
+ *                    (SYSTEM_MAIL_*), Reply-To = Einladender
+ *     employee       alles über das eigene Postfach des Einladenden
  *     Testmail       genau das zu prüfende Postfach; Erfolg schaltet es aktiv
- * - Kein stiller Wechsel des Weges: Fehlt etwas (kein Postfach in Pipedrive,
- *   Recht fehlt, …), wird die Einladung mit error_code als fehlgeschlagen
- *   markiert – der Mitarbeiter sieht eine verständliche Meldung.
- * - Smart BCC: Kundenmails in Kopie an tenants.smart_bcc_email (außer beim
- *   Versand über Pipedrive – dort legt Pipedrive die Mail selbst ab).
+ *     Zugriffsanfrage/-freigabe: System-Adresse
+ * - Kein stiller Wechsel des Weges: Fehlt etwas (kein eigenes Postfach,
+ *   Postfach gestört, …), wird die Mail mit error_code als fehlgeschlagen
+ *   markiert – Meldung im Verlauf, "Erneut versuchen" nach der Behebung.
+ * - Smart BCC: Kundenmails in Kopie an tenants.smart_bcc_email.
  * - Vorübergehende Fehler -> Retry mit Backoff, nach MAX_ATTEMPTS -> failed.
  */
 import { appBaseUrl } from "@/lib/links";
@@ -24,7 +24,6 @@ import { bookingIcs } from "@/lib/booking/ics";
 import { parseTheme } from "@/lib/theme/schema";
 import { parseTextOverrides } from "@/lib/texts";
 import { assetStorage } from "@/lib/storage";
-import { markUserConnectionError, userPipedriveAccess } from "@/lib/pipedrive/user-connection";
 import {
   renderAccessGranted,
   renderAccessRequest,
@@ -39,8 +38,8 @@ import {
 } from "./templates";
 import { defaultSenderFactory, type SenderFactory, type SenderTarget } from "./senders";
 import { MailSendError, type MailAddress, type MailAttachment, type MailConnection, type MailMessage } from "./types";
-import { inviteMailProvider, systemMailConfig, type InviteMailProvider, type SystemMailConfig } from "./config";
-import { routeMail, type Inviter } from "./routing";
+import { systemMailConfig, type SystemMailConfig } from "./config";
+import { parseMailRoute, routeMail, type Inviter } from "./routing";
 
 export const MAX_ATTEMPTS = 8;
 /** Wartezeit nach dem n-ten Fehlversuch (Minuten) */
@@ -67,8 +66,6 @@ type Options = {
   limit?: number;
   senderFactory?: SenderFactory;
   tenantId?: string;
-  /** Standard: INVITE_MAIL_PROVIDER */
-  inviteProvider?: InviteMailProvider;
   /** Standard: SYSTEM_MAIL_* (null = nicht konfiguriert) */
   systemConfig?: SystemMailConfig | null;
 };
@@ -80,7 +77,6 @@ export async function processOutbox(pool: pg.Pool, opts: Options = {}): Promise<
   const limit = opts.limit ?? 20;
   const env = {
     senderFactory: opts.senderFactory ?? defaultSenderFactory,
-    inviteProvider: opts.inviteProvider ?? inviteMailProvider(),
     system: opts.systemConfig !== undefined ? opts.systemConfig : systemMailConfig(),
   };
   const result: ProcessResult = { sent: 0, requeued: 0, failed: 0, blocked: 0 };
@@ -110,17 +106,16 @@ export async function processOutbox(pool: pg.Pool, opts: Options = {}): Promise<
   return result;
 }
 
-type Env = { senderFactory: SenderFactory; inviteProvider: InviteMailProvider; system: SystemMailConfig | null };
+type Env = { senderFactory: SenderFactory; system: SystemMailConfig | null };
 
 /** Wohin und wie: Ziel für die Sender-Fabrik + Daten für die Mail */
 type Plan = {
   target: SenderTarget;
-  channel: "pipedrive" | "oauth" | "smtp" | "system" | "connection";
+  channel: "oauth" | "smtp" | "system" | "connection";
   from: MailAddress;
   replyTo: MailAddress | null;
   withSmartBcc: boolean;
   connection: MailConnection | null;
-  pipedriveUserId: string | null;
   storeRendered: boolean;
 };
 
@@ -171,8 +166,8 @@ async function processOne(pool: pg.Pool, row: OutboxRow, env: Env): Promise<keyo
           where id = $1`,
         [row.id, messageId, plan.connection?.id ?? null, plan.storeRendered, JSON.stringify(message), plan.channel],
       );
-      // Einladung nicht über Pipedrive versendet -> Notiz "Link gesendet" im Deal
-      if (row.type === "invitation" && plan.channel !== "pipedrive" && ctx.invitation?.pipedrive_deal_id) {
+      // Einladung versendet -> Notiz "Link gesendet" im Deal
+      if (row.type === "invitation" && ctx.invitation?.pipedrive_deal_id) {
         await c.query(
           "insert into public.pipedrive_jobs (tenant_id, type, payload) values ($1, 'invitation_note', $2)",
           [row.tenant_id, { invitation_id: ctx.invitation.id, outbox_id: row.id }],
@@ -194,7 +189,7 @@ async function processOne(pool: pg.Pool, row: OutboxRow, env: Env): Promise<keyo
 }
 
 async function handleSendError(pool: pg.Pool, row: OutboxRow, plan: Plan, e: MailSendError): Promise<keyof ProcessResult> {
-  // Postfach (Testmail / oauth-Einladung): Anmeldefehler -> Postfach gestört
+  // Postfach (Testmail / eigenes Postfach): Anmeldefehler -> Postfach gestört
   if (plan.connection && (e.kind === "auth" || (row.type === "test" && e.kind === "permanent"))) {
     await asService(pool, (c) =>
       c.query("update public.mail_connections set status = 'error', last_error = $2 where id = $1", [plan.connection!.id, e.message]),
@@ -202,14 +197,8 @@ async function handleSendError(pool: pg.Pool, row: OutboxRow, plan: Plan, e: Mai
     await markFailed(pool, row.id, e.message, row.type === "test" ? "mailbox_error" : "user_mailbox_error");
     return "failed";
   }
-  // Pipedrive: Anmeldung/Recht/kein Postfach -> Meldung an den Mitarbeiter, kein anderer Weg
-  if (plan.pipedriveUserId && e.kind !== "transient") {
-    if (e.kind === "auth") await markUserConnectionError(pool, row.tenant_id, plan.pipedriveUserId, e.message);
-    await markFailed(pool, row.id, e.message, e.code ?? "pipedrive_rejected");
-    return "failed";
-  }
   // System-SMTP: Anmeldung gescheitert -> warten, bis die Konfiguration stimmt
-  if (!plan.connection && !plan.pipedriveUserId && e.kind === "auth") {
+  if (!plan.connection && e.kind === "auth") {
     await requeueBlocked(pool, row.id, `System-Absender: ${e.message}`);
     return "blocked";
   }
@@ -287,6 +276,7 @@ type TenantRow = {
   sender_name: string | null;
   reply_to_email: string | null;
   smart_bcc_email: string | null;
+  mail_route: string;
 };
 
 type InvitationRow = {
@@ -415,7 +405,6 @@ async function prepare(pool: pg.Pool, row: OutboxRow, env: Env): Promise<Prepare
         replyTo: null,
         withSmartBcc: false,
         connection: conn,
-        pipedriveUserId: null,
         storeRendered: conn.provider === "dev",
       },
     };
@@ -434,15 +423,15 @@ async function prepare(pool: pg.Pool, row: OutboxRow, env: Env): Promise<Prepare
         replyTo: null,
         withSmartBcc: false,
         connection: null,
-        pipedriveUserId: null,
         storeRendered: env.system.transport === "dev",
       },
     };
   }
 
-  // Eigenes Postfach des Einladenden (nur für oauth relevant)
+  // Eigenes Postfach des Einladenden (nur beim Weg "employee")
+  const setting = parseMailRoute(ctx.tenantRow.mail_route);
   let userConnection: MailConnection | null = null;
-  if (row.type === "invitation" && env.inviteProvider === "oauth" && ctx.inviter) {
+  if (setting === "employee" && ctx.inviter) {
     userConnection = await asService(pool, async (c) => {
       const { rows } = await c.query<ConnRow>(
         `select ${CONN_COLS} from public.mail_connections where tenant_id = $1 and scope = 'user' and user_id = $2`,
@@ -452,7 +441,7 @@ async function prepare(pool: pg.Pool, row: OutboxRow, env: Env): Promise<Prepare
     });
   }
 
-  const route = routeMail(row.type, env.inviteProvider, { inviter: ctx.inviter, userConnection });
+  const route = routeMail(row.type, setting, { inviter: ctx.inviter, userConnection });
   switch (route.kind) {
     case "error":
       return { kind: "failed", reason: route.message, code: route.code };
@@ -469,27 +458,10 @@ async function prepare(pool: pg.Pool, row: OutboxRow, env: Env): Promise<Prepare
           replyTo: route.replyTo ?? tenantReply,
           withSmartBcc: true,
           connection: null,
-          pipedriveUserId: null,
           storeRendered: env.system.transport === "dev",
         },
       };
     }
-    case "pipedrive":
-      return {
-        kind: "send",
-        ctx,
-        plan: {
-          target: { kind: "pipedrive", access: () => userPipedriveAccess(pool, row.tenant_id, route.userId) },
-          channel: "pipedrive",
-          from: { email: ctx.inviter?.email ?? "", name: ctx.inviter?.name ?? null },
-          replyTo: null,
-          // Pipedrive legt die Mail selbst beim Deal ab – keine Kopie per Smart BCC
-          withSmartBcc: false,
-          connection: null,
-          pipedriveUserId: route.userId,
-          storeRendered: false,
-        },
-      };
     case "connection":
       return {
         kind: "send",
@@ -501,7 +473,6 @@ async function prepare(pool: pg.Pool, row: OutboxRow, env: Env): Promise<Prepare
           replyTo: null,
           withSmartBcc: true,
           connection: route.connection,
-          pipedriveUserId: null,
           storeRendered: route.connection.provider === "dev",
         },
       };

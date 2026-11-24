@@ -163,25 +163,14 @@ describe("Aufträge an Pipedrive", () => {
     expect(await jobs()).toEqual([]);
   });
 
-  it("Notiz 'Link gesendet', wenn die Einladung nicht über Pipedrive ging (z. B. smtp)", async () => {
+  it("Notiz 'Link gesendet' nach Versand der Einladung", async () => {
     const crm = new FakePipedriveCrm({});
     await invite(sales, { deal: 1002, email: "anna@kunde.example" });
-    await processOutbox(db.pool, { senderFactory: sink, inviteProvider: "smtp" });
+    await processOutbox(db.pool, { senderFactory: sink });
     expect((await jobs()).map((j) => j.type)).toEqual(["invitation_note"]);
     await processPipedriveJobs(db.pool, { crm, access });
     expect(crm.log[0]).toMatchObject({ op: "addNote", detail: { dealId: 1002, personId: 5001 } });
     expect(String((crm.log[0]!.detail as { html: string }).html)).toMatch(/Terminbuchung: Link an Maria Muster gesendet \(.+\d{2}:\d{2}–\d{2}:\d{2}\)/);
-  });
-
-  it("über Pipedrive versendet: keine zusätzliche Notiz (Mail steht schon im Deal)", async () => {
-    await db.admin(
-      `insert into pipedrive_user_connections (tenant_id, user_id, pipedrive_user_id, api_domain, access_token_enc, refresh_token_enc, expires_at, scopes)
-       values ($1, $2, 7200002, 'https://x.pipedrive.com', $3, $3, now() + interval '1 hour', 'mail-sending:full') on conflict do nothing`,
-      [tenant.id, salesId, encryptSecret("t")],
-    );
-    await invite(sales, { deal: 1003, email: "p@kunde.example" });
-    await processOutbox(db.pool, { senderFactory: sink, inviteProvider: "pipedrive" });
-    expect(await jobs()).toEqual([]);
   });
 
   it("Fehler: vorübergehend -> erneut; dauerhaft (4xx) oder ohne Verbindung -> failed", async () => {

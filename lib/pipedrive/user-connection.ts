@@ -1,6 +1,6 @@
 /**
  * Pipedrive-Zugang je Mitarbeiter: Tokens aus "Mit Pipedrive anmelden"
- * (verschlüsselt), für den Versand von Einladungen in seinem Namen.
+ * (verschlüsselt), für Einträge in Pipedrive in seinem Namen (Aktivität, Notiz).
  * Nur Server (service_role) – Tokens sind für authenticated nicht lesbar.
  * Bekommt den Pool übergeben (läuft auch in der Outbox und in Tests).
  */
@@ -9,8 +9,9 @@ import { withActorOn } from "@/lib/db/actor";
 import { decryptSecret, encryptSecret } from "@/lib/crypto/secretbox";
 import { MailSendError } from "@/lib/mail/types";
 import { oauthConfig, refreshTokens, PipedriveError, type PipedriveMe, type PipedriveTokens } from "./client";
-import type { PipedriveMailAccess } from "./mail";
 import { companyDomainFromApiDomain, syncCompanyDomainOn } from "./domain-sync";
+
+export type PipedriveUserAccess = { apiDomain: string; accessToken: string };
 
 export async function storeUserTokens(pool: pg.Pool, tenantId: string, userId: string, me: PipedriveMe, t: PipedriveTokens): Promise<void> {
   await withActorOn(pool, { role: "service_role" }, async (db) => {
@@ -38,7 +39,7 @@ export async function markUserConnectionError(pool: pg.Pool, tenantId: string, u
 }
 
 /** Gültiger Zugang des Mitarbeiters (erneuert das Token bei Bedarf) */
-export async function userPipedriveAccess(pool: pg.Pool, tenantId: string, userId: string): Promise<PipedriveMailAccess> {
+export async function userPipedriveAccess(pool: pg.Pool, tenantId: string, userId: string): Promise<PipedriveUserAccess> {
   return withActorOn(pool, { role: "service_role" }, async (db) => {
     const { rows } = await db.query<{ api_domain: string; access_token_enc: string; refresh_token_enc: string; expires_at: Date; status: string }>(
       `select api_domain, access_token_enc, refresh_token_enc, expires_at, status

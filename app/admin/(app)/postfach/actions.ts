@@ -6,7 +6,8 @@ import { z } from "zod";
 import { requireAdmin } from "@/lib/auth/admin";
 import { toAdminError } from "@/lib/admin/errors";
 import { mailScopeSchema, signatureSchema, smartBccSchema, smtpFormSchema } from "@/lib/admin/input";
-import { connectDevMailbox, disconnectMailbox, requestTestMail, saveMySignature, saveSmartBcc, saveSmtpMailbox } from "@/lib/mail/connect";
+import { connectDevMailbox, disconnectMailbox, requestTestMail, saveMailRoute, saveMySignature, saveSmartBcc, saveSmtpMailbox } from "@/lib/mail/connect";
+import { MAIL_ROUTES } from "@/lib/mail/routing";
 import { sendMailsSoon } from "@/lib/booking/api";
 import { devToolsEnabled } from "@/lib/dev-tools";
 
@@ -57,6 +58,13 @@ export async function disconnectAction(form: FormData) {
   const path = pageFor(str(form, "scope"));
   const error = id.success ? await attempt(() => disconnectMailbox(ctx, id.data)) : "invalid_input";
   done(path, error ? { error } : { ok: "disconnected" });
+}
+
+export async function saveMailRouteAction(form: FormData) {
+  const ctx = await requireAdmin(["owner", "admin"]);
+  const parsed = z.enum(MAIL_ROUTES as [string, ...string[]]).safeParse(str(form, "mailRoute"));
+  const error = parsed.success ? await attempt(() => saveMailRoute(ctx, parsed.data as (typeof MAIL_ROUTES)[number])) : "invalid_input";
+  done("/admin/email", error ? { error } : { ok: "mailRoute" });
 }
 
 export async function saveSmartBccAction(form: FormData) {

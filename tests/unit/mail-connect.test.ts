@@ -18,18 +18,8 @@ import { GoogleMailSender, GMAIL_SEND_URL } from "@/lib/mail/senders/google";
 import { graphMessage, MicrosoftMailSender, GRAPH_SEND_URL } from "@/lib/mail/senders/microsoft";
 import { classifyHttp } from "@/lib/mail/senders/oauth-token";
 import { buildMime } from "@/lib/mail/mime";
-import { routeMail, type RouteConnection } from "@/lib/mail/routing";
-import { inviteMailProvider, oauthProvidersVisible, systemMailConfig, pipedriveMailTransport } from "@/lib/mail/config";
-import {
-  classifyPipedriveMailError,
-  McpPipedriveMailTransport,
-  parseMcpBody,
-  PipedriveMailSender,
-  RestPipedriveMailTransport,
-  PIPEDRIVE_MCP_URL,
-  type PipedriveMailTransport,
-} from "@/lib/pipedrive/mail";
-import { canSendMail } from "@/lib/pipedrive/scopes";
+import { parseMailRoute, routeMail, type RouteConnection } from "@/lib/mail/routing";
+import { oauthProvidersVisible, systemMailConfig } from "@/lib/mail/config";
 import { MailSendError, type MailMessage } from "@/lib/mail/types";
 import { smartBccSchema, smtpFormSchema } from "@/lib/admin/input";
 import { mailStateSchema, seal, unseal } from "@/lib/auth/session";
@@ -239,45 +229,49 @@ describe("Versandweg", () => {
   const c = (id: string, status: RouteConnection["status"]): RouteConnection => ({ id, status, senderEmail: `${id}@firma.example` });
   const inviter = { userId: "u1", name: "Markus Fink", email: "markus@firma.example", active: true };
 
-  it("Bestätigung/Stornierung immer System, Reply-To = Einladender", () => {
-    for (const mode of ["pipedrive", "oauth", "smtp"] as const) {
-      expect(routeMail("confirmation", mode, { inviter, userConnection: c("x", "error") })).toEqual({
+  it("System-Adresse: Einladung mit Namen des Mitarbeiters, Bestätigung/Stornierung System, Reply-To = Einladender", () => {
+    expect(routeMail("invitation", "system", { inviter, userConnection: c("m", "active") })).toEqual({
+      kind: "system",
+      channel: "smtp",
+      fromName: "Markus Fink",
+      replyTo: { email: "markus@firma.example", name: "Markus Fink" },
+    });
+    for (const type of ["confirmation", "cancellation"] as const) {
+      expect(routeMail(type, "system", { inviter, userConnection: c("x", "error") })).toEqual({
         kind: "system",
         channel: "system",
         fromName: null,
         replyTo: { email: "markus@firma.example", name: "Markus Fink" },
       });
     }
-    expect(routeMail("cancellation", "pipedrive", { inviter: { ...inviter, active: false }, userConnection: null })).toMatchObject({ kind: "system", replyTo: null });
+    expect(routeMail("cancellation", "system", { inviter: { ...inviter, active: false }, userConnection: null })).toMatchObject({ kind: "system", replyTo: null });
+    expect(routeMail("invitation", "system", { inviter: null, userConnection: null })).toMatchObject({ kind: "error", code: "no_inviter" });
   });
 
-  it("Einladung je Einstellung; Fehler statt stillem Wechsel", () => {
-    expect(routeMail("invitation", "pipedrive", { inviter, userConnection: null })).toEqual({ kind: "pipedrive", channel: "pipedrive", userId: "u1" });
-    expect(routeMail("invitation", "oauth", { inviter, userConnection: c("m", "active") })).toMatchObject({ kind: "connection", connection: { id: "m" } });
-    expect(routeMail("invitation", "oauth", { inviter, userConnection: null })).toMatchObject({ kind: "error", code: "no_user_mailbox" });
-    expect(routeMail("invitation", "oauth", { inviter, userConnection: c("m", "pending") })).toMatchObject({ kind: "error", code: "user_mailbox_error" });
-    expect(routeMail("invitation", "smtp", { inviter, userConnection: null })).toEqual({
-      kind: "system",
-      channel: "smtp",
-      fromName: "Markus Fink",
-      replyTo: { email: "markus@firma.example", name: "Markus Fink" },
-    });
-    expect(routeMail("invitation", "pipedrive", { inviter: null, userConnection: null })).toMatchObject({ kind: "error", code: "no_inviter" });
+  it("Eigenes Postfach: alle Kundenmails darüber; Fehler statt stillem Wechsel", () => {
+    for (const type of ["invitation", "confirmation", "cancellation"] as const) {
+      expect(routeMail(type, "employee", { inviter, userConnection: c("m", "active") })).toMatchObject({ kind: "connection", connection: { id: "m" } });
+      expect(routeMail(type, "employee", { inviter, userConnection: null })).toMatchObject({ kind: "error", code: "no_user_mailbox" });
+      expect(routeMail(type, "employee", { inviter, userConnection: c("m", "pending") })).toMatchObject({ kind: "error", code: "user_mailbox_error" });
+      expect(routeMail(type, "employee", { inviter: { ...inviter, active: false }, userConnection: c("m", "active") })).toMatchObject({
+        kind: "error",
+        code: "no_inviter",
+      });
+    }
+  });
+
+  it("Einstellung lesen: unbekannt -> system", () => {
+    expect(parseMailRoute("employee")).toBe("employee");
+    expect(parseMailRoute("pipedrive")).toBe("system");
+    expect(parseMailRoute(null)).toBe("system");
   });
 });
 
 describe("Konfiguration", () => {
-  it("INVITE_MAIL_PROVIDER: Standard smtp, ungültig -> Fehler", () => {
-    expect(inviteMailProvider({})).toBe("smtp");
-    expect(inviteMailProvider({ INVITE_MAIL_PROVIDER: "smtp" })).toBe("smtp");
-    expect(() => inviteMailProvider({ INVITE_MAIL_PROVIDER: "gmail" })).toThrow(/INVITE_MAIL_PROVIDER/);
-  });
-
-  it("Google/Microsoft-Buttons nur bei oauth UND eingetragenen Zugangsdaten", () => {
+  it("Google/Microsoft-Buttons nur mit eingetragenen Zugangsdaten", () => {
     const creds = { GOOGLE_CLIENT_ID: "g", GOOGLE_CLIENT_SECRET: "s", MICROSOFT_CLIENT_ID: "m", MICROSOFT_CLIENT_SECRET: "s" };
-    expect(oauthProvidersVisible(creds)).toEqual({ google: false, microsoft: false }); // Standard pipedrive
-    expect(oauthProvidersVisible({ ...creds, INVITE_MAIL_PROVIDER: "oauth" })).toEqual({ google: true, microsoft: true });
-    expect(oauthProvidersVisible({ INVITE_MAIL_PROVIDER: "oauth", GOOGLE_CLIENT_ID: "g" })).toEqual({ google: false, microsoft: false });
+    expect(oauthProvidersVisible(creds)).toEqual({ google: true, microsoft: true });
+    expect(oauthProvidersVisible({ GOOGLE_CLIENT_ID: "g" })).toEqual({ google: false, microsoft: false });
   });
 
   it("System-Absender: SMTP vollständig oder dev (nie in Produktion), sonst null", () => {
@@ -298,109 +292,6 @@ describe("Konfiguration", () => {
     ).toEqual({ transport: "smtp", fromEmail: "termine@firma.example", fromName: "Firma Termine", smtp: { host: "smtp.firma.example", port: 465, secure: true, user: "u", pass: "p" } });
   });
 
-  it("Pipedrive-Versandweg: Standard mcp", () => {
-    expect(pipedriveMailTransport({})).toBe("mcp");
-    expect(pipedriveMailTransport({ PIPEDRIVE_MAIL_TRANSPORT: "rest" })).toBe("rest");
-  });
-
-  it("Senderecht am Scope erkennbar (Leerzeichen oder Komma)", () => {
-    expect(canSendMail("base,deals:full,mail-sending:full")).toBe(true);
-    expect(canSendMail("base mail:full")).toBe(false);
-    expect(canSendMail(null)).toBe(false);
-  });
-});
-
-describe("Versand über Pipedrive", () => {
-  const access = { apiDomain: "https://firma.pipedrive.com", accessToken: "tok" };
-  const invitation: MailMessage = { ...message, bcc: undefined, attachments: [], pipedriveDealId: 501, html: "<html><body><p>Hallo</p></body></html>" };
-
-  it("Fehler -> verständliche Codes", () => {
-    expect(classifyPipedriveMailError(401, "")).toMatchObject({ kind: "auth", code: "pipedrive_reauth" });
-    expect(classifyPipedriveMailError(403, "")).toMatchObject({ kind: "auth", code: "pipedrive_no_permission" });
-    expect(classifyPipedriveMailError(400, "insufficient scope")).toMatchObject({ code: "pipedrive_no_permission" });
-    expect(classifyPipedriveMailError(400, "Sending failed: user has no connected mailbox")).toMatchObject({ kind: "permanent", code: "pipedrive_no_mailbox" });
-    expect(classifyPipedriveMailError(503, "")).toMatchObject({ kind: "transient", code: "pipedrive_unavailable" });
-    expect(classifyPipedriveMailError(null, "fetch failed")).toMatchObject({ kind: "transient" });
-    expect(classifyPipedriveMailError(400, "bad")).toMatchObject({ kind: "permanent", code: "pipedrive_rejected" });
-  });
-
-  it("Sender: Entwurf (nur HTML-Body, mit Deal) anlegen, dann senden; keine Anhänge", async () => {
-    const calls: string[] = [];
-    let draft: unknown;
-    const t: PipedriveMailTransport = {
-      createDraft: async (_a, input) => {
-        calls.push("create");
-        draft = input;
-        return { id: 77 };
-      },
-      sendDraft: async (_a, id) => void calls.push(`send:${id}`),
-    };
-    const r = await new PipedriveMailSender(async () => access, t).send(invitation);
-    expect(calls).toEqual(["create", "send:77"]);
-    expect(draft).toEqual({ to: [{ email_address: "eva@kunde.example", name: "Eva Probe" }], subject: invitation.subject, body: "<p>Hallo</p>", deal_id: 501 });
-    expect(r.messageId).toBe("pipedrive-draft-77");
-    await expect(new PipedriveMailSender(async () => access, t).send(message)).rejects.toMatchObject({ code: "pipedrive_rejected" });
-  });
-
-  it("REST: POST /api/v1/mailbox/mailDrafts mit Bearer-Token, danach …/send", async () => {
-    const { f, calls } = fakeFetch((url) => (url.endsWith("/mailDrafts") ? json(200, { success: true, data: { id: 2251 } }) : json(200, { success: true })));
-    const t = new RestPipedriveMailTransport(f);
-    expect(await t.createDraft(access, { to: [{ email_address: "eva@kunde.example" }], subject: "S", body: "<p>x</p>", deal_id: 501 })).toEqual({ id: 2251 });
-    await t.sendDraft(access, 2251);
-    expect(calls.map((c) => c.url)).toEqual([
-      "https://firma.pipedrive.com/api/v1/mailbox/mailDrafts",
-      "https://firma.pipedrive.com/api/v1/mailbox/mailDrafts/2251/send",
-    ]);
-    expect((calls[0]!.init!.headers as Record<string, string>).authorization).toBe("Bearer tok");
-    expect(JSON.parse(String(calls[0]!.init!.body))).toMatchObject({ sendmode: "new", deal_id: 501 });
-  });
-
-  it("MCP: initialize -> createMailDraft -> sendMailDraft in einer Sitzung (JSON und SSE)", async () => {
-    const methods: string[] = [];
-    const sessions: (string | undefined)[] = [];
-    const { f } = fakeFetch((_url, init) => {
-      const body = JSON.parse(String(init!.body));
-      methods.push(body.params?.name ?? body.method);
-      sessions.push((init!.headers as Record<string, string>)["mcp-session-id"]);
-      if (body.method === "initialize") {
-        return new Response(JSON.stringify({ jsonrpc: "2.0", id: body.id, result: { protocolVersion: "2025-06-18" } }), {
-          headers: { "content-type": "application/json", "mcp-session-id": "S1" },
-        });
-      }
-      if (body.method === "notifications/initialized") return new Response(null, { status: 202 });
-      const result =
-        body.params.name === "createMailDraft"
-          ? { content: [{ type: "text", text: JSON.stringify({ id: 2252, draft_flag: 1 }) }] }
-          : { content: [{ type: "text", text: JSON.stringify({ id: 2252, in_queue: true }) }] };
-      // SSE-Antwort wie bei Streamable HTTP
-      return new Response(`event: message\ndata: ${JSON.stringify({ jsonrpc: "2.0", id: body.id, result })}\n\n`, {
-        headers: { "content-type": "text/event-stream" },
-      });
-    });
-    const t = new McpPipedriveMailTransport(f);
-    const { id } = await t.createDraft(access, { to: [{ email_address: "eva@kunde.example" }], subject: "S", body: "<p>x</p>", deal_id: 501 });
-    await t.sendDraft(access, id);
-    expect(id).toBe(2252);
-    expect(methods).toEqual(["initialize", "notifications/initialized", "createMailDraft", "sendMailDraft"]);
-    expect(sessions).toEqual([undefined, "S1", "S1", "S1"]);
-  });
-
-  it("MCP: Tool-Fehler (kein Postfach) -> Code pipedrive_no_mailbox", async () => {
-    const { f } = fakeFetch((_u, init) => {
-      const body = JSON.parse(String(init!.body));
-      if (body.method === "notifications/initialized") return new Response(null, { status: 202 });
-      const result = body.method === "initialize" ? {} : { isError: true, content: [{ type: "text", text: "Sending fails: the user has no connected mailbox" }] };
-      return json(200, { jsonrpc: "2.0", id: body.id, result });
-    });
-    await expect(new McpPipedriveMailTransport(f).createDraft(access, { to: [], subject: "", body: "" })).rejects.toMatchObject({ code: "pipedrive_no_mailbox" });
-  });
-
-  it("MCP-Antwort lesen: passende ID aus JSON bzw. SSE", () => {
-    expect(parseMcpBody("application/json", JSON.stringify({ id: 2, result: { ok: 1 } }), 2)).toEqual({ id: 2, result: { ok: 1 } });
-    expect(parseMcpBody("text/event-stream", `data: {"id":1}\n\ndata: {"id":3,"result":7}\n`, 3)).toEqual({ id: 3, result: 7 });
-    expect(parseMcpBody("application/json", "kein json", 1)).toBeNull();
-    expect(PIPEDRIVE_MCP_URL).toBe("https://mcp.pipedrive.ai/mcp");
-  });
 });
 
 describe("Eingaben", () => {

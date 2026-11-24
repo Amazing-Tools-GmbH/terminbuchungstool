@@ -5,13 +5,7 @@ import { DevMailSender } from "./dev";
 import { GoogleMailSender } from "./google";
 import { MicrosoftMailSender } from "./microsoft";
 import { SmtpMailSender, smtpCredentialsSchema } from "./smtp";
-import { pipedriveMailTransport, type SystemMailConfig } from "../config";
-import {
-  McpPipedriveMailTransport,
-  PipedriveMailSender,
-  RestPipedriveMailTransport,
-  type PipedriveMailAccess,
-} from "@/lib/pipedrive/mail";
+import type { SystemMailConfig } from "../config";
 
 export type SenderContext = {
   /** speichert neue (verschlüsselte) Zugangsdaten, z. B. nach Token-Refresh */
@@ -21,8 +15,7 @@ export type SenderContext = {
 /** Wohin geht der Versand? */
 export type SenderTarget =
   | { kind: "connection"; connection: MailConnection }
-  | { kind: "system"; config: SystemMailConfig }
-  | { kind: "pipedrive"; access: () => Promise<PipedriveMailAccess> };
+  | { kind: "system"; config: SystemMailConfig };
 
 export type SenderFactory = (target: SenderTarget, ctx?: SenderContext) => MailSender;
 
@@ -39,10 +32,6 @@ function readCredentials(connection: MailConnection): unknown {
 export const defaultSenderFactory: SenderFactory = (target, ctx = {}) => {
   if (target.kind === "system") {
     return target.config.transport === "dev" ? new DevMailSender() : new SmtpMailSender(target.config.smtp);
-  }
-  if (target.kind === "pipedrive") {
-    const transport = pipedriveMailTransport() === "rest" ? new RestPipedriveMailTransport() : new McpPipedriveMailTransport();
-    return new PipedriveMailSender(target.access, transport);
   }
   const connection = target.connection;
   switch (connection.provider) {

@@ -155,18 +155,19 @@ Mandantenfähiges Terminbuchungstool mit Pipedrive-Integration. Auftrag und Phas
   bietet Apps nur die Scopes `mail:read`/`mail:full` (lesen/ändern), KEINEN Scope zum Senden
   (`mail-sending:full` ist im Developer Hub nicht wählbar; der Live-Versand am 19.11.2026 lief nur
   über den Claude-MCP-Connector). Mails gehen daher nie „über das Pipedrive-Postfach“.
-- Versandwege (`lib/mail/routing.ts`, Konfiguration `lib/mail/config.ts`):
-  Einladung über `INVITE_MAIL_PROVIDER` = `smtp` (Standard; System-Adresse, Anzeigename +
-  Reply-To = Mitarbeiter) | `oauth` (eigenes Postfach des Mitarbeiters unter „Mein Postfach“) |
-  `pipedrive` (nicht nutzbar, s. o.). Bestätigung/Stornierung über System-SMTP (`SYSTEM_MAIL_*`),
-  Reply-To = einladender Mitarbeiter. Fällt der Weg aus: `email_outbox.error_code` + Meldung,
-  NIE ein stiller Wechsel des Weges. Smart BCC (`tenants.smart_bcc_email`, nur
+- Versandweg je Mandant (`tenants.mail_route`, Admin → E-Mail, `lib/mail/routing.ts`):
+  `system` (Standard; System-SMTP `SYSTEM_MAIL_*`, Einladung mit Anzeigename + Reply-To =
+  Mitarbeiter, Bestätigung/Stornierung Reply-To = Einladender) | `employee` (Einladung,
+  Bestätigung und Stornierung über das eigene Postfach des einladenden Mitarbeiters unter
+  „Mein Postfach“: Google/Microsoft/SMTP). Interne Mails (Zugriffsanfragen) immer System.
+  Fällt der Weg aus: `email_outbox.error_code` + Meldung (Verlauf, Panel-Hinweis), NIE ein
+  stiller Wechsel des Weges. Smart BCC (`tenants.smart_bcc_email`, nur
   `@pipedrivemail.com`) bringt Kundenmails in den Deal. Signatur je Mitarbeiter
   (`tenant_members.mail_signature`, Klartext) unter Einladungen.
 - Pipedrive-Scopes der App (Developer Hub): base, deals:full, activities:full, contacts:read,
   mail:full, **users:read** (Nutzerverwaltung; fehlt er ⇒ Hinweis `users.dir.missing_scope`).
   Neue Scopes gelten erst nach erneuter Autorisierung.
-- Postfach verbinden (nur Weg `oauth`, `/admin/postfach`): Speichern über
+- Postfach verbinden (`/admin/postfach`, genutzt beim Weg `employee`): Speichern über
   `public.save_mail_connection` (Status `pending`), aktiv erst nach zugestellter Testmail.
   OAuth wie der Login: Start auf Mandanten-Host (Nonce), zentraler Callback →
   `mail_oauth_pending` (nur service_role) → Abschluss mit Sitzung + Nonce.

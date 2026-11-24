@@ -1,14 +1,13 @@
 import { requireAdmin } from "@/lib/auth/admin";
 import { loadMailSettings } from "@/lib/mail/connect";
-import { inviteMailProvider, systemMailConfig } from "@/lib/mail/config";
+import { systemMailConfig } from "@/lib/mail/config";
 import { flashMessages } from "@/lib/admin/messages";
 import { formatDateTime } from "@/lib/datetime";
 import { at, mailErrorText } from "@/lib/texts/admin";
 import styles from "@/components/admin/Admin.module.css";
-import { saveSmartBccAction } from "../postfach/actions";
+import { saveMailRouteAction, saveSmartBccAction } from "../postfach/actions";
 
 type Search = Promise<Record<string, string | string[] | undefined>>;
-const PD_LEVEL = { ready: "lvl_ok", missing_scope: "lvl_low", error: "lvl_full", none: "lvl_closed" } as const;
 const MB_LEVEL = { active: "lvl_ok", pending: "lvl_low", error: "lvl_full", revoked: "lvl_closed" } as const;
 
 export default async function MailSettingsPage({ searchParams }: { searchParams: Search }) {
@@ -16,8 +15,9 @@ export default async function MailSettingsPage({ searchParams }: { searchParams:
   const s = await loadMailSettings(ctx);
   const { ok, error } = flashMessages(await searchParams);
   const tz = ctx.tenant.timezone;
-  const mode = inviteMailProvider();
   const system = systemMailConfig();
+  const employee = s.mailRoute === "employee";
+  const missing = s.team.filter((m) => m.mailbox?.status !== "active");
 
   return (
     <>
@@ -37,18 +37,35 @@ export default async function MailSettingsPage({ searchParams }: { searchParams:
         <h2 className={styles.h2} id="routes">
           {at("mailSettings.routes.title")}
         </h2>
-        <ul className={styles.list}>
-          <li>
-            <strong>{at("mailSettings.routes.invite")}</strong>
-            <span>{mode === "smtp" ? at("mailSettings.routes.smtp", { email: system?.fromEmail ?? "—" }) : at(`mailSettings.routes.${mode}`)}</span>
-          </li>
-          <li>
-            <strong>{at("mailSettings.routes.confirm")}</strong>
-            <span className={system ? undefined : styles.error}>
-              {system ? at("mailSettings.routes.system", { email: system.fromEmail }) : at("mailSettings.routes.systemMissing")}
-            </span>
-          </li>
-        </ul>
+        <form action={saveMailRouteAction} className={styles.form}>
+          <fieldset className={`${styles.field} ${styles.full}`} style={{ border: 0, padding: 0, margin: 0 }}>
+            <legend className={styles.muted} style={{ marginBottom: 8 }}>
+              {at("mailSettings.routes.intro")}
+            </legend>
+            {(["system", "employee"] as const).map((r) => (
+              <label key={r} className={styles.radioCard}>
+                <input type="radio" name="mailRoute" value={r} defaultChecked={s.mailRoute === r} />
+                <span>
+                  <strong>{at(`mailSettings.routes.${r}.label`)}</strong>
+                  <span className={styles.hint} style={{ display: "block", fontWeight: 400 }}>
+                    {r === "system" ? at("mailSettings.routes.system.text", { email: system?.fromEmail ?? "—" }) : at("mailSettings.routes.employee.text")}
+                  </span>
+                </span>
+              </label>
+            ))}
+          </fieldset>
+          <div className={styles.full}>
+            <button type="submit" className={styles.btn}>
+              {at("mailSettings.routes.submit")}
+            </button>
+          </div>
+        </form>
+        {!employee && !system && <p className={styles.error}>{at("mailSettings.routes.systemMissing")}</p>}
+        {employee && missing.length > 0 && (
+          <p role="alert" className={styles.error}>
+            {at("mailSettings.routes.employeeMissing", { names: missing.map((m) => m.name).join(", ") })}
+          </p>
+        )}
         <p className={styles.hint}>{at("mailSettings.routes.hint")}</p>
       </section>
 
@@ -103,11 +120,7 @@ export default async function MailSettingsPage({ searchParams }: { searchParams:
                     <strong>{m.name}</strong> <span className={styles.tag}>{at(`role.${m.role as "owner" | "admin" | "sales"}`)}</span>
                   </td>
                   <td data-label={at("mailSettings.team.ready")}>
-                    {mode === "pipedrive" ? (
-                      <span className={`${styles.badge} ${styles[PD_LEVEL[m.pipedrive.state]]}`} title={m.pipedrive.lastError ?? undefined}>
-                        {at(`mailbox.state.${m.pipedrive.state}`)}
-                      </span>
-                    ) : mode === "oauth" ? (
+                    {employee ? (
                       m.mailbox ? (
                         <>
                           {m.mailbox.senderEmail}{" "}
@@ -131,14 +144,14 @@ export default async function MailSettingsPage({ searchParams }: { searchParams:
         <h2 className={styles.h2} id="failed">
           {at("mailSettings.failed.title")}
         </h2>
-        {s.failedInvitations.length === 0 ? (
+        {s.failedMails.length === 0 ? (
           <p className={styles.muted}>{at("mailSettings.failed.none")}</p>
         ) : (
           <ul className={styles.list}>
-            {s.failedInvitations.map((f, i) => (
+            {s.failedMails.map((f, i) => (
               <li key={i}>
                 <div>
-                  <strong>{f.toEmail}</strong>
+                  <strong>{f.toEmail}</strong> <span className={styles.tag}>{at(`mailSettings.failed.type.${f.type as "invitation" | "confirmation" | "cancellation"}`)}</span>
                   <div className={styles.hint}>{mailErrorText(f.code)}</div>
                 </div>
                 <span className={styles.nowrap}>{formatDateTime(f.at, tz)}</span>

@@ -1,6 +1,6 @@
 import { requireAdmin } from "@/lib/auth/admin";
-import { loadMyMailbox, type PipedriveSendStatus } from "@/lib/mail/connect";
-import { inviteMailProvider, oauthProvidersVisible, systemMailConfig } from "@/lib/mail/config";
+import { loadMyMailbox } from "@/lib/mail/connect";
+import { oauthProvidersVisible, systemMailConfig } from "@/lib/mail/config";
 import { devToolsEnabled } from "@/lib/dev-tools";
 import { flashMessages } from "@/lib/admin/messages";
 import { at } from "@/lib/texts/admin";
@@ -9,45 +9,21 @@ import styles from "@/components/admin/Admin.module.css";
 import { saveSignatureAction } from "./actions";
 
 type Search = Promise<Record<string, string | string[] | undefined>>;
-const LEVEL: Record<PipedriveSendStatus["state"], string> = { ready: "lvl_ok", missing_scope: "lvl_low", error: "lvl_full", none: "lvl_closed" };
-
-function PipedriveStatus({ status }: { status: PipedriveSendStatus }) {
-  const text =
-    status.state === "ready"
-      ? at("mailbox.pd.ready")
-      : status.state === "error"
-        ? at("mailbox.pd.error", { reason: status.lastError ?? "—" })
-        : status.state === "missing_scope"
-          ? at("mailbox.pd.missingScope")
-          : at("mailbox.pd.none");
-  return (
-    <div className={styles.mailbox}>
-      <div className={styles.mailboxStatus}>
-        <strong>Pipedrive</strong>
-        <span className={`${styles.badge} ${styles[LEVEL[status.state]]}`}>{at(`mailbox.state.${status.state}`)}</span>
-      </div>
-      <p className={status.state === "error" ? styles.error : status.state === "ready" ? undefined : styles.info} style={{ margin: 0 }}>
-        {text}
-      </p>
-      {status.state === "ready" && <p className={styles.hint} style={{ margin: 0 }}>{at("mailbox.pd.readyHint")}</p>}
-    </div>
-  );
-}
 
 export default async function MyMailboxPage({ searchParams }: { searchParams: Search }) {
   const ctx = await requireAdmin();
-  const { mine, pipedrive, signature } = await loadMyMailbox(ctx);
+  const { mine, mailRoute, signature } = await loadMyMailbox(ctx);
   const { ok, error } = flashMessages(await searchParams);
-  const mode = inviteMailProvider();
   const providers = oauthProvidersVisible();
   const system = systemMailConfig();
+  const employee = mailRoute === "employee";
 
   return (
     <>
       <div>
         <h1 className={styles.h1}>{at("mailbox.title")}</h1>
         <p className={styles.muted} style={{ maxWidth: 760 }}>
-          {mode === "smtp" ? at("mailbox.intro.smtp", { email: system?.fromEmail ?? "—" }) : at(`mailbox.intro.${mode}`)}
+          {employee ? at("mailbox.intro.employee") : at("mailbox.intro.system", { email: system?.fromEmail ?? "—" })}
         </p>
       </div>
       {error && (
@@ -60,19 +36,19 @@ export default async function MyMailboxPage({ searchParams }: { searchParams: Se
           {ok}
         </p>
       )}
+      {employee && mine?.status !== "active" && (
+        <p role="alert" className={styles.error}>
+          {at("mailbox.employee.missing")}
+        </p>
+      )}
 
-      {mode !== "smtp" && (
+      {(employee || mine) && (
         <section className={styles.card} aria-labelledby="send-title">
           <h2 className={styles.h2} id="send-title">
             {at("mailbox.send.title")}
           </h2>
-          {mode === "pipedrive" ? (
-            <PipedriveStatus status={pipedrive} />
-          ) : providers.google || providers.microsoft || mine || devToolsEnabled() ? (
-            <MailboxCard scope="user" mailbox={mine} providers={providers} dev={devToolsEnabled()} timezone={ctx.tenant.timezone} />
-          ) : (
-            <p className={styles.info}>{at("mailbox.oauthMissing")}</p>
-          )}
+          {!employee && <p className={styles.info}>{at("mailbox.employee.inactive")}</p>}
+          <MailboxCard scope="user" mailbox={mine} providers={providers} dev={devToolsEnabled()} timezone={ctx.tenant.timezone} showSmtp />
         </section>
       )}
 
@@ -96,9 +72,11 @@ export default async function MyMailboxPage({ searchParams }: { searchParams: Se
         </form>
       </section>
 
-      <p className={system ? styles.info : styles.error}>
-        {system ? at("mailbox.confirmInfo", { email: system.fromEmail }) : at("mailbox.confirmInfoMissing")}
-      </p>
+      {!employee && (
+        <p className={system ? styles.info : styles.error}>
+          {system ? at("mailbox.confirmInfo", { email: system.fromEmail }) : at("mailbox.confirmInfoMissing")}
+        </p>
+      )}
     </>
   );
 }
