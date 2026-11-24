@@ -71,6 +71,13 @@ Mandantenfähiges Terminbuchungstool mit Pipedrive-Integration. Auftrag und Phas
   `panel`; `lib/panel`, `components/panel`), Einladungen nur über `public.create_invitation`.
   Einträge in Pipedrive (Aktivität, Notizen) nur über die Warteschlange `pipedrive_jobs`
   (`lib/pipedrive/jobs.ts`, `crm.ts`), nie im Request.
+- Zugriffsanfragen (`access_requests`, `lib/access-requests.ts`): Pipedrive-Benutzer ohne
+  Freischaltung (Installation/Login, Panel, App-Einstellungen) ⇒ `record_access_request` +
+  Mail an alle aktiven Owner/Admins (Outbox `access_request`, System-Adresse); Freischalten
+  schließt die Anfrage (`close_access_request`, Mail `access_granted`). Eingebettete
+  App-Einstellungen `/app-settings` (Custom UI in Pipedrive, iframe, Bearer Zweck `app-settings`,
+  `lib/app-settings.ts`, API `/api/app-settings`): Nutzerverwaltung für owner/admin; `/settings`
+  bleibt der Einstieg ins Admin (neuer Tab).
 - Admin-Backend `/admin` (Server Components + Server Actions, zod, `lib/admin`), Texte in
   `lib/texts/admin.ts`. Buchungen `/admin/buchungen` („Gebucht von“ = `bookings.booked_by`, per
   Trigger aus `auth.uid()`: Mitarbeiter bei Direktbuchung, null = Kunde selbst). E-Mail-Vorlagen

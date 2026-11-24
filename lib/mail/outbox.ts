@@ -26,6 +26,8 @@ import { parseTextOverrides } from "@/lib/texts";
 import { assetStorage } from "@/lib/storage";
 import { markUserConnectionError, userPipedriveAccess } from "@/lib/pipedrive/user-connection";
 import {
+  renderAccessGranted,
+  renderAccessRequest,
   renderCancellation,
   renderConfirmation,
   renderGuestCancellation,
@@ -51,7 +53,7 @@ const STALE_LOCK_MINUTES = 10;
 export type OutboxRow = {
   id: string;
   tenant_id: string;
-  type: "invitation" | "confirmation" | "cancellation" | "test";
+  type: "invitation" | "confirmation" | "cancellation" | "test" | "access_request" | "access_granted";
   to_email: string;
   payload: Record<string, unknown>;
   attempts: number;
@@ -314,9 +316,12 @@ type BookingRow = {
 
 type GuestRow = { id: string; name: string; email: string };
 
+type AccessRequestRow = { name: string | null; email: string | null; pipedrive_user_id: string };
+
 type MailContext = {
   tenantRow: TenantRow;
   guest: GuestRow | null;
+  accessRequest: AccessRequestRow | null;
   inviter: (Inviter & { signature: string | null }) | null;
   invitation: InvitationRow | null;
   booking: BookingRow | null;
@@ -340,6 +345,15 @@ async function loadContext(pool: pg.Pool, row: OutboxRow): Promise<MailContext> 
       );
       booking = rows[0] ?? null;
       if (!booking) throw new Error(`Buchung ${row.payload.booking_id} nicht gefunden`);
+    }
+    let accessRequest: AccessRequestRow | null = null;
+    if (typeof row.payload.request_id === "string") {
+      const { rows } = await c.query<AccessRequestRow>(
+        "select name, email, pipedrive_user_id::text from public.access_requests where id = $1 and tenant_id = $2",
+        [row.payload.request_id, row.tenant_id],
+      );
+      accessRequest = rows[0] ?? null;
+      if (!accessRequest) throw new Error(`Zugriffsanfrage ${row.payload.request_id} nicht gefunden`);
     }
     let guest: GuestRow | null = null;
     if (typeof row.payload.guest_id === "string") {
@@ -372,7 +386,7 @@ async function loadContext(pool: pg.Pool, row: OutboxRow): Promise<MailContext> 
         inviter = { userId: invitation.created_by, name: m.display_name, email: m.email, active: m.status === "active", signature: m.mail_signature };
       }
     }
-    return { tenantRow: t[0], guest, inviter, invitation, booking };
+    return { tenantRow: t[0], guest, accessRequest, inviter, invitation, booking };
   });
 }
 
@@ -403,6 +417,25 @@ async function prepare(pool: pg.Pool, row: OutboxRow, env: Env): Promise<Prepare
         connection: conn,
         pipedriveUserId: null,
         storeRendered: conn.provider === "dev",
+      },
+    };
+  }
+
+  // Interne Mails (Zugriffsanfrage/Freischaltung): System-Adresse, keine Kopie in Pipedrive
+  if (row.type === "access_request" || row.type === "access_granted") {
+    if (!env.system) return { kind: "blocked", reason: "System-Absender nicht konfiguriert (SYSTEM_MAIL_FROM / SYSTEM_SMTP_*)" };
+    return {
+      kind: "send",
+      ctx,
+      plan: {
+        target: { kind: "system", config: env.system },
+        channel: "system",
+        from: { email: env.system.fromEmail, name: env.system.fromName ?? tenantName },
+        replyTo: null,
+        withSmartBcc: false,
+        connection: null,
+        pipedriveUserId: null,
+        storeRendered: env.system.transport === "dev",
       },
     };
   }
@@ -590,6 +623,14 @@ function buildMessage(row: OutboxRow, plan: Plan, ctx: MailContext): MailMessage
             guestCancelled: typeof row.payload.guest_cancelled === "string" ? row.payload.guest_cancelled : null,
           })
         : renderCancellation(tenant, { ...base, byOrganizer: row.payload.by_organizer === true });
+  } else if (row.type === "access_request" || row.type === "access_granted") {
+    const r = ctx.accessRequest;
+    if (!r) throw new Error("Zugriffsanfrage fehlt");
+    const who = r.name ?? `Pipedrive-Benutzer ${r.pipedrive_user_id}`;
+    rendered =
+      row.type === "access_request"
+        ? renderAccessRequest(tenant, { name: who, email: r.email, url: `${appBaseUrl()}/admin/benutzer` })
+        : renderAccessGranted(tenant, { name: r.name, url: `${appBaseUrl()}/admin` });
   } else if (row.type === "invitation") {
     const inv = ctx.invitation;
     const link = openLink(row.payload);

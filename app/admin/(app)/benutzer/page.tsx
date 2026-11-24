@@ -3,7 +3,9 @@ import { loadTeam, type TeamEntry } from "@/lib/admin/members";
 import { isAdminErrorCode } from "@/lib/admin/errors";
 import { adminErrorText, at } from "@/lib/texts/admin";
 import styles from "@/components/admin/Admin.module.css";
-import { enableMemberAction, updateMemberAction } from "../actions";
+import { declineAccessRequestAction, enableMemberAction, updateMemberAction } from "../actions";
+import { listOpenAccessRequests } from "@/lib/access-requests";
+import { formatDateTime } from "@/lib/datetime";
 
 type Search = Promise<Record<string, string | string[] | undefined>>;
 const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
@@ -21,7 +23,7 @@ function RoleSelect({ form, name, roles, value }: { form: string; name: string; 
   );
 }
 
-function Row({ e, viewerRole, idx }: { e: TeamEntry; viewerRole: MemberRole; idx: number }) {
+function Row({ e, viewerRole, idx, requested }: { e: TeamEntry; viewerRole: MemberRole; idx: number; requested: boolean }) {
   const roles: MemberRole[] = viewerRole === "owner" ? ["owner", "admin", "sales"] : ["admin", "sales"];
   const m = e.member;
   // admin darf owner nicht ändern; niemand ändert sich selbst
@@ -37,6 +39,7 @@ function Row({ e, viewerRole, idx }: { e: TeamEntry; viewerRole: MemberRole; idx
         {e.pipedrive?.isAdmin && <span className={styles.tag}>{at("users.pdAdmin")}</span>}
         {e.pipedrive && !e.pipedrive.active && <span className={styles.tag}>{at("users.pdInactive")}</span>}
         {!e.pipedrive && <span className={styles.tag}>{at("users.pdMissing")}</span>}
+        {requested && !e.member && <span className={`${styles.badge} ${styles.lvl_low}`}>{at("users.requested")}</span>}
       </td>
       <td data-label={at("users.email")}>{e.email}</td>
       <td data-label={at("users.access")}>
@@ -100,7 +103,8 @@ function Row({ e, viewerRole, idx }: { e: TeamEntry; viewerRole: MemberRole; idx
 export default async function UsersPage({ searchParams }: { searchParams: Search }) {
   const ctx = await requireAdmin(["owner", "admin"]);
   const sp = await searchParams;
-  const team = await loadTeam(ctx);
+  const [team, requests] = await Promise.all([loadTeam(ctx), listOpenAccessRequests(ctx)]);
+  const roles: MemberRole[] = ctx.role === "owner" ? ["owner", "admin", "sales"] : ["admin", "sales"];
   const error = one(sp.error);
 
   return (
@@ -122,6 +126,50 @@ export default async function UsersPage({ searchParams }: { searchParams: Search
           {at("users.saved")}
         </p>
       )}
+      {requests.length > 0 && (
+        <section className={styles.card} aria-labelledby="access-requests" style={{ borderColor: "var(--adm-accent)" }}>
+          <h2 className={styles.h2} id="access-requests">
+            {at("users.requests.title")}
+          </h2>
+          <p className={styles.muted} style={{ marginTop: 0 }}>
+            {at("users.requests.intro")}
+          </p>
+          <ul className={`${styles.list} ${styles.bookingList}`}>
+            {requests.map((r) => (
+              <li key={r.id}>
+                <div>
+                  <strong>{r.name ?? `Pipedrive-Benutzer ${r.pipedriveUserId}`}</strong>
+                  <div className={styles.hint}>
+                    {r.email ? `${r.email} · ` : ""}
+                    {at("users.requests.at", { at: formatDateTime(r.createdAt, ctx.tenant.timezone) })}
+                  </div>
+                </div>
+                <div className={styles.rowActions}>
+                  <form action={enableMemberAction} className={styles.rowActions}>
+                    <input type="hidden" name="pipedriveUserId" value={r.pipedriveUserId} />
+                    <select name="role" defaultValue="sales" className={styles.inlineSelect} aria-label={at("users.roleFor", { name: r.name ?? String(r.pipedriveUserId) })}>
+                      {roles.map((role) => (
+                        <option key={role} value={role}>
+                          {at(`role.${role}`)}
+                        </option>
+                      ))}
+                    </select>
+                    <button type="submit" className={styles.btn}>
+                      {at("users.enable")}
+                    </button>
+                  </form>
+                  <form action={declineAccessRequestAction}>
+                    <input type="hidden" name="pipedriveUserId" value={r.pipedriveUserId} />
+                    <button type="submit" className={styles.btnGhost}>
+                      {at("users.requests.decline")}
+                    </button>
+                  </form>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
       {team.directory !== "ok" && <p className={styles.info}>{at(`users.dir.${team.directory}`)}</p>}
       {team.source === "fake" && <p className={styles.info}>{at("users.dir.fake")}</p>}
 
@@ -138,7 +186,13 @@ export default async function UsersPage({ searchParams }: { searchParams: Search
           </thead>
           <tbody>
             {team.entries.map((e, i) => (
-              <Row key={e.member?.userId ?? `pd-${e.pipedrive?.id}`} e={e} viewerRole={ctx.role} idx={i} />
+              <Row
+                key={e.member?.userId ?? `pd-${e.pipedrive?.id}`}
+                e={e}
+                viewerRole={ctx.role}
+                idx={i}
+                requested={requests.some((r) => r.pipedriveUserId === e.pipedrive?.id)}
+              />
             ))}
           </tbody>
         </table>

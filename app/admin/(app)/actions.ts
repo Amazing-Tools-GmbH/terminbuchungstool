@@ -24,6 +24,7 @@ import { cancelBookingByTeam, cancelSlot, deleteEvent, updateEvent, updateSlot }
 import { createEvent, createSlot, setCapacity } from "@/lib/admin/slots";
 import { enableMember, updateMember } from "@/lib/admin/members";
 import { sendMailsSoon } from "@/lib/booking/api";
+import { closeAccessRequest } from "@/lib/access-requests";
 
 function back(path: string, params: Record<string, string | undefined>): never {
   const q = new URLSearchParams();
@@ -79,6 +80,20 @@ export async function enableMemberAction(form: FormData) {
   const ctx = await requireAdmin(["owner", "admin"]);
   const parsed = enableMemberSchema.safeParse({ pipedriveUserId: str(form, "pipedriveUserId"), role: str(form, "role") });
   const error = parsed.success ? await run(() => enableMember(ctx, parsed.data.pipedriveUserId, parsed.data.role)) : "invalid_input";
+  if (!error) sendMailsSoon(ctx.tenant.id);
+  revalidatePath("/admin/benutzer");
+  back("/admin/benutzer", { error, ok: error ? undefined : "saved" });
+}
+
+/** Zugriffsanfrage ablehnen (keine Mail an den Benutzer) */
+export async function declineAccessRequestAction(form: FormData) {
+  const ctx = await requireAdmin(["owner", "admin"]);
+  const parsed = enableMemberSchema.shape.pipedriveUserId.safeParse(str(form, "pipedriveUserId"));
+  const error = parsed.success
+    ? await run(async () => {
+        await closeAccessRequest(ctx, parsed.data, false);
+      })
+    : "invalid_input";
   revalidatePath("/admin/benutzer");
   back("/admin/benutzer", { error, ok: error ? undefined : "saved" });
 }

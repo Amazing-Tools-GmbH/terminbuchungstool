@@ -9,6 +9,7 @@ import { colorsOf } from "@/lib/theme/contrast";
 import { createTranslator, type Anrede, type TextOverrides } from "@/lib/texts";
 import { formatSlot } from "@/lib/datetime";
 import type { LegalLink } from "@/lib/tenant/types";
+import { at } from "@/lib/texts/admin";
 
 export type MailTenant = {
   name: string;
@@ -348,4 +349,38 @@ export function renderTest(tenant: MailTenant): RenderedMail {
     subject,
   );
   return { subject, html, text: tr("mail.test.text") };
+}
+
+// ---------------------------------------------------------------------------
+// Interne Mails (Zugriff auf das Tool) – Texte aus lib/texts/admin.ts (Du-Form)
+
+export function renderAccessRequest(tenant: MailTenant, d: { name: string; email: string | null; url: string }): RenderedMail {
+  const t = tenant.theme;
+  const subject = at("accessMail.request.subject", { name: d.name });
+  const intro = at("accessMail.request.text", { name: d.name, email: d.email ?? "—", tenant: tenant.name });
+  const html = layout(
+    tenant,
+    `<h1 style="margin:0 0 16px;font-size:22px;line-height:1.25">${escapeHtml(at("accessMail.request.title"))}</h1>
+<p style="margin:0 0 12px">${escapeHtml(intro)}</p>
+${button(t, d.url, at("accessMail.request.button"))}
+<p style="margin:0 0 20px;font-size:14px;color:${t.muted}">${escapeHtml(at("accessMail.request.hint"))}</p>`,
+    intro,
+  );
+  return { subject, html, text: [intro, "", `${at("accessMail.request.button")}: ${d.url}`, "", at("accessMail.request.hint")].join("\n") };
+}
+
+export function renderAccessGranted(tenant: MailTenant, d: { name: string | null; url: string }): RenderedMail {
+  const t = tenant.theme;
+  const subject = at("accessMail.granted.subject", { tenant: tenant.name });
+  const text1 = at("accessMail.granted.text", { tenant: tenant.name });
+  const greeting = d.name ? at("accessMail.greeting", { name: d.name }) : at("accessMail.greetingPlain");
+  const html = layout(
+    tenant,
+    `<h1 style="margin:0 0 16px;font-size:22px;line-height:1.25">${escapeHtml(at("accessMail.granted.title"))}</h1>
+<p style="margin:0 0 8px">${escapeHtml(greeting)}</p>
+<p style="margin:0 0 12px">${escapeHtml(text1)}</p>
+${button(t, d.url, at("accessMail.granted.button"))}`,
+    text1,
+  );
+  return { subject, html, text: [greeting, "", text1, "", `${at("accessMail.granted.button")}: ${d.url}`].join("\n") };
 }

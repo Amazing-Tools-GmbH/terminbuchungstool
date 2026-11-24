@@ -27,8 +27,10 @@ const nextConfig: NextConfig = {
     return [
       // Das Vertriebs-Panel läuft als iframe in Pipedrive – nur dort (und lokal auf der Dev-Seite) einbettbar
       { source: "/panel", headers: [{ key: "Content-Security-Policy", value: "frame-ancestors 'self' https://*.pipedrive.com" }] },
+      // App-Einstellungen in Pipedrive (Custom UI) – ebenfalls nur dort einbettbar
+      { source: "/app-settings", headers: [{ key: "Content-Security-Policy", value: "frame-ancestors 'self' https://*.pipedrive.com" }] },
       // alles andere nie einbetten (Clickjacking)
-      { source: "/((?!panel$).*)", headers: [{ key: "X-Frame-Options", value: "SAMEORIGIN" }] },
+      { source: "/((?!panel$|app-settings$).*)", headers: [{ key: "X-Frame-Options", value: "SAMEORIGIN" }] },
     ];
   },
 };
