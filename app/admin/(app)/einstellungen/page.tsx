@@ -1,6 +1,6 @@
 import { requireAdmin } from "@/lib/auth/admin";
 import { flashMessages } from "@/lib/admin/messages";
-import { LEGAL_LINK_ROWS, loadSettings, missingLegal } from "@/lib/admin/settings";
+import { LEGAL_LINK_ROWS, RETENTION_OPTIONS, loadSettings, missingLegal } from "@/lib/admin/settings";
 import { at } from "@/lib/texts/admin";
 import styles from "@/components/admin/Admin.module.css";
 import { saveSettingsAction } from "./actions";
@@ -103,6 +103,19 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
             />
             <span id="set-deadline-hint" className={styles.hint}>
               {at("settings.deadlineHint")}
+            </span>
+          </div>
+          <div className={styles.field} style={{ marginTop: 16 }}>
+            <label htmlFor="set-retention">{at("settings.retention")}</label>
+            <select id="set-retention" name="retentionMonths" defaultValue={s.retentionMonths} style={{ maxWidth: 240 }} aria-describedby="set-retention-hint">
+              {RETENTION_OPTIONS.map((m) => (
+                <option key={m} value={m}>
+                  {at("settings.retentionOption", { n: m })}
+                </option>
+              ))}
+            </select>
+            <span id="set-retention-hint" className={styles.hint}>
+              {at("settings.retentionHint")}
             </span>
           </div>
         </section>

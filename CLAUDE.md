@@ -82,7 +82,10 @@ Mandantenfähiges Terminbuchungstool mit Pipedrive-Integration. Auftrag und Phas
   Gebuchte nur mit Haken „Teilnehmer informieren“ (Event löschen: Standard aus); Event ohne
   Buchungen wird gelöscht, sonst storniert + archiviert. Firmendaten & Rechtliches
   `/admin/einstellungen` (`lib/admin/settings.ts`: Name, Absender, Reply-To, Anrede, Frist,
-  Kontaktzeile, Rechtslinks). Verlauf `/admin/verlauf` (owner/admin, `lib/admin/activity.ts`):
+  Kontaktzeile, Rechtslinks, Löschfrist). Löschfrist `tenants.retention_months` (Standard 12):
+  `public.purge_expired_data()` aus dem Server-Cron (`lib/retention.ts`, je Mandant max. 1×/Tag)
+  anonymisiert Buchungen/Links nach Termin + Frist (`anonymized_at`), löscht Teilnehmer, alte
+  Mails, Pipedrive-Aufträge und Verlaufseinträge; Termine/Platzzahlen bleiben. Verlauf `/admin/verlauf` (owner/admin, `lib/admin/activity.ts`):
   Schritte je Vorgang aus Buchungen, `email_outbox`, `pipedrive_jobs` plus `bookings.cancelled_by`
   und `activity_log` (Terminänderungen, per Trigger); Lesen nur über `activity_runs`/`activity_items`,
   „Erneut versuchen“ über `activity_retry`, Fehler-Hinweis oben im Admin (`activity_problem_count`).

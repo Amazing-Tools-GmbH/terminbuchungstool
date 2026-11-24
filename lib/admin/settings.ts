@@ -18,6 +18,8 @@ const optionalText = (max: number) =>
     .transform((v) => (v === "" ? null : v));
 
 export const LEGAL_LINK_ROWS = 5;
+/** Löschfrist für personenbezogene Daten (Monate nach dem Termin) */
+export const RETENTION_OPTIONS = [3, 6, 12, 24, 36] as const;
 
 export const settingsSchema = z.object({
   name: z.string().trim().min(1).max(200),
@@ -32,6 +34,7 @@ export const settingsSchema = z.object({
   anrede: z.enum(["sie", "ihr"]),
   contactLine: optionalText(200),
   changeDeadlineHours: z.coerce.number().int().min(0).max(720),
+  retentionMonths: z.coerce.number().int().refine((v) => (RETENTION_OPTIONS as readonly number[]).includes(v)),
   legalLinks: legalLinksSchema,
 });
 export type SettingsInput = z.infer<typeof settingsSchema>;
@@ -58,9 +61,10 @@ export async function loadSettings(ctx: AdminContext): Promise<TenantSettings> {
       anrede: "sie" | "ihr";
       contact_line: string | null;
       change_deadline_hours: number;
+      retention_months: number;
       legal_links: { label: string; href: string }[];
     }>(
-      "select name, sender_name, reply_to_email, anrede::text as anrede, contact_line, change_deadline_hours, legal_links from public.tenants where id = $1",
+      "select name, sender_name, reply_to_email, anrede::text as anrede, contact_line, change_deadline_hours, retention_months, legal_links from public.tenants where id = $1",
       [ctx.tenant.id],
     );
     const r = rows[0];
@@ -72,6 +76,7 @@ export async function loadSettings(ctx: AdminContext): Promise<TenantSettings> {
       anrede: r.anrede,
       contactLine: r.contact_line,
       changeDeadlineHours: r.change_deadline_hours,
+      retentionMonths: r.retention_months,
       legalLinks: Array.isArray(r.legal_links) ? r.legal_links : [],
     };
   });
@@ -84,9 +89,9 @@ export async function saveSettings(ctx: AdminContext, s: SettingsInput): Promise
       const res = await db.query(
         `update public.tenants
             set name = $2, sender_name = $3, reply_to_email = $4, anrede = $5::public.anrede, contact_line = $6,
-                change_deadline_hours = $7, legal_links = $8::jsonb
+                change_deadline_hours = $7, legal_links = $8::jsonb, retention_months = $9
           where id = $1`,
-        [ctx.tenant.id, s.name, s.senderName, s.replyTo, s.anrede, s.contactLine, s.changeDeadlineHours, JSON.stringify(s.legalLinks)],
+        [ctx.tenant.id, s.name, s.senderName, s.replyTo, s.anrede, s.contactLine, s.changeDeadlineHours, JSON.stringify(s.legalLinks), s.retentionMonths],
       );
       if (res.rowCount === 0) throw new AdminError("forbidden");
     });

@@ -16,6 +16,7 @@ export async function saveSettingsAction(form: FormData) {
     anrede: form.get("anrede"),
     contactLine: form.get("contactLine") ?? "",
     changeDeadlineHours: form.get("changeDeadlineHours"),
+    retentionMonths: form.get("retentionMonths"),
     legalLinks: legalLinksFromForm(form),
   });
   let error: string | undefined = parsed.success ? undefined : "invalid_input";
