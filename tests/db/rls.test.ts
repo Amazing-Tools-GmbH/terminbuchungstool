@@ -14,6 +14,7 @@ const TABLES = [
   "invitations",
   "bookings",
   "booking_guests",
+  "activity_log",
   "pipedrive_connections",
   "mail_connections",
   "email_outbox",
@@ -53,6 +54,12 @@ beforeAll(async () => {
       [t, 1000 + i],
     );
     await db.admin("insert into email_outbox (tenant_id, type, to_email) values ($1, 'test', 'x@y.example')", [t]);
+    // Verlauf: Terminänderung durch das Team
+    await db.admin(
+      `insert into activity_log (tenant_id, invitation_id, kind)
+       select tenant_id, invitation_id, 'slot_changed' from bookings where tenant_id = $1 limit 1`,
+      [t],
+    );
     // weiterer Teilnehmer mit eigener Einladung
     await db.admin(
       `insert into booking_guests (tenant_id, booking_id, name, email, token_hash)
@@ -157,6 +164,13 @@ describe("Schreiben", () => {
         ),
       ),
     ).rejects.toThrow(/foreign key/);
+  });
+
+  it("Verlauf: sales sieht nichts, niemand schreibt direkt", async () => {
+    expect(await tenantIdsVisible(salesA, "activity_log")).toEqual([]);
+    await expect(
+      db.as(userA, (c) => c.query("insert into activity_log (tenant_id, invitation_id, kind) select tenant_id, id, 'slot_changed' from invitations limit 1")),
+    ).rejects.toThrow(/permission denied/);
   });
 
   it("niemand kann Teilnehmer direkt anlegen oder ändern (nur über book_slot/cancel_guest)", async () => {

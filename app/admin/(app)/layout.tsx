@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { requireAdmin, canManage } from "@/lib/auth/admin";
+import { activityProblemCount } from "@/lib/admin/activity";
 import { at } from "@/lib/texts/admin";
 import { AdminNav, type NavItem } from "@/components/admin/AdminNav";
 import styles from "@/components/admin/Admin.module.css";
@@ -9,9 +11,11 @@ export const metadata: Metadata = { title: "Admin", robots: { index: false, foll
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const ctx = await requireAdmin();
+  const problems = await activityProblemCount(ctx);
   const items: NavItem[] = [
     { href: "/admin", label: at("nav.slots") },
     { href: "/admin/buchungen", label: at("nav.bookings") },
+    ...(canManage(ctx.role) ? [{ href: "/admin/verlauf", label: at("nav.activity") }] : []),
     { href: "/admin/postfach", label: at("nav.mailbox") },
     ...(canManage(ctx.role) ? [{ href: "/admin/email", label: at("nav.mailSettings") }] : []),
     ...(canManage(ctx.role) ? [{ href: "/admin/erscheinungsbild", label: at("nav.branding") }] : []),
@@ -47,7 +51,17 @@ export default async function AdminLayout({ children }: { children: React.ReactN
       </header>
       <div className={styles.layout}>
         <AdminNav items={items} label={at("nav.label")} />
-        <main className={styles.main}>{children}</main>
+        <main className={styles.main}>
+          {problems > 0 && (
+            <div role="status" className={`${styles.error} ${styles.problemBanner}`}>
+              <span>{at("activity.problems", { n: problems })}</span>
+              <Link href="/admin/verlauf?errors=1" className={styles.btnGhost}>
+                {at("activity.problemsLink")}
+              </Link>
+            </div>
+          )}
+          {children}
+        </main>
       </div>
     </div>
   );

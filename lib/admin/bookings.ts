@@ -13,6 +13,7 @@ export type BookingView = (typeof BOOKING_VIEWS)[number];
 
 export type BookingListItem = {
   id: string;
+  invitationId: string;
   eventTitle: string;
   weekdayShort: string;
   date: string;
@@ -62,8 +63,9 @@ export async function listBookings(
       created_at: Date;
       cancelled_at: Date | null;
       pipedrive_deal_id: string | null;
+      invitation_id: string;
     }>(
-      `select b.id, e.title, s.starts_at, s.ends_at, coalesce(s.location, e.location) as location,
+      `select b.id, b.invitation_id, e.title, s.starts_at, s.ends_at, coalesce(s.location, e.location) as location,
               b.seats, b.extra_attendees, b.name, b.email, i.organization_name,
               b.booked_by, coalesce(m.display_name, m.email) as booked_by_name,
               b.created_at, b.cancelled_at, i.pipedrive_deal_id::text
@@ -83,6 +85,7 @@ export async function listBookings(
       const f = formatSlot(r.starts_at, r.ends_at, tz);
       return {
         id: r.id,
+        invitationId: r.invitation_id,
         eventTitle: r.title,
         weekdayShort: f.weekdayShort,
         date: f.date,
