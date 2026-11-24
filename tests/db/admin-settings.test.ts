@@ -37,6 +37,7 @@ const input = {
   anrede: "ihr" as const,
   contactLine: "Fragen? 0800 123",
   changeDeadlineHours: 24,
+  retentionMonths: 6,
   legalLinks: [
     { label: "Impressum", href: "https://demo.example/impressum" },
     { label: "Datenschutz", href: "https://demo.example/datenschutz" },
