@@ -21,6 +21,7 @@ import type pg from "pg";
 import { withActorOn } from "@/lib/db/actor";
 import { decryptSecret } from "@/lib/crypto/secretbox";
 import { bookingIcs } from "@/lib/booking/ics";
+import { googleCalendarUrl, outlookCalendarUrl } from "@/lib/calendar/links";
 import { parseTheme } from "@/lib/theme/schema";
 import { parseTextOverrides } from "@/lib/texts";
 import { assetStorage } from "@/lib/storage";
@@ -32,6 +33,7 @@ import {
   renderGuestConfirmation,
   renderInvitation,
   renderTest,
+  type CalendarLinks,
   type MailTenant,
   type RenderedMail,
 } from "./templates";
@@ -285,6 +287,7 @@ type TenantRow = {
   sender_name: string | null;
   reply_to_email: string | null;
   smart_bcc_email: string | null;
+  confirmation_mail_route: "pipedrive" | "system";
 };
 
 type InvitationRow = {
@@ -419,7 +422,12 @@ async function prepare(pool: pg.Pool, row: OutboxRow, env: Env): Promise<Prepare
     });
   }
 
-  const route = routeMail(row.type, env.inviteProvider, { inviter: ctx.inviter, userConnection });
+  const route = routeMail(
+    row.type,
+    env.inviteProvider,
+    { inviter: ctx.inviter, userConnection },
+    ctx.tenantRow.confirmation_mail_route === "system" ? "system" : "pipedrive",
+  );
   switch (route.kind) {
     case "error":
       return { kind: "failed", reason: route.message, code: route.code };
@@ -511,6 +519,16 @@ function openLink(payload: Record<string, unknown>): string | null {
   }
 }
 
+/** Kalender-Links (statt .ics-Anhang beim Versand über Pipedrive) */
+function calendarLinks(
+  tenantName: string,
+  b: { title: string; starts_at: Date; ends_at: Date; location: string | null },
+  link: string | null,
+): CalendarLinks {
+  const e = { title: `${b.title} – ${tenantName}`, start: new Date(b.starts_at), end: new Date(b.ends_at), location: b.location, details: link };
+  return { google: googleCalendarUrl(e), outlook: outlookCalendarUrl(e), ics: link ? `${link}/ics` : null };
+}
+
 function buildMessage(row: OutboxRow, plan: Plan, ctx: MailContext): MailMessage {
   const tenant = toMailTenant(ctx.tenantRow);
   let rendered: RenderedMail;
@@ -527,7 +545,11 @@ function buildMessage(row: OutboxRow, plan: Plan, ctx: MailContext): MailMessage
     const guestUrl = row.type === "confirmation" ? openLink(row.payload) : null;
     const icsFilename = `termin-${ctx.tenantRow.slug}.ics`;
     const cancelled = row.type === "cancellation";
-    attachments.push({
+    dealId = ctx.invitation?.pipedrive_deal_id ? Number(ctx.invitation.pipedrive_deal_id) : null;
+    // über Pipedrive gehen keine Anhänge -> Kalender-Links statt .ics
+    const noAttachments = plan.channel === "pipedrive";
+    const calendar = noAttachments && !cancelled ? calendarLinks(tenant.name, b, guestUrl) : null;
+    if (!noAttachments) attachments.push({
       filename: icsFilename,
       contentType: "text/calendar; charset=utf-8",
       content: bookingIcs({
@@ -548,13 +570,14 @@ function buildMessage(row: OutboxRow, plan: Plan, ctx: MailContext): MailMessage
     const byOrganizer = row.payload.by_organizer === true;
     const base = { eventTitle: b.title, startsAt: new Date(b.starts_at), endsAt: new Date(b.ends_at), name: g.name };
     rendered = cancelled
-      ? renderGuestCancellation(tenant, { ...base, byOrganizer })
+      ? renderGuestCancellation(tenant, { ...base, byOrganizer, removeFromCalendar: noAttachments })
       : renderGuestConfirmation(tenant, {
           ...base,
           location: b.location,
           bookerName: b.booker_name,
           guestUrl,
           icsFilename,
+          calendar,
           changed: row.payload.changed === true,
           organizerChanged: byOrganizer,
         });
@@ -564,6 +587,8 @@ function buildMessage(row: OutboxRow, plan: Plan, ctx: MailContext): MailMessage
     toName = b.name;
     const bookingUrl = openLink(row.payload);
     const icsFilename = `termin-${ctx.tenantRow.slug}.ics`;
+    dealId = ctx.invitation?.pipedrive_deal_id ? Number(ctx.invitation.pipedrive_deal_id) : null;
+    const noAttachments = plan.channel === "pipedrive";
     const ics = bookingIcs({
       tenantName: tenant.name,
       invitationId: b.invitation_id,
@@ -577,7 +602,8 @@ function buildMessage(row: OutboxRow, plan: Plan, ctx: MailContext): MailMessage
       versionAt: new Date(row.created_at),
       cancelled: row.type === "cancellation",
     });
-    attachments.push({ filename: icsFilename, contentType: "text/calendar; charset=utf-8", content: ics });
+    if (!noAttachments) attachments.push({ filename: icsFilename, contentType: "text/calendar; charset=utf-8", content: ics });
+    const calendar = noAttachments && row.type === "confirmation" ? calendarLinks(tenant.name, b, bookingUrl) : null;
     const base = { eventTitle: b.title, startsAt: new Date(b.starts_at), endsAt: new Date(b.ends_at), location: b.location, seats: b.seats, name: b.name, bookingUrl };
     rendered =
       row.type === "confirmation"
@@ -585,11 +611,12 @@ function buildMessage(row: OutboxRow, plan: Plan, ctx: MailContext): MailMessage
             ...base,
             extraAttendees: b.extra_attendees ?? [],
             icsFilename,
+            calendar,
             changed: Boolean(row.payload.replaces_booking_id) || typeof row.payload.guest_cancelled === "string" || row.payload.by_organizer === true,
             organizerChanged: row.payload.by_organizer === true,
             guestCancelled: typeof row.payload.guest_cancelled === "string" ? row.payload.guest_cancelled : null,
           })
-        : renderCancellation(tenant, { ...base, byOrganizer: row.payload.by_organizer === true });
+        : renderCancellation(tenant, { ...base, byOrganizer: row.payload.by_organizer === true, removeFromCalendar: noAttachments });
   } else if (row.type === "invitation") {
     const inv = ctx.invitation;
     const link = openLink(row.payload);

@@ -149,8 +149,11 @@ Mandantenfähiges Terminbuchungstool mit Pipedrive-Integration. Auftrag und Phas
   Pipedrive, OAuth-Token aus seinem Login in `pipedrive_user_connections`, Scope
   `mail-sending:full`, `lib/pipedrive/mail.ts` über MCP oder REST) | `oauth` (eigenes
   Google/Microsoft-Postfach, Buttons nur dann sichtbar) | `smtp` (System-Adresse, Anzeigename +
-  Reply-To = Mitarbeiter). Bestätigung/Stornierung immer System-SMTP (`SYSTEM_MAIL_*`),
-  Reply-To = einladender Mitarbeiter. Fällt der Weg aus: `email_outbox.error_code` + Meldung,
+  Reply-To = Mitarbeiter). Bestätigung/Änderung/Stornierung je Mandant
+  (`tenants.confirmation_mail_route`, Admin → E-Mail-Einstellungen): `pipedrive` (Standard; Postfach
+  des zuständigen Mitarbeiters = `invitations.created_by`, im Deal, ohne Anhang → Kalender-Links inkl.
+  `/b/<token>/ics`) | `system` (System-SMTP `SYSTEM_MAIL_*`, .ics, Reply-To = Mitarbeiter). Ohne
+  zuständigen Mitarbeiter immer System-SMTP; Mitarbeiter gesperrt ⇒ `no_inviter`. Fällt der Weg aus: `email_outbox.error_code` + Meldung,
   NIE ein stiller Wechsel des Weges. Smart BCC (`tenants.smart_bcc_email`, nur
   `@pipedrivemail.com`) für alle Kundenmails außer Pipedrive-Versand. Signatur je Mitarbeiter
   (`tenant_members.mail_signature`, Klartext) unter Einladungen.

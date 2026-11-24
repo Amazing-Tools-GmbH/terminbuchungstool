@@ -87,6 +87,30 @@ function link(t: Theme, href: string, label: string): string {
 
 // ---------------------------------------------------------------------------
 
+/** Kalender-Links statt .ics-Anhang (Versand über Pipedrive kann keine Anhänge) */
+export type CalendarLinks = { google: string; outlook: string; ics: string | null };
+
+type Tr = ReturnType<typeof createTranslator>;
+
+function calendarHtml(t: Theme, tr: Tr, c: CalendarLinks): string {
+  const items = [
+    [c.google, tr("mail.calendar.google")],
+    [c.outlook, tr("mail.calendar.outlook")],
+    ...(c.ics ? [[c.ics, tr("mail.calendar.ics")]] : []),
+  ] as [string, string][];
+  return `<p style="margin:0 0 6px;font-size:14px;font-weight:700">${escapeHtml(tr("mail.calendar.title"))}</p>
+<p style="margin:0 0 16px;font-size:14px">${items.map(([href, label]) => link(t, href, label)).join(" &nbsp;·&nbsp; ")}</p>`;
+}
+
+function calendarText(tr: Tr, c: CalendarLinks): string[] {
+  return [
+    tr("mail.calendar.title"),
+    `${tr("mail.calendar.google")}: ${c.google}`,
+    `${tr("mail.calendar.outlook")}: ${c.outlook}`,
+    ...(c.ics ? [`${tr("mail.calendar.ics")}: ${c.ics}`] : []),
+  ];
+}
+
 export type BookingMailData = {
   eventTitle: string;
   startsAt: Date;
@@ -102,6 +126,8 @@ export type BookingMailData = {
   guestCancelled?: string | null;
   /** Veranstalter hat Datum/Uhrzeit/Ort geändert */
   organizerChanged?: boolean;
+  /** statt .ics-Anhang (Versand über Pipedrive) */
+  calendar?: CalendarLinks | null;
 };
 
 export function renderConfirmation(tenant: MailTenant, d: BookingMailData): RenderedMail {
@@ -139,7 +165,7 @@ export function renderConfirmation(tenant: MailTenant, d: BookingMailData): Rend
 <p style="margin:0 0 8px">${escapeHtml(tr("mail.greeting", { name: d.name }))}</p>
 ${note ? `<p style="margin:0 0 8px">${escapeHtml(note)}</p>` : ""}
 ${summaryTable(t, rows)}
-<p style="margin:0 0 16px;font-size:14px;color:${t.muted}">📅 ${escapeHtml(d.icsFilename)} – ${escapeHtml(tr("mail.ics.hint"))}</p>
+${d.calendar ? calendarHtml(t, tr, d.calendar) : `<p style="margin:0 0 16px;font-size:14px;color:${t.muted}">📅 ${escapeHtml(d.icsFilename)} – ${escapeHtml(tr("mail.ics.hint"))}</p>`}
 ${changeHtml ? `<p style="margin:0 0 20px;font-size:14px">${changeHtml}</p>` : ""}`,
     `${title}: ${when.weekdayShort}, ${when.date}, ${when.time}`,
   );
@@ -151,7 +177,7 @@ ${changeHtml ? `<p style="margin:0 0 20px;font-size:14px">${changeHtml}</p>` : "
     "",
     ...rows.map(([k, v]) => `${k}: ${v}`),
     "",
-    `${tr("done.ics")}: ${d.icsFilename}`,
+    ...(d.calendar ? calendarText(tr, d.calendar) : [`${tr("done.ics")}: ${d.icsFilename}`]),
     ...(changeLine && d.bookingUrl ? ["", changeLine.replace("\u0000", tr("mail.changeLink")) + `\n${d.bookingUrl}`] : []),
     "",
     tenant.contactLine ?? "",
@@ -161,7 +187,7 @@ ${changeHtml ? `<p style="margin:0 0 20px;font-size:14px">${changeHtml}</p>` : "
 
 export function renderCancellation(
   tenant: MailTenant,
-  d: Omit<BookingMailData, "changed" | "icsFilename" | "extraAttendees"> & { byOrganizer?: boolean },
+  d: Omit<BookingMailData, "changed" | "icsFilename" | "extraAttendees"> & { byOrganizer?: boolean; removeFromCalendar?: boolean },
 ): RenderedMail {
   const tr = createTranslator(tenant.anrede, tenant.textOverrides);
   const t = tenant.theme;
@@ -181,6 +207,7 @@ export function renderCancellation(
 <p style="margin:0 0 8px">${escapeHtml(tr("mail.greeting", { name: d.name }))}</p>
 ${note ? `<p style="margin:0 0 8px">${escapeHtml(note)}</p>` : ""}
 ${summaryTable(t, rows)}
+${d.removeFromCalendar ? `<p style="margin:0 0 16px;font-size:14px">${escapeHtml(tr("mail.calendar.remove"))}</p>` : ""}
 ${again ? `<p style="margin:0 0 20px;font-size:14px">${escapeHtml(again).replace("\u0000", link(t, d.bookingUrl!, tr("mail.changeLink")))}</p>` : ""}`,
     title,
   );
@@ -190,6 +217,7 @@ ${again ? `<p style="margin:0 0 20px;font-size:14px">${escapeHtml(again).replace
     `${title} – ${d.eventTitle}`,
     ...(note ? [note] : []),
     ...rows.map(([k, v]) => `${k}: ${v}`),
+    ...(d.removeFromCalendar ? ["", tr("mail.calendar.remove")] : []),
     ...(again && d.bookingUrl ? ["", again.replace("\u0000", tr("mail.changeLink")) + `\n${d.bookingUrl}`] : []),
     "",
     tenant.contactLine ?? "",
@@ -212,6 +240,7 @@ export type GuestMailData = {
   icsFilename: string;
   changed: boolean;
   organizerChanged?: boolean;
+  calendar?: CalendarLinks | null;
 };
 
 export function renderGuestConfirmation(tenant: MailTenant, d: GuestMailData): RenderedMail {
@@ -234,7 +263,7 @@ export function renderGuestConfirmation(tenant: MailTenant, d: GuestMailData): R
 <p style="margin:0 0 8px">${escapeHtml(tr("mail.greeting", { name: d.name }))}</p>
 <p style="margin:0 0 8px">${escapeHtml(intro)}</p>
 ${summaryTable(t, rows)}
-<p style="margin:0 0 16px;font-size:14px;color:${t.muted}">📅 ${escapeHtml(d.icsFilename)} – ${escapeHtml(tr("mail.ics.hint"))}</p>
+${d.calendar ? calendarHtml(t, tr, d.calendar) : `<p style="margin:0 0 16px;font-size:14px;color:${t.muted}">📅 ${escapeHtml(d.icsFilename)} – ${escapeHtml(tr("mail.ics.hint"))}</p>`}
 ${decline ? `<p style="margin:0 0 20px;font-size:14px">${escapeHtml(decline).replace("\u0000", link(t, d.guestUrl!, tr("mail.guest.declineLink")))}</p>` : ""}`,
     `${title}: ${when.weekdayShort}, ${when.date}, ${when.time}`,
   );
@@ -246,7 +275,7 @@ ${decline ? `<p style="margin:0 0 20px;font-size:14px">${escapeHtml(decline).rep
     `${title} – ${d.eventTitle}`,
     ...rows.map(([k, v]) => `${k}: ${v}`),
     "",
-    `${tr("done.ics")}: ${d.icsFilename}`,
+    ...(d.calendar ? calendarText(tr, d.calendar) : [`${tr("done.ics")}: ${d.icsFilename}`]),
     ...(decline && d.guestUrl ? ["", decline.replace("\u0000", tr("mail.guest.declineLink")) + `\n${d.guestUrl}`] : []),
     "",
     tenant.contactLine ?? "",
@@ -256,7 +285,7 @@ ${decline ? `<p style="margin:0 0 20px;font-size:14px">${escapeHtml(decline).rep
 
 export function renderGuestCancellation(
   tenant: MailTenant,
-  d: { eventTitle: string; startsAt: Date; endsAt: Date; name: string; byOrganizer?: boolean },
+  d: { eventTitle: string; startsAt: Date; endsAt: Date; name: string; byOrganizer?: boolean; removeFromCalendar?: boolean },
 ): RenderedMail {
   const tr = createTranslator(tenant.anrede, tenant.textOverrides);
   const t = tenant.theme;
@@ -273,7 +302,8 @@ export function renderGuestCancellation(
 <h1 style="margin:0 0 16px;font-size:24px;line-height:1.25">${escapeHtml(title)}</h1>
 <p style="margin:0 0 8px">${escapeHtml(tr("mail.greeting", { name: d.name }))}</p>
 <p style="margin:0 0 8px">${escapeHtml(tr(d.byOrganizer ? "mail.cancellation.byOrganizer" : "mail.guest.cancelled.text"))}</p>
-${summaryTable(t, rows)}`,
+${summaryTable(t, rows)}
+${d.removeFromCalendar ? `<p style="margin:0 0 16px;font-size:14px">${escapeHtml(tr("mail.calendar.remove"))}</p>` : ""}`,
     title,
   );
   const text = [
@@ -283,6 +313,7 @@ ${summaryTable(t, rows)}`,
     "",
     `${title} – ${d.eventTitle}`,
     ...rows.map(([k, v]) => `${k}: ${v}`),
+    ...(d.removeFromCalendar ? ["", tr("mail.calendar.remove")] : []),
     "",
     tenant.contactLine ?? "",
   ].join("\n");

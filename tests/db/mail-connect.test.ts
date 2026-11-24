@@ -4,7 +4,7 @@
  * (kein stiller Wechsel), Bestätigungen über den System-Absender mit Reply-To
  * auf den Einladenden, Smart BCC, Testmail schaltet ein Postfach aktiv.
  */
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { ANON, type DbActor } from "@/lib/db/actor";
 import { generateToken, hashToken } from "@/lib/booking/tokens";
 import { bookSlot } from "@/lib/booking/service";
@@ -177,6 +177,13 @@ describe("Rechte", () => {
 });
 
 describe("Bestätigung/Stornierung: System-Absender", () => {
+  beforeEach(async () => {
+    await db.admin("update tenants set confirmation_mail_route = 'system' where id = $1", [tenantA.id]);
+  });
+  afterEach(async () => {
+    await db.admin("update tenants set confirmation_mail_route = 'pipedrive' where id = $1", [tenantA.id]);
+  });
+
   it("System-Adresse, Reply-To = einladender Mitarbeiter, Smart BCC, .ics", async () => {
     await db.admin("update tenants set smart_bcc_email = 'firma@pipedrivemail.com' where id = $1", [tenantA.id]);
     await bookInvitedBy(salesId);
@@ -207,6 +214,43 @@ describe("Bestätigung/Stornierung: System-Absender", () => {
     } finally {
       await db.admin("update tenants set reply_to_email = null where id = $1", [tenantA.id]);
     }
+  });
+});
+
+describe("Bestätigung über das Pipedrive-Postfach des Mitarbeiters (Standard)", () => {
+  it("über den Pipedrive-Zugang des Einladenden, im Deal, Kalender-Links statt Anhang", async () => {
+    await db.admin("update tenants set smart_bcc_email = 'firma@pipedrivemail.com' where id = $1", [tenantA.id]);
+    await bookInvitedBy(salesId);
+    expect((await run({ inviteProvider: "pipedrive" })).sent).toBe(1);
+    const s0 = sent[0]!;
+    expect(s0.viaId).toBe("pipedrive");
+    expect(s0.message.pipedriveDealId).toBe(501);
+    expect(s0.message.attachments).toEqual([]);
+    expect(s0.message.bcc).toBeUndefined();
+    expect(s0.message.html).toContain("https://calendar.google.com/calendar/render?");
+    expect(s0.message.html).toContain("https://outlook.office.com/calendar/");
+    expect(s0.message.html).toMatch(/\/b\/[A-Za-z0-9_-]+\/ics/);
+    expect(s0.message.html).not.toContain(".ics – ");
+    expect(await outboxRow()).toMatchObject({ status: "sent", send_channel: "pipedrive" });
+  });
+
+  it("Mitarbeiter gesperrt: Meldung, KEIN Wechsel auf die System-Adresse", async () => {
+    await bookInvitedBy(salesId);
+    await db.admin("update tenant_members set status = 'disabled' where user_id = $1", [salesId]);
+    try {
+      expect((await run({ inviteProvider: "pipedrive" })).failed).toBe(1);
+      expect(sent).toHaveLength(0);
+      expect(await outboxRow()).toMatchObject({ status: "failed", error_code: "no_inviter" });
+    } finally {
+      await db.admin("update tenant_members set status = 'active' where user_id = $1", [salesId]);
+    }
+  });
+
+  it("ohne zuständigen Mitarbeiter: System-Adresse mit .ics", async () => {
+    await bookInvitedBy(null);
+    expect((await run({ inviteProvider: "pipedrive" })).sent).toBe(1);
+    expect(sent[0]!.viaId).toBe("system");
+    expect(sent[0]!.message.attachments?.[0]?.filename).toMatch(/\.ics$/);
   });
 });
 

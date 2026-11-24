@@ -91,6 +91,7 @@ export async function loadMyMailbox(ctx: AdminContext) {
 
 export type MailSettings = {
   smartBccEmail: string | null;
+  confirmationRoute: "pipedrive" | "system";
   team: { userId: string; name: string; role: string; pipedrive: PipedriveSendStatus; mailbox: MailboxView | null }[];
   failedInvitations: { at: Date; toEmail: string; code: string | null }[];
 };
@@ -103,7 +104,9 @@ export async function loadMailSettings(ctx: AdminContext): Promise<MailSettings>
       "select user_id, scopes, status, last_error, updated_at from public.pipedrive_user_connections where tenant_id = $1",
       [ctx.tenant.id],
     );
-    const { rows: t } = await db.query<{ smart_bcc_email: string | null }>("select smart_bcc_email from public.tenants where id = $1", [
+    const { rows: t } = await db.query<{ smart_bcc_email: string | null; confirmation_mail_route: "pipedrive" | "system" }>(
+      "select smart_bcc_email, confirmation_mail_route from public.tenants where id = $1",
+      [
       ctx.tenant.id,
     ]);
     const { rows: members } = await db.query<{ user_id: string; display_name: string | null; email: string | null; role: string }>(
@@ -120,6 +123,7 @@ export async function loadMailSettings(ctx: AdminContext): Promise<MailSettings>
     const views = conns.map(toView);
     return {
       smartBccEmail: t[0]?.smart_bcc_email ?? null,
+      confirmationRoute: t[0]?.confirmation_mail_route === "system" ? "system" : "pipedrive",
       team: members.map((m) => ({
         userId: m.user_id,
         name: m.display_name ?? m.email ?? "—",
@@ -289,6 +293,18 @@ export async function saveSmartBcc(ctx: AdminContext, email: string | null): Pro
   try {
     await withActor(ctx.actor, async (db) => {
       const res = await db.query("update public.tenants set smart_bcc_email = $2 where id = $1", [ctx.tenant.id, email]);
+      if (res.rowCount === 0) throw new AdminError("forbidden");
+    });
+  } catch (err) {
+    throw toAdminError(err);
+  }
+}
+
+/** Absender für Bestätigungen/Änderungen/Stornierungen (owner/admin; RLS) */
+export async function saveConfirmationRoute(ctx: AdminContext, route: "pipedrive" | "system"): Promise<void> {
+  try {
+    await withActor(ctx.actor, async (db) => {
+      const res = await db.query("update public.tenants set confirmation_mail_route = $2 where id = $1", [ctx.tenant.id, route]);
       if (res.rowCount === 0) throw new AdminError("forbidden");
     });
   } catch (err) {

@@ -6,7 +6,15 @@ import { z } from "zod";
 import { requireAdmin } from "@/lib/auth/admin";
 import { toAdminError } from "@/lib/admin/errors";
 import { mailScopeSchema, signatureSchema, smartBccSchema, smtpFormSchema } from "@/lib/admin/input";
-import { connectDevMailbox, disconnectMailbox, requestTestMail, saveMySignature, saveSmartBcc, saveSmtpMailbox } from "@/lib/mail/connect";
+import {
+  connectDevMailbox,
+  disconnectMailbox,
+  requestTestMail,
+  saveConfirmationRoute,
+  saveMySignature,
+  saveSmartBcc,
+  saveSmtpMailbox,
+} from "@/lib/mail/connect";
 import { sendMailsSoon } from "@/lib/booking/api";
 import { devToolsEnabled } from "@/lib/dev-tools";
 
@@ -64,6 +72,13 @@ export async function saveSmartBccAction(form: FormData) {
   const parsed = smartBccSchema.safeParse(str(form, "smartBcc") ?? "");
   const error = parsed.success ? await attempt(() => saveSmartBcc(ctx, parsed.data)) : "invalid_input";
   done("/admin/email", error ? { error } : { ok: "smartBcc" });
+}
+
+export async function saveConfirmationRouteAction(form: FormData) {
+  const ctx = await requireAdmin(["owner", "admin"]);
+  const parsed = z.enum(["pipedrive", "system"]).safeParse(str(form, "route"));
+  const error = parsed.success ? await attempt(() => saveConfirmationRoute(ctx, parsed.data)) : "invalid_input";
+  done("/admin/email", error ? { error } : { ok: "confirmRoute" });
 }
 
 export async function devConnectAction(form: FormData) {

@@ -171,6 +171,14 @@ export const TEXTS = {
   "mail.persons": same("{n} Personen"),
   "mail.person": same("1 Person"),
   "mail.ics.hint": same("Anhang · Outlook, Google, Apple Kalender"),
+  "mail.calendar.title": same("In den Kalender eintragen:"),
+  "mail.calendar.google": same("Google Kalender"),
+  "mail.calendar.outlook": same("Outlook"),
+  "mail.calendar.ics": same("Kalenderdatei (Apple, Outlook)"),
+  "mail.calendar.remove": {
+    ihr: "Bitte entfernt den Termin aus eurem Kalender.",
+    sie: "Bitte entfernen Sie den Termin aus Ihrem Kalender.",
+  },
   "mail.change": {
     ihr: "Änderung oder Stornierung bis {hours} Stunden vorher über {link}.",
     sie: "Änderung oder Stornierung bis {hours} Stunden vorher über {link}.",

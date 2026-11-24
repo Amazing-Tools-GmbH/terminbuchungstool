@@ -263,6 +263,13 @@ describe("Versandweg", () => {
       replyTo: { email: "markus@firma.example", name: "Markus Fink" },
     });
     expect(routeMail("invitation", "pipedrive", { inviter: null, userConnection: null })).toMatchObject({ kind: "error", code: "no_inviter" });
+    // Bestätigung über das Pipedrive-Postfach des Mitarbeiters (Einstellung je Mandant)
+    expect(routeMail("confirmation", "smtp", { inviter, userConnection: null }, "pipedrive")).toEqual({ kind: "pipedrive", channel: "pipedrive", userId: "u1" });
+    expect(routeMail("cancellation", "pipedrive", { inviter: { ...inviter, active: false }, userConnection: null }, "pipedrive")).toMatchObject({
+      kind: "error",
+      code: "no_inviter",
+    });
+    expect(routeMail("confirmation", "pipedrive", { inviter: null, userConnection: null }, "pipedrive")).toMatchObject({ kind: "system" });
   });
 });
 

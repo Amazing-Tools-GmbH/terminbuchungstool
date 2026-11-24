@@ -64,6 +64,7 @@ export const guestContextSchema = z.object({
   event: z.object({ title: z.string() }),
   booking: z.object({
     status: z.enum(["confirmed", "cancelled"]),
+    invitation_id: z.string().uuid().optional(),
     starts_at: ts,
     ends_at: ts,
     location: z.string().nullable(),
