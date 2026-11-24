@@ -15,6 +15,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     { href: "/admin/postfach", label: at("nav.mailbox") },
     ...(canManage(ctx.role) ? [{ href: "/admin/email", label: at("nav.mailSettings") }] : []),
     ...(canManage(ctx.role) ? [{ href: "/admin/erscheinungsbild", label: at("nav.branding") }] : []),
+    ...(canManage(ctx.role) ? [{ href: "/admin/einstellungen", label: at("nav.settings") }] : []),
     ...(canManage(ctx.role) ? [{ href: "/admin/vorlagen", label: at("nav.templates") }] : []),
     ...(canManage(ctx.role) ? [{ href: "/admin/pipedrive", label: at("nav.pipedrive") }] : []),
     ...(canManage(ctx.role) ? [{ href: "/admin/benutzer", label: at("nav.users") }] : []),
