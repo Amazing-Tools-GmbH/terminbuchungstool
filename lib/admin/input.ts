@@ -97,3 +97,43 @@ export const createEventSchema = z
   })
   .refine((v) => v.to > v.from, { path: ["to"], message: "Ende muss nach dem Beginn liegen" });
 export type CreateEventInput = z.infer<typeof createEventSchema>;
+
+const notify = z.preprocess((v) => v === "on" || v === "true" || v === true, z.boolean());
+
+/** Event bearbeiten */
+export const updateEventSchema = z.object({
+  eventId: z.string().uuid(),
+  title: z.string().trim().min(1).max(200),
+  location: z
+    .string()
+    .trim()
+    .max(200)
+    .transform((v) => (v === "" ? null : v)),
+  description: z
+    .string()
+    .trim()
+    .max(2000)
+    .transform((v) => (v === "" ? null : v)),
+});
+export type UpdateEventInput = z.infer<typeof updateEventSchema>;
+
+/** Termin verschieben / Ort ändern */
+export const updateSlotSchema = z
+  .object({
+    slotId: z.string().uuid(),
+    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    from: time,
+    to: time,
+    location: z
+      .string()
+      .trim()
+      .max(200)
+      .transform((v) => (v === "" ? null : v)),
+    notify,
+  })
+  .refine((v) => v.to > v.from, { path: ["to"], message: "Ende muss nach dem Beginn liegen" });
+export type UpdateSlotInput = z.infer<typeof updateSlotSchema>;
+
+export const cancelSlotSchema = z.object({ slotId: z.string().uuid(), notify });
+export const deleteEventSchema = z.object({ eventId: z.string().uuid(), notify, confirm: z.literal("on") });
+export const cancelBookingSchema = z.object({ bookingId: z.string().uuid(), notify });

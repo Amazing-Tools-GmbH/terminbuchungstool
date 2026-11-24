@@ -48,6 +48,7 @@ export function toAdminError(err: unknown): AdminError {
   if (e?.message === "TB:last_owner") return new AdminError("last_owner");
   if (e?.message === "TB:capacity_below_booked") return new AdminError("capacity_below_booked");
   if (e?.message === "TB:forbidden") return new AdminError("forbidden");
+  if (e?.message?.startsWith("TB:") && isAdminErrorCode(e.message.slice(3))) return new AdminError(e.message.slice(3) as AdminErrorCode);
   if (e?.code === "42501") return new AdminError("forbidden"); // RLS/Rechte
   if (e?.code === "23514" || e?.code === "22007" || e?.code === "22008") return new AdminError("invalid_input");
   console.error("Admin-Fehler:", err);

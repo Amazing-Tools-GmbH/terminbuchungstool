@@ -182,6 +182,14 @@ export const TEXTS = {
     ihr: "Über {link} könnt ihr jederzeit einen neuen Termin wählen.",
     sie: "Über {link} können Sie jederzeit einen neuen Termin wählen.",
   },
+  "mail.rescheduled": {
+    ihr: "der Termin wurde von uns geändert. Bitte beachtet die neuen Angaben unten – die Kalenderdatei im Anhang aktualisiert euren Eintrag.",
+    sie: "der Termin wurde von uns geändert. Bitte beachten Sie die neuen Angaben unten – die Kalenderdatei im Anhang aktualisiert Ihren Eintrag.",
+  },
+  "mail.cancellation.byOrganizer": {
+    ihr: "leider müssen wir diesen Termin absagen. Bitte entschuldigt die Umstände.",
+    sie: "leider müssen wir diesen Termin absagen. Bitte entschuldigen Sie die Umstände.",
+  },
   "mail.guestCancelled": {
     ihr: "{name} hat die Teilnahme abgesagt. Eure Buchung umfasst jetzt {persons}.",
     sie: "{name} hat die Teilnahme abgesagt. Ihre Buchung umfasst jetzt {persons}.",

@@ -17,8 +17,8 @@ export const MAIL_TEMPLATE_GROUPS: MailTemplateGroup[] = [
     id: "confirmation",
     keys: ["mail.confirmation.subject", "mail.confirmation.title", "mail.ics.hint", "mail.change", "mail.changeLink", "mail.person", "mail.persons"],
   },
-  { id: "changed", keys: ["mail.confirmation.changedSubject", "mail.confirmation.changedTitle", "mail.guestCancelled"] },
-  { id: "cancellation", keys: ["mail.cancellation.subject", "mail.cancellation.title", "mail.cancellation.text"] },
+  { id: "changed", keys: ["mail.confirmation.changedSubject", "mail.confirmation.changedTitle", "mail.rescheduled", "mail.guestCancelled"] },
+  { id: "cancellation", keys: ["mail.cancellation.subject", "mail.cancellation.title", "mail.cancellation.byOrganizer", "mail.cancellation.text"] },
   {
     id: "guest",
     keys: ["mail.guest.subject", "mail.guest.title", "mail.guest.text", "mail.guest.decline", "mail.guest.declineLink", "mail.guest.changedSubject", "mail.guest.changedTitle"],

@@ -5,16 +5,40 @@ import { isAdminErrorCode } from "@/lib/admin/errors";
 import { adminErrorText, at } from "@/lib/texts/admin";
 import { formatDate } from "@/lib/datetime";
 import styles from "@/components/admin/Admin.module.css";
-import { createEventAction, createSlotAction, setCapacityAction } from "./actions";
+import {
+  cancelBookingAction,
+  cancelSlotAction,
+  createEventAction,
+  createSlotAction,
+  deleteEventAction,
+  setCapacityAction,
+  updateEventAction,
+  updateSlotAction,
+} from "./actions";
 
 type Search = Promise<Record<string, string | string[] | undefined>>;
 const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
 
-function slotHref(eventId: string, slotId?: string) {
+function slotHref(eventId: string, slotId?: string, mode: "slot" | "edit" = "slot") {
   const q = new URLSearchParams({ event: eventId });
-  if (slotId) q.set("slot", slotId);
+  if (slotId) q.set(mode, slotId);
   return `/admin?${q.toString()}#event-${eventId}`;
 }
+
+/** Meldungen nach Pflege-Aktionen (?ok=…&n=…) */
+const OK_TEXT: Record<string, (n: string) => string> = {
+  slot: () => at("form.saved"),
+  event: () => at("event.form.saved"),
+  capacity: () => at("capacity.saved"),
+  eventUpdated: () => at("manage.ok.eventUpdated"),
+  eventDeleted: () => at("manage.ok.eventDeleted"),
+  eventArchived: (n) => at("manage.ok.eventArchived", { n }),
+  slotUpdated: () => at("manage.ok.slotUpdated"),
+  slotUpdatedNotified: (n) => at("manage.ok.slotUpdatedNotified", { n }),
+  slotCancelled: (n) => at("manage.ok.slotCancelled", { n }),
+  slotDeleted: () => at("manage.ok.slotDeleted"),
+  bookingCancelled: () => at("manage.ok.bookingCancelled"),
+};
 
 function Occupancy({ s }: { s: AdminSlot }) {
   return (
@@ -47,6 +71,7 @@ export default async function EventsPage({ searchParams }: { searchParams: Searc
   const openSlotId = one(sp.slot);
   const open = panels.flatMap((p) => p.slots).find((s) => s.id === openSlotId) ?? null;
   const bookings = open ? await listSlotBookings(ctx, open.id) : [];
+  const editSlot = manage ? (panels.flatMap((p) => p.slots).find((s) => s.id === one(sp.edit)) ?? null) : null;
   const focus = one(sp.event);
 
   return (
@@ -67,7 +92,7 @@ export default async function EventsPage({ searchParams }: { searchParams: Searc
       )}
       {ok && (
         <p role="status" className={styles.notice}>
-          {ok === "slot" ? at("form.saved") : ok === "event" ? at("event.form.saved") : at("capacity.saved")}
+          {(OK_TEXT[ok] ?? OK_TEXT.capacity!)(one(sp.n) ?? "0")}
         </p>
       )}
       {one(sp.installed) && (
@@ -93,6 +118,7 @@ export default async function EventsPage({ searchParams }: { searchParams: Searc
               today={today}
               open={open && slots.some((s) => s.id === open.id) ? open : null}
               bookings={bookings}
+              edit={editSlot && slots.some((s) => s.id === editSlot.id) ? editSlot : null}
               addOpen={manage && focus === event.id && (ok === "slot" || error === "invalid_input" || error === "slot_in_past")}
             />
           ))}
@@ -112,9 +138,10 @@ function EventPanel(props: {
   today: string;
   open: AdminSlot | null;
   bookings: AdminBooking[];
+  edit: AdminSlot | null;
   addOpen: boolean;
 }) {
-  const { event, slots, manage, open } = props;
+  const { event, slots, manage, open, edit } = props;
   const k = kpis(slots);
   return (
     <section className={styles.card} id={`event-${event.id}`} aria-labelledby={`event-title-${event.id}`}>
@@ -127,6 +154,54 @@ function EventPanel(props: {
             {[event.location, at("slots.summary", { slots: k.slots, booked: k.booked, capacity: k.capacity, pct: k.pct })].filter(Boolean).join(" · ")}
           </p>
         </div>
+        {manage && (
+          <div className={styles.actions}>
+            <details className={styles.inlineEdit}>
+              <summary className={styles.btnGhost}>{at("manage.event.edit")}</summary>
+              <form action={updateEventAction} className={`${styles.form} ${styles.popover}`}>
+                <input type="hidden" name="eventId" value={event.id} />
+                <div className={`${styles.field} ${styles.full}`}>
+                  <label htmlFor={`et-${event.id}`}>{at("event.form.name")}</label>
+                  <input id={`et-${event.id}`} name="title" required maxLength={200} defaultValue={event.title} />
+                </div>
+                <div className={`${styles.field} ${styles.full}`}>
+                  <label htmlFor={`el-${event.id}`}>{at("event.form.location")}</label>
+                  <input id={`el-${event.id}`} name="location" maxLength={200} defaultValue={event.location ?? ""} />
+                </div>
+                <div className={`${styles.field} ${styles.full}`}>
+                  <label htmlFor={`ed-${event.id}`}>{at("event.form.description")}</label>
+                  <textarea id={`ed-${event.id}`} name="description" rows={3} maxLength={2000} className={styles.textarea} defaultValue={event.description ?? ""} />
+                </div>
+                <div className={styles.full}>
+                  <button type="submit" className={styles.btn}>
+                    {at("manage.event.editSubmit")}
+                  </button>
+                </div>
+              </form>
+            </details>
+            <details className={styles.inlineEdit}>
+              <summary className={styles.btnDanger}>{at("manage.event.delete")}</summary>
+              <form action={deleteEventAction} className={`${styles.brandingFields} ${styles.popover}`}>
+                <input type="hidden" name="eventId" value={event.id} />
+                <p style={{ margin: 0 }}>{at("manage.event.deleteText")}</p>
+                <label className={styles.check}>
+                  <input type="checkbox" name="notify" aria-describedby={`edn-${event.id}`} /> {at("manage.notify")}
+                </label>
+                <span id={`edn-${event.id}`} className={styles.hint}>
+                  {at("manage.event.deleteNotifyHint")}
+                </span>
+                <label className={styles.check}>
+                  <input type="checkbox" name="confirm" required /> {at("manage.event.deleteConfirm")}
+                </label>
+                <div>
+                  <button type="submit" className={styles.btnDanger}>
+                    {at("manage.event.deleteSubmit")}
+                  </button>
+                </div>
+              </form>
+            </details>
+          </div>
+        )}
       </div>
 
       {slots.length === 0 ? (
@@ -166,32 +241,9 @@ function EventPanel(props: {
                         {at("table.bookings")}
                       </Link>
                       {manage && s.level !== "cancelled" && (
-                        <details className={styles.inlineEdit}>
-                          <summary className={styles.btnGhost}>{at("table.capacityEdit")}</summary>
-                          <form action={setCapacityAction} className={styles.inlineForm}>
-                            <input type="hidden" name="slotId" value={s.id} />
-                            <input type="hidden" name="event" value={event.id} />
-                            <label htmlFor={`cap-${s.id}`} className={styles.visuallyHidden}>
-                              {at("table.capacityLabel", { date: s.date })}
-                            </label>
-                            <input
-                              id={`cap-${s.id}`}
-                              name="capacity"
-                              type="number"
-                              min={Math.max(1, s.booked)}
-                              max={10000}
-                              defaultValue={s.capacity}
-                              required
-                              aria-describedby={`cap-hint-${s.id}`}
-                            />
-                            <button type="submit" className={styles.btn}>
-                              {at("table.capacitySave")}
-                            </button>
-                            <span id={`cap-hint-${s.id}`} className={styles.hint}>
-                              {at("table.capacityHint", { booked: s.booked })}
-                            </span>
-                          </form>
-                        </details>
+                        <Link className={styles.btnGhost} href={slotHref(event.id, s.id, "edit")} aria-current={edit?.id === s.id ? "true" : undefined}>
+                          {at("manage.edit")}
+                        </Link>
                       )}
                     </div>
                   </td>
@@ -201,6 +253,8 @@ function EventPanel(props: {
           </table>
         </div>
       )}
+
+      {edit && <SlotEditor eventId={event.id} slot={edit} today={props.today} />}
 
       {open && (
         <div className={styles.subCard} aria-live="polite">
@@ -213,7 +267,7 @@ function EventPanel(props: {
           {props.bookings.length === 0 ? (
             <p className={styles.muted}>{at("bookings.empty")}</p>
           ) : (
-            <ul className={styles.list}>
+            <ul className={`${styles.list} ${styles.bookingList}`}>
               {props.bookings.map((b) => (
                 <li key={b.id}>
                   <div>
@@ -233,7 +287,27 @@ function EventPanel(props: {
                       )}
                     </div>
                   </div>
-                  <span className={styles.nowrap}>{at("bookings.seats", { n: b.seats })}</span>
+                  <div className={styles.rowActions} style={{ alignItems: "flex-start" }}>
+                    <span className={styles.nowrap}>{at("bookings.seats", { n: b.seats })}</span>
+                    {manage && (
+                      <details className={styles.inlineEdit}>
+                        <summary className={styles.btnGhost}>{at("manage.booking.cancel")}</summary>
+                        <form action={cancelBookingAction} className={`${styles.brandingFields} ${styles.popover}`}>
+                          <input type="hidden" name="bookingId" value={b.id} />
+                          <input type="hidden" name="event" value={event.id} />
+                          <input type="hidden" name="slot" value={open.id} />
+                          <label className={styles.check}>
+                            <input type="checkbox" name="notify" defaultChecked /> {at("manage.notify")}
+                          </label>
+                          <div>
+                            <button type="submit" className={styles.btnDanger}>
+                              {at("manage.booking.cancelSubmit")}
+                            </button>
+                          </div>
+                        </form>
+                      </details>
+                    )}
+                  </div>
                 </li>
               ))}
             </ul>
@@ -281,6 +355,103 @@ function EventPanel(props: {
         </details>
       )}
     </section>
+  );
+}
+
+/** Termin bearbeiten: Teilnehmeranzahl, verschieben/Ort, absagen – mit Haken „Teilnehmer informieren“ */
+function SlotEditor({ eventId, slot, today }: { eventId: string; slot: AdminSlot; today: string }) {
+  const id = slot.id;
+  const hasBookings = slot.booked > 0;
+  return (
+    <div className={styles.subCard} id={`edit-${id}`}>
+      <div className={styles.headRow}>
+        <h3 className={styles.h3}>{at("manage.slot.title", { date: `${slot.weekdayShort}, ${slot.date}, ${slot.time}` })}</h3>
+        <Link href={slotHref(eventId)} className={styles.hint}>
+          {at("manage.slot.close")}
+        </Link>
+      </div>
+
+      <form action={setCapacityAction} className={styles.inlineForm} style={{ marginBottom: 16 }}>
+        <input type="hidden" name="slotId" value={id} />
+        <input type="hidden" name="event" value={eventId} />
+        <label htmlFor={`cap-${id}`}>
+          <strong>{at("manage.slot.capacity")}</strong>
+        </label>
+        <input id={`cap-${id}`} name="capacity" type="number" min={Math.max(1, slot.booked)} max={10000} defaultValue={slot.capacity} required aria-describedby={`cap-hint-${id}`} />
+        <button type="submit" className={styles.btn}>
+          {at("table.capacitySave")}
+        </button>
+        <span id={`cap-hint-${id}`} className={styles.hint}>
+          {at("table.capacityHint", { booked: slot.booked })}
+        </span>
+      </form>
+
+      <form action={updateSlotAction} className={styles.form}>
+        <input type="hidden" name="slotId" value={id} />
+        <input type="hidden" name="event" value={eventId} />
+        <h4 className={`${styles.full} ${styles.h3}`} style={{ margin: 0 }}>
+          {at("manage.slot.move")}
+        </h4>
+        <div className={styles.field}>
+          <label htmlFor={`md-${id}`}>{at("form.date")}</label>
+          <input id={`md-${id}`} name="date" type="date" min={today} defaultValue={slot.edit.date} required />
+        </div>
+        <div className={styles.field}>
+          <label htmlFor={`ml-${id}`}>{at("form.location")}</label>
+          <input id={`ml-${id}`} name="location" maxLength={200} defaultValue={slot.edit.location ?? ""} aria-describedby={`mlh-${id}`} />
+          <span id={`mlh-${id}`} className={styles.hint}>
+            {at("form.locationHint")}
+          </span>
+        </div>
+        <div className={styles.field}>
+          <label htmlFor={`mf-${id}`}>{at("form.from")}</label>
+          <input id={`mf-${id}`} name="from" type="time" defaultValue={slot.edit.from} required />
+        </div>
+        <div className={styles.field}>
+          <label htmlFor={`mt-${id}`}>{at("form.to")}</label>
+          <input id={`mt-${id}`} name="to" type="time" defaultValue={slot.edit.to} required />
+        </div>
+        {hasBookings && (
+          <div className={styles.full}>
+            <label className={styles.check}>
+              <input type="checkbox" name="notify" defaultChecked aria-describedby={`mnh-${id}`} /> {at("manage.notify")}
+            </label>
+            <span id={`mnh-${id}`} className={styles.hint}>
+              {at("manage.slot.moveHint")}
+            </span>
+          </div>
+        )}
+        <div className={styles.full}>
+          <button type="submit" className={styles.btn}>
+            {at("manage.slot.moveSubmit")}
+          </button>
+        </div>
+      </form>
+
+      <form action={cancelSlotAction} className={styles.brandingFields} style={{ marginTop: 16, borderTop: "1px solid var(--adm-line)", paddingTop: 12 }}>
+        <input type="hidden" name="slotId" value={id} />
+        <input type="hidden" name="event" value={eventId} />
+        <h4 className={styles.h3} style={{ margin: 0 }}>
+          {at("manage.slot.cancel")}
+        </h4>
+        <p style={{ margin: 0 }}>{hasBookings ? at("manage.slot.cancelText", { n: slot.bookingCount }) : at("manage.slot.deleteText")}</p>
+        {hasBookings && (
+          <>
+            <label className={styles.check}>
+              <input type="checkbox" name="notify" defaultChecked aria-describedby={`cnh-${id}`} /> {at("manage.notify")}
+            </label>
+            <span id={`cnh-${id}`} className={styles.hint}>
+              {at("manage.notifyHint")}
+            </span>
+          </>
+        )}
+        <div>
+          <button type="submit" className={styles.btnDanger}>
+            {hasBookings ? at("manage.slot.cancelSubmit") : at("manage.slot.deleteSubmit")}
+          </button>
+        </div>
+      </form>
+    </div>
   );
 }
 

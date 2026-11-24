@@ -540,13 +540,15 @@ function buildMessage(row: OutboxRow, plan: Plan, ctx: MailContext): MailMessage
         location: b.location,
         url: guestUrl,
         organizer: { name: plan.from.name ?? tenant.name, email: plan.from.email },
-        versionAt: cancelled ? new Date(row.created_at) : new Date(b.created_at),
+        // Version = Zeitpunkt dieser Mail (steigt bei jeder Änderung -> Kalender aktualisiert)
+        versionAt: new Date(row.created_at),
         cancelled,
       }),
     });
+    const byOrganizer = row.payload.by_organizer === true;
     const base = { eventTitle: b.title, startsAt: new Date(b.starts_at), endsAt: new Date(b.ends_at), name: g.name };
     rendered = cancelled
-      ? renderGuestCancellation(tenant, base)
+      ? renderGuestCancellation(tenant, { ...base, byOrganizer })
       : renderGuestConfirmation(tenant, {
           ...base,
           location: b.location,
@@ -554,6 +556,7 @@ function buildMessage(row: OutboxRow, plan: Plan, ctx: MailContext): MailMessage
           guestUrl,
           icsFilename,
           changed: row.payload.changed === true,
+          organizerChanged: byOrganizer,
         });
   } else if (row.type === "confirmation" || row.type === "cancellation") {
     const b = ctx.booking;
@@ -570,7 +573,8 @@ function buildMessage(row: OutboxRow, plan: Plan, ctx: MailContext): MailMessage
       location: b.location,
       url: bookingUrl,
       organizer: { name: plan.from.name ?? tenant.name, email: plan.from.email },
-      versionAt: new Date(row.type === "cancellation" && b.cancelled_at ? b.cancelled_at : b.created_at),
+      // Version = Zeitpunkt dieser Mail (steigt bei jeder Änderung -> Kalender aktualisiert)
+      versionAt: new Date(row.created_at),
       cancelled: row.type === "cancellation",
     });
     attachments.push({ filename: icsFilename, contentType: "text/calendar; charset=utf-8", content: ics });
@@ -581,10 +585,11 @@ function buildMessage(row: OutboxRow, plan: Plan, ctx: MailContext): MailMessage
             ...base,
             extraAttendees: b.extra_attendees ?? [],
             icsFilename,
-            changed: Boolean(row.payload.replaces_booking_id) || typeof row.payload.guest_cancelled === "string",
+            changed: Boolean(row.payload.replaces_booking_id) || typeof row.payload.guest_cancelled === "string" || row.payload.by_organizer === true,
+            organizerChanged: row.payload.by_organizer === true,
             guestCancelled: typeof row.payload.guest_cancelled === "string" ? row.payload.guest_cancelled : null,
           })
-        : renderCancellation(tenant, base);
+        : renderCancellation(tenant, { ...base, byOrganizer: row.payload.by_organizer === true });
   } else if (row.type === "invitation") {
     const inv = ctx.invitation;
     const link = openLink(row.payload);
