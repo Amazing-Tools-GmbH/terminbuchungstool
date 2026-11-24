@@ -119,13 +119,17 @@ export default async function BookingsPage({ searchParams }: { searchParams: Sea
                         {b.organization ? `${b.customer} · ` : ""}
                         {b.email}
                       </div>
-                      {b.dealUrl && (
-                        <div className={styles.hint}>
-                          <a href={b.dealUrl} target="_blank" rel="noopener noreferrer">
-                            {at("bookings.deal")}
-                          </a>
-                        </div>
-                      )}
+                      <div className={styles.hint}>
+                        {b.dealUrl && (
+                          <>
+                            <a href={b.dealUrl} target="_blank" rel="noopener noreferrer">
+                              {at("bookings.deal")}
+                            </a>
+                            {canManage(ctx.role) ? " · " : ""}
+                          </>
+                        )}
+                        {canManage(ctx.role) && <Link href={`/admin/verlauf?inv=${b.invitationId}`}>{at("nav.activity")}</Link>}
+                      </div>
                     </td>
                     <td data-label={at("bookingList.col.seats")}>
                       <strong>{b.seats}</strong>
