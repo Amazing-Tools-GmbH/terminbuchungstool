@@ -149,7 +149,27 @@ describe("Login über Pipedrive", () => {
     ["disabled", { lookupMember: async () => ({ userId: UID, authEmail: "eva@firma.example", status: "disabled" as const }) }],
     ["email_mismatch", { lookupMember: async () => ({ userId: UID, authEmail: "andere@firma.example", status: "active" as const }) }],
   ] as const)("verweigert: %s", async (error, over) => {
-    expect(await completePipedriveLogin("code", deps(over as Partial<LoginDeps>))).toEqual({ ok: false, error });
+    expect(await completePipedriveLogin("code", deps(over as Partial<LoginDeps>))).toMatchObject({ ok: false, error });
+  });
+
+  it("kein Zugriff: Mandant wird für den Owner-Hinweis mitgegeben", async () => {
+    expect(await completePipedriveLogin("code", deps({ lookupMember: async () => null }))).toEqual({ ok: false, error: "no_access", tid: TID });
+  });
+
+  it("Pipedrive-Admin: vor der Prüfung automatisch Admin; Nicht-Admins nicht", async () => {
+    const grant = vi.fn(async () => {});
+    await completePipedriveLogin("code", deps({ grantAdmin: grant }));
+    expect(grant).not.toHaveBeenCalled();
+    const admin = { ...me, isAdmin: true };
+    const r = await completePipedriveLogin("code", deps({ getMe: async () => admin, grantAdmin: grant }));
+    expect(grant).toHaveBeenCalledWith(TID, admin);
+    expect(r.ok).toBe(true);
+  });
+
+  it("Owner-Hinweis in der Meldung", () => {
+    expect(loginErrorText("no_access", ["chef@firma.example"])).toContain("Bitte wende dich an den Owner „chef@firma.example“.");
+    expect(loginErrorText("no_access", ["a@f.example", "b@f.example"])).toContain("einen der Owner: „a@f.example“, „b@f.example“");
+    expect(loginErrorText("no_access")).not.toContain("{owner}");
   });
 
   it("jede Login-Fehlermeldung hat einen Text", () => {

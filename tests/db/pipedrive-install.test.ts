@@ -84,9 +84,28 @@ describe("Pipedrive-Installation", () => {
     expect(t!.name).toBe("Neue Firma GmbH");
   });
 
-  it("Neuinstallation durch Nicht-Mitglied: Tokens erneuert, aber kein Zugriff", async () => {
-    const r = await install.installFromOAuth(me({ id: 8800002, email: "fremd@neuefirma.example", name: "Fremd" }), tokens("3"));
-    expect(r).toEqual({ ok: false, error: "no_access", created: false });
+  it("Neuinstallation durch Nicht-Mitglied (kein Pipedrive-Admin): Tokens erneuert, aber kein Zugriff", async () => {
+    const r = await install.installFromOAuth(me({ id: 8800002, email: "fremd@neuefirma.example", name: "Fremd", isAdmin: false }), tokens("3"));
+    expect(r).toMatchObject({ ok: false, error: "no_access", created: false });
+    if (r.ok) return;
+    const [req] = await db.admin<{ status: string }>("select status from access_requests where tenant_id = $1 and pipedrive_user_id = 8800002", [r.tid]);
+    expect(req!.status).toBe("open");
+  });
+
+  it("Neuinstallation durch einen Pipedrive-Admin: automatisch Admin, offene Anfrage erledigt", async () => {
+    // erst als Nicht-Admin (Anfrage), dann ist er in Pipedrive Admin geworden
+    const first = await install.installFromOAuth(me({ id: 8800009, email: "pd.admin@neuefirma.example", name: "PD Admin", isAdmin: false }), tokens("3b"));
+    expect(first.ok).toBe(false);
+    const r = await install.installFromOAuth(me({ id: 8800009, email: "pd.admin@neuefirma.example", name: "PD Admin" }), tokens("3c"));
+    expect(r).toMatchObject({ ok: true, created: false });
+    if (!r.ok) return;
+    const [m] = await db.admin<{ role: string; status: string }>("select role::text, status::text from tenant_members where tenant_id = $1 and user_id = $2", [
+      r.session.tid,
+      r.session.uid,
+    ]);
+    expect(m).toEqual({ role: "admin", status: "active" });
+    const [req] = await db.admin<{ status: string }>("select status from access_requests where tenant_id = $1 and pipedrive_user_id = 8800009", [r.session.tid]);
+    expect(req!.status).toBe("approved");
   });
 
   it("vorbereiteter Mandant mit gleichem Slug (nie verbunden) wird übernommen", async () => {
@@ -185,7 +204,7 @@ describe("Pipedrive-Installation", () => {
     expect(await install.uninstallCompany(8100001)).toBe(false);
     expect(await connection.tenantIdForCompany(8100001)).toBeNull();
     const [t] = await db.admin<{ n: string }>("select count(*)::text as n from tenant_members where tenant_id = $1", [tid]);
-    expect(t!.n).toBe("1");
+    expect(t!.n).toBe("2"); // Owner + automatisch übernommener Pipedrive-Admin
     const [u] = await db.admin<{ status: string }>("select status::text from pipedrive_user_connections where tenant_id = $1", [tid]);
     expect(u!.status).toBe("error");
     const r = await install.installFromOAuth(me(), tokens("5"));

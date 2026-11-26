@@ -4,6 +4,7 @@ import { withActor } from "@/lib/db";
 import { devToolsEnabled } from "@/lib/dev-tools";
 import { getAdminContext } from "@/lib/auth/admin";
 import { at, loginErrorText } from "@/lib/texts/admin";
+import { readLoginHint } from "@/lib/auth/login-hint";
 import styles from "@/components/admin/Admin.module.css";
 import { devLoginAction } from "./actions";
 
@@ -17,7 +18,8 @@ export default async function LoginPage({ searchParams }: { searchParams: Search
 
   const sp = await searchParams;
   const errorCode = Array.isArray(sp.error) ? sp.error[0] : sp.error;
-  const error = loginErrorText(errorCode);
+  const hint = Array.isArray(sp.hint) ? sp.hint[0] : sp.hint;
+  const error = loginErrorText(errorCode, errorCode === "no_access" ? readLoginHint(hint) : []);
   // Firma noch nicht verbunden -> Installation direkt anbieten
   const offerInstall = errorCode === "not_connected";
   const dev = devToolsEnabled();

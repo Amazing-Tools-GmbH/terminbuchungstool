@@ -6,7 +6,8 @@
  * Der Mandant ergibt sich aus der Pipedrive-Firma des Benutzers (company_id
  * der Pipedrive-Verbindung). Zugriff bekommt nur, wer
  *   1. zu einer Pipedrive-Firma gehört, die mit einem Mandanten verbunden ist,
- *   2. dort in der Nutzerverwaltung freigeschaltet ist (status active),
+ *   2. dort in der Nutzerverwaltung freigeschaltet ist (status active) –
+ *      Admins in Pipedrive werden dabei automatisch Admin (lib/pipedrive/admin-sync.ts),
  *   3. dieselbe E-Mail hat wie der freigeschaltete auth-Benutzer.
  * Die Benutzer-Tokens werden verschlüsselt gespeichert (Einträge in Pipedrive
  * in seinem Namen, z. B. Aktivität und Notiz).
@@ -28,11 +29,13 @@ export type LoginDeps = {
   refreshMemberCache: (tenantId: string, userId: string, me: PipedriveMe) => Promise<void>;
   /** Tokens des Mitarbeiters speichern (Versand von Einladungen über Pipedrive) */
   storeUserTokens: (tenantId: string, userId: string, me: PipedriveMe, tokens: PipedriveTokens) => Promise<void>;
+  /** Pipedrive-Admin: automatisch Admin (neu oder von sales angehoben) */
+  grantAdmin?: (tenantId: string, me: PipedriveMe) => Promise<unknown>;
   /** Noch nicht freigeschaltet: Zugriffsanfrage festhalten (Owner/Admins werden informiert) */
   onNoAccess?: (tenantId: string, me: PipedriveMe) => Promise<unknown>;
 };
 
-export type LoginResult = { ok: true; session: Session } | { ok: false; error: LoginError };
+export type LoginResult = { ok: true; session: Session } | { ok: false; error: LoginError; tid?: string };
 
 export async function completePipedriveLogin(code: string, deps: LoginDeps): Promise<LoginResult> {
   let me: PipedriveMe;
@@ -47,10 +50,11 @@ export async function completePipedriveLogin(code: string, deps: LoginDeps): Pro
   const tid = await deps.tenantForCompany(me.companyId);
   if (!tid) return { ok: false, error: "not_connected" };
 
+  if (me.isAdmin) await deps.grantAdmin?.(tid, me);
   const member = await deps.lookupMember(tid, me.id);
   if (!member) {
     await deps.onNoAccess?.(tid, me);
-    return { ok: false, error: "no_access" };
+    return { ok: false, error: "no_access", tid };
   }
   if (member.status !== "active") return { ok: false, error: "disabled" };
   if ((member.authEmail ?? "").toLowerCase() !== me.email.toLowerCase()) return { ok: false, error: "email_mismatch" };

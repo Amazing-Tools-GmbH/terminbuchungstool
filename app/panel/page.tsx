@@ -4,10 +4,11 @@ import { verifyPanelEntry } from "@/lib/panel/token";
 import { startPanelSession } from "@/lib/panel/session";
 import { loadPanelContext } from "@/lib/panel/context";
 import { tenantForMember } from "@/lib/tenant/current";
-import { at, panelTexts, type PanelErrorCode } from "@/lib/texts/admin";
+import { at, ownerHint, panelTexts, type PanelErrorCode } from "@/lib/texts/admin";
 import { PanelApp } from "@/components/panel/PanelApp";
 import { PanelError } from "@/components/panel/PanelError";
 import { recordAccessRequest } from "@/lib/access-requests";
+import { ownerContacts } from "@/lib/pipedrive/admin-sync";
 
 export const dynamic = "force-dynamic";
 // Token in der Adresse nicht als Referrer weitergeben
@@ -15,8 +16,8 @@ export const metadata: Metadata = { title: "Terminbuchung", referrer: "no-referr
 
 type Search = Promise<Record<string, string | string[] | undefined>>;
 
-function PanelMessage({ code, detail, theme }: { code: PanelErrorCode; detail?: string; theme: "light" | "dark" }) {
-  return <PanelError message={at(`panel.error.${code}`)} code={detail ? `${code}/${detail}` : code} theme={theme} />;
+function PanelMessage({ code, detail, theme, owners = [] }: { code: PanelErrorCode; detail?: string; theme: "light" | "dark"; owners?: string[] }) {
+  return <PanelError message={at(`panel.error.${code}`, { owner: ownerHint(owners) })} code={detail ? `${code}/${detail}` : code} theme={theme} />;
 }
 
 /**
@@ -31,9 +32,9 @@ export default async function PanelPage({ searchParams }: { searchParams: Search
   const theme = q.get("theme") === "dark" ? "dark" : "light";
 
   // Grund im Server-Log (journalctl -u meetings), ohne Token – nur IDs
-  const reject = (code: PanelErrorCode, detail?: string) => {
+  const reject = (code: PanelErrorCode, detail?: string, owners?: string[]) => {
     console.warn(`[panel] abgelehnt: ${code}${detail ? `/${detail}` : ""} (userId=${q.get("userId") ?? "-"}, companyId=${q.get("companyId") ?? "-"}, resource=${q.get("resource") ?? "-"}, selectedIds=${q.get("selectedIds") ?? "-"})`);
-    return <PanelMessage code={code} detail={detail} theme={theme} />;
+    return <PanelMessage code={code} detail={detail} theme={theme} owners={owners} />;
   };
 
   const v = verifyPanelEntry(q, settingsJwtSecret());
@@ -46,7 +47,7 @@ export default async function PanelPage({ searchParams }: { searchParams: Search
     if (!start.ok) {
       if (start.error === "no_access" && start.tid) {
         await recordAccessRequest({ id: start.tid }, v.entry.userId);
-        return reject("access_requested");
+        return reject("access_requested", undefined, await ownerContacts(start.tid).catch(() => []));
       }
       return reject(start.error);
     }

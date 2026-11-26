@@ -3,7 +3,7 @@ import { settingsJwtSecret, verifySettingsToken } from "@/lib/pipedrive/settings
 import { startAppSettings } from "@/lib/app-settings";
 import { loadTeam } from "@/lib/admin/members";
 import { listOpenAccessRequests } from "@/lib/access-requests";
-import { ADMIN_TEXTS, at } from "@/lib/texts/admin";
+import { ADMIN_TEXTS, at, ownerHint } from "@/lib/texts/admin";
 import { AppSettings } from "@/components/app-settings/AppSettings";
 import { PanelError } from "@/components/panel/PanelError";
 
@@ -21,7 +21,9 @@ export default async function AppSettingsPage({ searchParams }: { searchParams: 
   const q = new URLSearchParams();
   for (const [k, v] of Object.entries(sp)) if (typeof v === "string") q.set(k, v);
   const theme = q.get("theme") === "dark" ? "dark" : "light";
-  const msg = (key: Parameters<typeof at>[0], code: string) => <PanelError message={at(key)} code={code} theme={theme} />;
+  const msg = (key: Parameters<typeof at>[0], code: string, owners: string[] = []) => (
+    <PanelError message={at(key, { owner: ownerHint(owners) })} code={code} theme={theme} />
+  );
 
   const v = verifySettingsToken({ token: q.get("token"), userId: q.get("userId"), companyId: q.get("companyId") }, settingsJwtSecret());
   if (!v.ok) {
@@ -36,7 +38,7 @@ export default async function AppSettingsPage({ searchParams }: { searchParams: 
     return msg("panel.error.generic", "load");
   }
   if (!start.ok) {
-    if (start.error === "access_requested") return msg("panel.error.access_requested", start.error);
+    if (start.error === "access_requested") return msg("panel.error.access_requested", start.error, start.owners);
     if (start.error === "sales") return msg("appSettings.salesOnly", start.error);
     return msg(start.error === "not_connected" ? "panel.error.not_connected" : "panel.error.disabled", start.error);
   }

@@ -13,7 +13,7 @@ import { hkdfSync } from "node:crypto";
 import { z } from "zod";
 import { decryptSecret, encryptSecret } from "@/lib/crypto/secretbox";
 
-export type SealPurpose = "session" | "login-state" | "mail-state" | "panel" | "app-settings";
+export type SealPurpose = "session" | "login-state" | "mail-state" | "panel" | "app-settings" | "login-hint";
 
 function purposeKey(purpose: SealPurpose, rawKey: string | undefined): string {
   if (!rawKey) throw new Error("ENCRYPTION_KEY fehlt");
@@ -110,6 +110,9 @@ export type MailState = z.infer<typeof mailStateSchema>;
  * versiegelter Wert, den der Browser als Bearer-Token mitschickt.
  */
 export const PANEL_TTL_SECONDS = 2 * 60 * 60;
+/** Hinweis auf der Login-Seite (Owner-Kontakt bei fehlendem Zugriff), versiegelt in der Adresse */
+export const LOGIN_HINT_TTL_SECONDS = 30 * 60;
+export const loginHintSchema = z.object({ owners: z.array(z.string().email()).max(10) });
 /** Sitzung der eingebetteten App-Einstellungen in Pipedrive (Bearer wie beim Panel) */
 export const APP_SETTINGS_TTL_SECONDS = 2 * 60 * 60;
 export const panelSessionSchema = sessionSchema.extend({ deal: z.number().int().positive() });

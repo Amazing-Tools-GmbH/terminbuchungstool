@@ -51,9 +51,9 @@ export function AppSettings(props: { bearer: string; theme: "light" | "dark"; te
   }
 
   const roleFor = (key: string, fallback: MemberRole) => roles[key] ?? fallback;
-  const RoleSelect = ({ id, value, label }: { id: string; value: MemberRole; label: string }) => (
+  const RoleSelect = ({ id, value, label, pdAdmin = false }: { id: string; value: MemberRole; label: string; pdAdmin?: boolean }) => (
     <select className={styles.inlineSelect} value={roleFor(id, value)} aria-label={label} onChange={(e) => setRoles((r) => ({ ...r, [id]: e.target.value as MemberRole }))}>
-      {roleOptions.map((r) => (
+      {roleOptions.filter((r) => !(pdAdmin && r === "sales")).map((r) => (
         <option key={r} value={r}>
           {t(`role.${r}`)}
         </option>
@@ -85,9 +85,9 @@ export function AppSettings(props: { bearer: string; theme: "light" | "dark"; te
         </td>
         <td data-label={t("users.role")}>
           {canEnable ? (
-            <RoleSelect id={key} value="sales" label={t("users.roleFor", { name: e.name })} />
+            <RoleSelect id={key} value={e.pipedrive?.isAdmin ? "admin" : "sales"} label={t("users.roleFor", { name: e.name })} pdAdmin={e.pipedrive?.isAdmin} />
           ) : m && m.status === "active" && !locked ? (
-            <RoleSelect id={key} value={m.role} label={t("users.roleFor", { name: e.name })} />
+            <RoleSelect id={key} value={m.role} label={t("users.roleFor", { name: e.name })} pdAdmin={e.pipedrive?.isAdmin} />
           ) : m ? (
             t(`role.${m.role}`)
           ) : (
@@ -97,7 +97,12 @@ export function AppSettings(props: { bearer: string; theme: "light" | "dark"; te
         <td>
           <div className={styles.rowActions}>
             {canEnable && e.pipedrive && (
-              <button type="button" className={styles.btn} disabled={busy} onClick={() => act({ action: "enable", pipedriveUserId: e.pipedrive!.id, role: roleFor(key, "sales") })}>
+              <button
+                type="button"
+                className={styles.btn}
+                disabled={busy}
+                onClick={() => act({ action: "enable", pipedriveUserId: e.pipedrive!.id, role: roleFor(key, e.pipedrive!.isAdmin ? "admin" : "sales") })}
+              >
                 {t("users.enable")}
               </button>
             )}
@@ -211,6 +216,7 @@ export function AppSettings(props: { bearer: string; theme: "light" | "dark"; te
               </table>
             </div>
             <p className={styles.hint}>{t("users.roles")}</p>
+            <p className={styles.hint}>{t("users.pdAdminHint")}</p>
           </>
         ) : (
           <section className={styles.card}>
