@@ -161,7 +161,8 @@ Mandantenfähiges Terminbuchungstool mit Pipedrive-Integration. Auftrag und Phas
   Deal nehmen, sonst Kontakt/Firma/Deal anlegen (`tenants.new_deal_pipeline_id/stage_id`), dann
   Aktivität. Mails dazu immer über die System-Adresse (kein einladender Mitarbeiter).
 - Buchungsseite: erst Tag, dann Termine des Tages (wie im Panel). `events.show_seats` = Platzzahlen
-  für Kunden (aus ⇒ Zahlen werden nicht ausgeliefert, nur frei/ausgebucht).
+  für Kunden (aus ⇒ nur Datum/Uhrzeit der buchbaren Termine; keine Zahlen, keine Belegung, kein
+  „ausgebucht“, ausgebuchte Termine erscheinen nicht; Zahlen werden nicht ausgeliefert).
 - Buchungsseite `/b/[token]`: Server lädt Kontext über `get_invitation_context` (als `anon`),
   Client-Komponente `components/booking/BookingApp.tsx`; Texte als aufgelöstes Wörterbuch
   (`resolveTexts`), Datums-Formatierung serverseitig in der Mandanten-Zeitzone.

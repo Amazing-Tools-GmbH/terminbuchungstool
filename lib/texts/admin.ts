@@ -403,7 +403,7 @@ export const ADMIN_TEXTS = {
   "publicLink.hint": "Über diesen Link kann jeder ohne Einladung buchen (z. B. Website, Newsletter). Bei der Buchung sucht das Tool den Kontakt und einen offenen Deal in Pipedrive, sonst legt es beides an (Ziel unter Pipedrive-Verbindung). Neuer Link = alter Link ungültig.",
   "publicLink.ok.on": "Öffentlicher Link ist aktiv.",
   "publicLink.ok.off": "Öffentlicher Link ist abgeschaltet.",
-  "manage.event.showSeats": "Freie Plätze für Kunden anzeigen (sonst nur „frei“ / „ausgebucht“)",
+  "manage.event.showSeats": "Plätze für Kunden anzeigen (Gesamtzahl und freie Plätze). Aus = Kunden sehen nur Datum und Uhrzeit der buchbaren Termine.",
   "manage.event.edit": "Event bearbeiten",
   "manage.event.editSubmit": "Speichern",
   "manage.event.delete": "Event löschen",
