@@ -619,7 +619,7 @@ export const ADMIN_TEXTS = {
   "panel.error.not_connected": "Für diese Pipedrive-Firma ist das Terminbuchungstool nicht installiert.",
   "access.owner.one": "Bitte wende dich an den Owner „{email}“. ",
   "access.owner.many": "Bitte wende dich an einen der Owner: {emails}. ",
-  "users.pdAdminHint": "Admins in Pipedrive sind automatisch Admin im Terminbuchungstool (sperren geht, herabstufen nicht).",
+  "users.pdAdminHint": "Admins in Pipedrive werden automatisch Admin im Terminbuchungstool. Legt ihr die Rolle hier selbst fest (z. B. Vertrieb), bleibt sie so. Es gibt immer mindestens einen aktiven Owner.",
   "panel.error.access_requested": "Du hast noch keinen Zugriff auf das Terminbuchungstool. {owner}Deine Anfrage wurde gespeichert, und die Owner und Admins deiner Firma wurden per E-Mail informiert. Sobald du freigeschaltet bist, bekommst du eine E-Mail – danach die Seite neu laden.",
   "panel.error.no_access": "Du hast noch keinen Zugriff auf das Terminbuchungstool. Bitte wende dich an einen Owner oder Admin deiner Firma.",
   "panel.error.disabled": "Dein Zugriff wurde gesperrt. Bitte wende dich an einen Owner oder Admin deiner Firma.",

@@ -110,6 +110,45 @@ describe("Pipedrive-Admins werden automatisch Admin", () => {
   });
 });
 
+describe("Rolle von Hand festgelegt", () => {
+  it("Owner stuft einen Pipedrive-Admin zu Vertrieb herab – bleibt so (Login, Nutzerverwaltung)", async () => {
+    // Julia Bechter (7200003) ist Pipedrive-Admin und wurde oben automatisch Admin
+    const [j] = await db.admin<{ user_id: string; role_manual: boolean }>(
+      "select user_id, role_manual from tenant_members where tenant_id = $1 and pipedrive_user_id = 7200003",
+      [tenant.id],
+    );
+    expect(j!.role_manual).toBe(false); // automatisch übernommen, nicht von Hand
+    await members.updateMember(owner, j!.user_id, { role: "sales" });
+    expect(await member(7200003)).toEqual({ role: "sales", status: "active" });
+    await sync.grantPipedriveAdmin(tenant.id, pd({ id: 7200003, name: "Julia Bechter", email: "julia.bechter@antenne-vorarlberg.example" }));
+    await members.loadTeam(owner);
+    expect(await member(7200003)).toEqual({ role: "sales", status: "active" });
+  });
+
+  it("nur Rollenänderungen angemeldeter Benutzer zählen als „von Hand“", async () => {
+    await db.admin("update tenant_members set role = 'sales', role_manual = false where tenant_id = $1 and pipedrive_user_id = 7200003", [tenant.id]);
+    // Server-Job (ohne auth.uid()): automatisch angehoben, role_manual bleibt false
+    await sync.grantPipedriveAdmin(tenant.id, pd({ id: 7200003, name: "Julia Bechter", email: "julia.bechter@antenne-vorarlberg.example" }));
+    const [j] = await db.admin<{ role: string; role_manual: boolean }>(
+      "select role::text, role_manual from tenant_members where tenant_id = $1 and pipedrive_user_id = 7200003",
+      [tenant.id],
+    );
+    expect(j).toEqual({ role: "admin", role_manual: false });
+  });
+});
+
+describe("Mindestens ein Owner", () => {
+  it("der letzte aktive Owner kann weder herabgestuft noch gesperrt noch entfernt werden", async () => {
+    const [o] = await db.admin<{ user_id: string }>("select user_id from tenant_members where tenant_id = $1 and role = 'owner'", [tenant.id]);
+    // auch Server-Jobs nicht (Trigger in der Datenbank)
+    await expect(db.admin("update tenant_members set role = 'admin' where tenant_id = $1 and user_id = $2", [tenant.id, o!.user_id])).rejects.toThrow(/TB:last_owner/);
+    await expect(db.admin("update tenant_members set status = 'disabled' where tenant_id = $1 and user_id = $2", [tenant.id, o!.user_id])).rejects.toThrow(
+      /TB:last_owner/,
+    );
+    await expect(db.admin("delete from tenant_members where tenant_id = $1 and user_id = $2", [tenant.id, o!.user_id])).rejects.toThrow(/TB:last_owner/);
+  });
+});
+
 describe("Owner-Kontakt", () => {
   it("aktive Owner des Mandanten, sonst niemand", async () => {
     expect(await sync.ownerContacts(tenant.id)).toEqual(["admin@antenne-vorarlberg.example"]);
