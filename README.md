@@ -301,7 +301,8 @@ Den Weg wählt jede Firma unter **Admin → E-Mail** (`tenants.mail_route`):
 | App-Deinstallation (Webhook) | dieselbe Callback-URL (Pipedrive ruft sie mit `DELETE` und Basic-Auth auf) |
 | App settings (eigene Seite) | `https://meetings.atools.de/settings` |
 | App-Erweiterung „Custom panel“, Deal-Detailansicht | `https://meetings.atools.de/panel`, JWT-Secret = `PIPEDRIVE_JWT_SECRET` (oder leer = Client-Secret) |
-| Scopes | Basis, Deals (voll), Kontakte (lesen), Aktivitäten (voll), Benutzer (lesen), Mail (voll) – einen Scope zum Senden gibt es für Apps nicht |
+| Scopes | Basis, Deals (voll), Kontakte (voll – der öffentliche Event-Link legt Kontakte an), Aktivitäten (voll), Benutzer (lesen), Mail (voll) – einen Scope zum Senden gibt es für Apps nicht |
+| App-Erweiterung „Custom panel“, Kontakt-Detailansicht (optional) | `https://meetings.atools.de/panel` – wirkt nur bei Firmen, die „Panel im Kontakt“ eingeschaltet haben |
 
 - **Installation:** Die Installation läuft über dieselbe Callback-URL (ohne `state`). Neue
   Pipedrive-Firma ⇒ Mandant (Slug = Unternehmensdomain, Name/Zeitzone aus Pipedrive),

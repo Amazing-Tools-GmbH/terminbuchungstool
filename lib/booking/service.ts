@@ -7,9 +7,9 @@ import type pg from "pg";
 import { encryptSecret } from "@/lib/crypto/secretbox";
 import { bookingUrl } from "@/lib/links";
 import { generateToken, looksLikeToken } from "./tokens";
-import { guestContextSchema, invitationContextSchema, type GuestContext, type InvitationContext } from "./context";
+import { guestContextSchema, invitationContextSchema, publicEventContextSchema, type GuestContext, type InvitationContext, type PublicEventContext } from "./context";
 import { toBookingError } from "./errors";
-import type { BookInput, GuestInput } from "./input";
+import type { BookInput, GuestInput, PublicBookInput } from "./input";
 
 type Run = <T>(fn: (c: pg.PoolClient) => Promise<T>) => Promise<T>;
 export type TenantRef = { id: string; slug: string; customDomain?: string | null };
@@ -97,4 +97,47 @@ export async function loadBookingContact(run: Run, tenantId: string, token: stri
     return rows[0]?.c ?? null;
   });
   return raw && typeof raw.name === "string" ? { name: raw.name, email: typeof raw.email === "string" ? raw.email : null } : null;
+}
+
+/** Öffentlicher Event-Link: Event + Termine (null = unbekannt/nicht aktiv) */
+export async function loadPublicEventContext(run: Run, tenantId: string, token: string): Promise<PublicEventContext | null> {
+  if (!looksLikeToken(token)) return null;
+  const raw = await run(async (c) => {
+    const { rows } = await c.query("select public.get_public_event_context($1, $2) as ctx", [tenantId, token]);
+    return rows[0]?.ctx ?? null;
+  });
+  return raw ? publicEventContextSchema.parse(raw) : null;
+}
+
+/**
+ * Buchen über den öffentlichen Event-Link: erzeugt einen persönlichen Link
+ * (für Bestätigung/Ansicht) und bucht über public.book_public -> book_slot.
+ * Ergebnis enthält den persönlichen Token, damit die Seite dorthin wechselt.
+ */
+export async function bookPublic(run: Run, tenant: TenantRef, input: PublicBookInput): Promise<BookResult & { personalToken: string }> {
+  const personalToken = generateToken();
+  try {
+    return await run(async (c) => {
+      const { rows } = await c.query(
+        "select public.book_public($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb) as r",
+        [
+          tenant.id,
+          input.token,
+          personalToken,
+          sealBookingLink(tenant, personalToken),
+          input.slotId,
+          input.seats,
+          input.name,
+          input.email,
+          input.organization,
+          input.extraAttendees,
+          guestsForDb(tenant, input.guests ?? []),
+        ],
+      );
+      const r = rows[0].r as { booking_id: string; replaced_booking_id: string | null };
+      return { bookingId: r.booking_id, replacedBookingId: r.replaced_booking_id, personalToken };
+    });
+  } catch (err) {
+    throw toBookingError(err) ?? err;
+  }
 }

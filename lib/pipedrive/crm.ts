@@ -39,6 +39,14 @@ export interface PipedriveCrm {
   /** Pipelines mit ihren Phasen (Reihenfolge wie in Pipedrive) */
   listPipelines(a: PipedriveApiAccess): Promise<CrmPipeline[]>;
   getDeal(a: PipedriveApiAccess, id: number): Promise<CrmDeal | null>;
+  /** Dublettencheck: Kontakt mit genau dieser E-Mail (null = keiner) */
+  findPersonByEmail(a: PipedriveApiAccess, email: string): Promise<CrmPerson | null>;
+  /** jüngster offener Deal des Kontakts (null = keiner) */
+  findOpenDeal(a: PipedriveApiAccess, personId: number): Promise<CrmDeal | null>;
+  findOrganization(a: PipedriveApiAccess, name: string): Promise<number | null>;
+  createOrganization(a: PipedriveApiAccess, name: string): Promise<number>;
+  createPerson(a: PipedriveApiAccess, p: { name: string; email: string; orgId: number | null }): Promise<number>;
+  createDeal(a: PipedriveApiAccess, d: { title: string; personId: number; orgId: number | null; pipelineId: number | null; stageId: number | null }): Promise<CrmDeal>;
   getPerson(a: PipedriveApiAccess, id: number): Promise<CrmPerson | null>;
   getOrganizationName(a: PipedriveApiAccess, id: number): Promise<string | null>;
   createActivity(a: PipedriveApiAccess, input: ActivityInput): Promise<number>;
@@ -150,6 +158,60 @@ export class ApiPipedriveCrm implements PipedriveCrm {
       : null;
   }
 
+  async findPersonByEmail(a: PipedriveApiAccess, email: string) {
+    const q = new URLSearchParams({ term: email, fields: "email", exact_match: "true", limit: "5" });
+    const { data } = await this.call(a, "GET", `/api/v2/persons/search?${q}`);
+    const r = z.object({ items: z.array(z.object({ item: z.object({ id: z.number().int() }) })) }).safeParse(data ?? {});
+    const id = r.success ? r.data.items[0]?.item.id : undefined;
+    return id ? this.getPerson(a, id) : null;
+  }
+
+  async findOpenDeal(a: PipedriveApiAccess, personId: number) {
+    const q = new URLSearchParams({ person_id: String(personId), status: "open", sort_by: "update_time", sort_direction: "desc", limit: "1" });
+    const { data } = await this.call(a, "GET", `/api/v2/deals?${q}`);
+    const r = z.array(dealSchema).safeParse(data ?? []);
+    const d = r.success ? r.data[0] : undefined;
+    return d ? { id: d.id, title: d.title, personId: d.person_id ?? null, orgId: d.org_id ?? null, ownerId: d.owner_id ?? null } : null;
+  }
+
+  async findOrganization(a: PipedriveApiAccess, name: string) {
+    const q = new URLSearchParams({ term: name, fields: "name", exact_match: "true", limit: "1" });
+    const { data } = await this.call(a, "GET", `/api/v2/organizations/search?${q}`);
+    const r = z.object({ items: z.array(z.object({ item: z.object({ id: z.number().int() }) })) }).safeParse(data ?? {});
+    return r.success ? (r.data.items[0]?.item.id ?? null) : null;
+  }
+
+  async createOrganization(a: PipedriveApiAccess, name: string) {
+    const { data } = await this.call(a, "POST", "/api/v2/organizations", { name: name.slice(0, 255) });
+    const r = idOnly.safeParse(data);
+    if (!r.success) throw new PipedriveError("api", "Organisation ohne ID");
+    return r.data.id;
+  }
+
+  async createPerson(a: PipedriveApiAccess, p: { name: string; email: string; orgId: number | null }) {
+    const { data } = await this.call(a, "POST", "/api/v2/persons", {
+      name: p.name.slice(0, 255),
+      emails: [{ value: p.email, primary: true, label: "work" }],
+      ...(p.orgId ? { org_id: p.orgId } : {}),
+    });
+    const r = idOnly.safeParse(data);
+    if (!r.success) throw new PipedriveError("api", "Kontakt ohne ID");
+    return r.data.id;
+  }
+
+  async createDeal(a: PipedriveApiAccess, d: { title: string; personId: number; orgId: number | null; pipelineId: number | null; stageId: number | null }) {
+    const { data } = await this.call(a, "POST", "/api/v2/deals", {
+      title: d.title.slice(0, 255),
+      person_id: d.personId,
+      ...(d.orgId ? { org_id: d.orgId } : {}),
+      ...(d.pipelineId ? { pipeline_id: d.pipelineId } : {}),
+      ...(d.stageId ? { stage_id: d.stageId } : {}),
+    });
+    const r = dealSchema.safeParse(data);
+    if (!r.success) throw new PipedriveError("api", "Deal ohne ID");
+    return { id: r.data.id, title: r.data.title, personId: r.data.person_id ?? null, orgId: r.data.org_id ?? null, ownerId: r.data.owner_id ?? null };
+  }
+
   async getPerson(a: PipedriveApiAccess, id: number) {
     const { data } = await this.call(a, "GET", `/api/v2/persons/${id}`);
     const p = personSchema.safeParse(data);
@@ -218,7 +280,41 @@ export class FakePipedriveCrm implements PipedriveCrm {
     return d ? { id, title: d.title, personId: d.person?.id ?? null, orgId: d.org ? id : null, ownerId: null } : null;
   }
   async getPerson(_a: PipedriveApiAccess, id: number) {
-    return Object.values(this.deals).find((d) => d.person?.id === id)?.person ?? null;
+    return Object.values(this.deals).find((d) => d.person?.id === id)?.person ?? this.persons.find((p) => p.id === id) ?? null;
+  }
+  /** im Test angelegte Kontakte/Deals/Organisationen */
+  readonly persons: CrmPerson[] = [];
+  readonly orgs: { id: number; name: string }[] = [];
+  readonly openDeals: (CrmDeal & { pipelineId: number | null; stageId: number | null })[] = [];
+  async findPersonByEmail(_a: PipedriveApiAccess, email: string) {
+    const e = email.toLowerCase();
+    return Object.values(this.deals).map((d) => d.person).find((p) => p?.email === e) ?? this.persons.find((p) => p.email === e) ?? null;
+  }
+  async findOpenDeal(_a: PipedriveApiAccess, personId: number) {
+    const own = Object.entries(this.deals).find(([, d]) => d.person?.id === personId);
+    if (own) return { id: Number(own[0]), title: own[1].title, personId, orgId: null, ownerId: null };
+    return this.openDeals.find((d) => d.personId === personId) ?? null;
+  }
+  async findOrganization(_a: PipedriveApiAccess, name: string) {
+    return this.orgs.find((o) => o.name.toLowerCase() === name.toLowerCase())?.id ?? null;
+  }
+  async createOrganization(_a: PipedriveApiAccess, name: string) {
+    const id = ++this.next;
+    this.orgs.push({ id, name });
+    this.log.push({ op: "createOrganization", detail: { id, name } });
+    return id;
+  }
+  async createPerson(_a: PipedriveApiAccess, p: { name: string; email: string; orgId: number | null }) {
+    const id = ++this.next;
+    this.persons.push({ id, name: p.name, email: p.email.toLowerCase(), orgId: p.orgId });
+    this.log.push({ op: "createPerson", detail: { id, ...p } });
+    return id;
+  }
+  async createDeal(_a: PipedriveApiAccess, d: { title: string; personId: number; orgId: number | null; pipelineId: number | null; stageId: number | null }) {
+    const deal = { id: ++this.next, title: d.title, personId: d.personId, orgId: d.orgId, ownerId: null, pipelineId: d.pipelineId, stageId: d.stageId };
+    this.openDeals.push(deal);
+    this.log.push({ op: "createDeal", detail: d });
+    return deal;
   }
   async getOrganizationName(_a: PipedriveApiAccess, id: number) {
     return this.deals[id]?.org ?? null;

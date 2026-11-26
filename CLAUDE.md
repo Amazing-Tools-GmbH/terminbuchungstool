@@ -76,7 +76,12 @@ Mandantenfähiges Terminbuchungstool mit Pipedrive-Integration. Auftrag und Phas
   bleiben; ein vorbereiteter Mandant mit gleichem Slug, der nie verbunden war, wird übernommen). Panel im Deal `/panel` (JWT wie `/settings`, Panel-Sitzung als Bearer, Zweck
   `panel`; `lib/panel`, `components/panel`), Einladungen nur über `public.create_invitation`.
   Einträge in Pipedrive (Aktivität, Notizen) nur über die Warteschlange `pipedrive_jobs`
-  (`lib/pipedrive/jobs.ts`, `crm.ts`), nie im Request.
+  (`lib/pipedrive/jobs.ts`, `crm.ts`), nie im Request. Aktivitätstyp `tenants.pd_activity_type`,
+  Kunde + weitere Teilnehmer als Gäste (`attendees`). Panel zeigt Einladung/Buchung nur zum
+  aktuellen Kontakt des Deals. Panel im Kontakt (`resource=person`, Sitzung ohne Deal) nur mit
+  `tenants.panel_person_enabled`; Einträge dann am Kontakt. Einstellungen unter
+  Admin → Pipedrive-Verbindung (`lib/admin/pipedrive-settings.ts`). Übersicht/Dashboard
+  `/admin/uebersicht` (`lib/admin/dashboard.ts`).
 - Zugriffsanfragen (`access_requests`, `lib/access-requests.ts`): Pipedrive-Benutzer ohne
   Freischaltung (Installation/Login, Panel, App-Einstellungen) ⇒ `record_access_request` +
   Mail an alle aktiven Owner/Admins (Outbox `access_request`, System-Adresse); Freischalten
@@ -149,6 +154,14 @@ Mandantenfähiges Terminbuchungstool mit Pipedrive-Integration. Auftrag und Phas
   nur Bestätigung + Ansprechpartner (`get_booking_contact` = einladender Mitarbeiter); Mails
   haben statt Änderungslink den Hinweis `mail.contact`. Änderungen/Storno nur durch das Team
   (Admin). Nach Storno durch das Team kann über den Link neu gewählt werden.
+- Öffentlicher Event-Link (Admin → Event, `events.public_token_hash`/`public_link_enc`, auch `/b/<token>`):
+  `get_public_event_context`, Buchen über `public.book_public` (legt Einladung `source = 'public'`
+  mit eigenem persönlichen Link an → `book_slot`; je E-Mail und Event einmal). Danach Auftrag
+  `link_contact` (`lib/pipedrive/jobs.ts`): Kontakt per E-Mail suchen (Dublettencheck), offenen
+  Deal nehmen, sonst Kontakt/Firma/Deal anlegen (`tenants.new_deal_pipeline_id/stage_id`), dann
+  Aktivität. Mails dazu immer über die System-Adresse (kein einladender Mitarbeiter).
+- Buchungsseite: erst Tag, dann Termine des Tages (wie im Panel). `events.show_seats` = Platzzahlen
+  für Kunden (aus ⇒ Zahlen werden nicht ausgeliefert, nur frei/ausgebucht).
 - Buchungsseite `/b/[token]`: Server lädt Kontext über `get_invitation_context` (als `anon`),
   Client-Komponente `components/booking/BookingApp.tsx`; Texte als aufgelöstes Wörterbuch
   (`resolveTexts`), Datums-Formatierung serverseitig in der Mandanten-Zeitzone.
@@ -176,8 +189,9 @@ Mandantenfähiges Terminbuchungstool mit Pipedrive-Integration. Auftrag und Phas
   stiller Wechsel des Weges. Smart BCC (`tenants.smart_bcc_email`, nur
   `@pipedrivemail.com`) bringt Kundenmails in den Deal. Signatur je Mitarbeiter
   (`tenant_members.mail_signature`, Klartext) unter Einladungen.
-- Pipedrive-Scopes der App (Developer Hub): base, deals:full, activities:full, contacts:read,
-  mail:full, **users:read** (Nutzerverwaltung; fehlt er ⇒ Hinweis `users.dir.missing_scope`).
+- Pipedrive-Scopes der App (Developer Hub): base, deals:full, activities:full, **contacts:full**
+  (öffentlicher Event-Link legt Kontakte/Firmen an), mail:full, **users:read** (Nutzerverwaltung;
+  fehlt er ⇒ Hinweis `users.dir.missing_scope`).
   Neue Scopes gelten erst nach erneuter Autorisierung.
 - Postfach verbinden (`/admin/postfach`, genutzt beim Weg `employee`): Speichern über
   `public.save_mail_connection` (Status `pending`), aktiv erst nach zugestellter Testmail.

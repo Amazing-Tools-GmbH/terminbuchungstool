@@ -241,3 +241,6 @@
 .radioCard input { margin-top: 4px; }
 .radioCard:has(input:checked) { border-color: var(--adm-accent, #1f6feb); }
 .checkRow { display: flex; gap: 8px; align-items: center; font-weight: 500; }
+.publicLink { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; margin-top: 12px; padding: 10px 12px; border: 1px dashed var(--adm-line); border-radius: 10px; }
+.publicLink .hint { flex-basis: 100%; }
+.linkInput { flex: 1 1 280px; min-width: 0; padding: 6px 10px; border: 1px solid #8a929c; border-radius: 8px; font: inherit; font-size: 13px; }

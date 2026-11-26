@@ -4,6 +4,7 @@
  * mit zod und ruft lib/admin; die eigentliche Rechteprüfung macht RLS.
  * Ergebnis per Redirect mit ?ok= bzw. ?error= (funktioniert ohne JavaScript).
  */
+import { z } from "zod";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { requireAdmin } from "@/lib/auth/admin";
@@ -20,7 +21,7 @@ import {
   updateMemberSchema,
   updateSlotSchema,
 } from "@/lib/admin/input";
-import { cancelBookingByTeam, cancelSlot, deleteEvent, updateEvent, updateSlot } from "@/lib/admin/maintenance";
+import { cancelBookingByTeam, cancelSlot, deleteEvent, setPublicLink, updateEvent, updateSlot } from "@/lib/admin/maintenance";
 import { createEvent, createSlot, setCapacity } from "@/lib/admin/slots";
 import { enableMember, updateMember } from "@/lib/admin/members";
 import { sendMailsSoon } from "@/lib/booking/api";
@@ -158,6 +159,15 @@ export async function updateEventAction(form: FormData) {
   const r = parsed.success ? await attempt(() => updateEvent(ctx, parsed.data)) : { ok: false as const, error: "invalid_input" };
   revalidatePath("/admin");
   back("/admin", { event: str(form, "eventId"), error: r.ok ? undefined : r.error, ok: r.ok ? "eventUpdated" : undefined });
+}
+
+export async function publicLinkAction(form: FormData) {
+  const ctx = await requireAdmin(["owner", "admin"]);
+  const eventId = z.string().uuid().safeParse(str(form, "eventId"));
+  const enable = str(form, "enable") === "1";
+  const r = eventId.success ? await attempt(() => setPublicLink(ctx, eventId.data, enable)) : { ok: false as const, error: "invalid_input" };
+  revalidatePath("/admin");
+  back("/admin", { event: str(form, "eventId"), error: r.ok ? undefined : r.error, ok: r.ok ? (enable ? "publicLinkOn" : "publicLinkOff") : undefined });
 }
 
 export async function deleteEventAction(form: FormData) {

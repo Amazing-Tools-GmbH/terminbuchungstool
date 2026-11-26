@@ -429,7 +429,9 @@ async function prepare(pool: pg.Pool, row: OutboxRow, env: Env): Promise<Prepare
   }
 
   // Eigenes Postfach des Einladenden (nur beim Weg "employee")
-  const setting = parseMailRoute(ctx.tenantRow.mail_route);
+  // Buchung ohne einladenden Mitarbeiter (öffentlicher Event-Link): es gibt kein
+  // Mitarbeiter-Postfach -> System-Adresse (fest so geregelt, kein stiller Wechsel)
+  const setting = ctx.invitation && !ctx.invitation.created_by ? "system" : parseMailRoute(ctx.tenantRow.mail_route);
   let userConnection: MailConnection | null = null;
   if (setting === "employee" && ctx.inviter) {
     userConnection = await asService(pool, async (c) => {

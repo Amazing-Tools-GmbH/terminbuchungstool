@@ -17,6 +17,20 @@ export const slotSchema = z.object({
   bookable: z.boolean(),
 });
 
+export const publicEventContextSchema = z.object({
+  event: z.object({
+    id: z.string().uuid(),
+    title: z.string(),
+    description: z.string().nullable(),
+    intro_text: z.string().nullable(),
+    location: z.string().nullable(),
+    status: z.enum(["draft", "published", "archived"]),
+    show_seats: z.boolean().default(true),
+  }),
+  slots: z.array(slotSchema),
+});
+export type PublicEventContext = z.infer<typeof publicEventContextSchema>;
+
 export const invitationContextSchema = z.object({
   invitation: z.object({
     id: z.string().uuid(),

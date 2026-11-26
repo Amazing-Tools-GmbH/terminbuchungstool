@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getCurrentTenant } from "@/lib/tenant/current";
-import { loadBookingContact, loadBookingGuests, loadGuestContext, loadInvitationContext } from "@/lib/booking/service";
+import { loadBookingContact, loadBookingGuests, loadGuestContext, loadInvitationContext, loadPublicEventContext } from "@/lib/booking/service";
 import { runAnon } from "@/lib/booking/api";
 import { createTranslator, resolveTexts } from "@/lib/texts";
 import { formatSlot } from "@/lib/datetime";
@@ -57,6 +57,49 @@ export default async function BookingPage({ params }: { params: Promise<{ token:
             contactName={contact?.name ?? null}
             googleUrl={googleCalendarUrl(calendar)}
             outlookUrl={outlookCalendarUrl(calendar)}
+          />
+          <TenantFooter tenant={tenant} t={t} />
+        </>
+      );
+    }
+  }
+
+  // öffentlicher Event-Link: Termin wählen, Name/E-Mail/Firma selbst eingeben
+  if (!ctx) {
+    const pub = await loadPublicEventContext(runAnon, tenant.id, token);
+    if (pub && pub.event.status === "published") {
+      const ptz = tenant.timezone;
+      const pubSlots: SlotDisplay[] = pub.slots.map((s) => {
+        const d = new Date(s.starts_at);
+        const part = (o: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat("de-AT", { timeZone: ptz, ...o }).format(d);
+        return {
+          id: s.id,
+          ...formatSlot(s.starts_at, s.ends_at, ptz),
+          dayKey: new Intl.DateTimeFormat("en-CA", { timeZone: ptz, year: "numeric", month: "2-digit", day: "2-digit" }).format(d),
+          dayNum: part({ day: "numeric" }).replace(".", ""),
+          monthShort: part({ month: "short" }),
+          location: s.location,
+          capacity: s.capacity,
+          booked: s.booked,
+          free: s.free,
+          ownSeats: 0,
+          bookable: s.bookable,
+        };
+      });
+      return (
+        <>
+          <TenantHeader tenant={tenant} />
+          <BookingApp
+            token={token}
+            texts={resolveTexts(tenant.anrede, tenant.textOverrides)}
+            event={{ title: pub.event.title, intro: pub.event.intro_text, showSeats: pub.event.show_seats }}
+            invitation={{ name: "", email: "" }}
+            slots={pubSlots}
+            booking={null}
+            bookingOpen
+            closedReason={t("hero.unavailable")}
+            contactName={null}
+            publicLink
           />
           <TenantFooter tenant={tenant} t={t} />
         </>

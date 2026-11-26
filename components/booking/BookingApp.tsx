@@ -55,6 +55,8 @@ type Props = {
   closedReason: string;
   /** Ansprechpartner (einladender Mitarbeiter) – Hinweis statt Umbuchen/Stornieren */
   contactName: string | null;
+  /** öffentlicher Event-Link: Name/E-Mail/Firma selbst eingeben, danach zum persönlichen Link */
+  publicLink?: boolean;
 };
 
 export function BookingApp(props: Props) {
@@ -73,7 +75,7 @@ export function BookingApp(props: Props) {
     <>
       <section className={styles.hero}>
         <div className={`tb-container ${styles.heroInner}`}>
-          <span className={styles.eyebrow}>{t("hero.eyebrow")}</span>
+          <span className={styles.eyebrow}>{t(props.publicLink ? "hero.public" : "hero.eyebrow")}</span>
           <h1 className={styles.heroTitle}>{props.event.title}</h1>
           <p className={styles.heroIntro}>{props.event.intro || t(props.event.showSeats ? "hero.intro" : "hero.introNoSeats")}</p>
         </div>
@@ -114,13 +116,14 @@ function SelectionView(
   const [seats, setSeats] = useState(1);
   const [name, setName] = useState(props.invitation.name);
   const [email, setEmail] = useState(props.invitation.email);
+  const [organization, setOrganization] = useState("");
   const [attendees, setAttendees] = useState<{ name: string; email: string }[]>([]);
   const [inviteGuests, setInviteGuests] = useState(false);
   const [posting, setPosting] = useState(false);
   const submitting = posting || props.refreshing;
   const [error, setError] = useState<string | null>(null);
   const asideRef = useRef<HTMLElement>(null);
-  const ids = { seats: useId(), name: useId(), email: useId(), extra: useId(), invite: useId(), inviteHint: useId(), error: useId() };
+  const ids = { seats: useId(), name: useId(), email: useId(), org: useId(), extra: useId(), invite: useId(), inviteHint: useId(), error: useId() };
 
   const selected = slots.find((s) => s.id === selectedId) ?? null;
   const maxSeats = selected ? selected.free + selected.ownSeats : 0;
@@ -151,14 +154,28 @@ function SelectionView(
     setPosting(true);
     setError(null);
     try {
-      const res = await fetch("/api/bookings", {
+      const res = await fetch(props.publicLink ? "/api/bookings/public" : "/api/bookings", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ token: props.token, slotId: selected.id, seats, name, email, extraAttendees, guests }),
+        body: JSON.stringify({
+          token: props.token,
+          slotId: selected.id,
+          seats,
+          name,
+          email,
+          extraAttendees,
+          guests,
+          ...(props.publicLink ? { organization } : {}),
+        }),
       });
-      const data = (await res.json().catch(() => ({}))) as { ok?: boolean; message?: string };
+      const data = (await res.json().catch(() => ({}))) as { ok?: boolean; message?: string; redirect?: string };
       if (!res.ok || !data.ok) {
         setError(data.message ?? t("error.generic"));
+        return;
+      }
+      // öffentlicher Link: Bestätigung auf dem persönlichen Link (dort auch später abrufbar)
+      if (data.redirect && data.redirect.startsWith("/b/")) {
+        window.location.assign(data.redirect);
         return;
       }
       props.onBooked();
@@ -300,6 +317,22 @@ function SelectionView(
                 maxLength={254}
               />
             </div>
+
+            {props.publicLink && (
+              <div className={styles.field}>
+                <label htmlFor={ids.org} className={styles.label}>
+                  {t("aside.organization")}
+                </label>
+                <input
+                  id={ids.org}
+                  className={styles.input}
+                  value={organization}
+                  onChange={(e) => setOrganization(e.target.value)}
+                  autoComplete="organization"
+                  maxLength={200}
+                />
+              </div>
+            )}
 
             {seats > 1 && (
               <fieldset className={styles.guests}>

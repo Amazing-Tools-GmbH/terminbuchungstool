@@ -41,6 +41,8 @@ export const TEXTS = {
   "aside.seatsMax": same("max. {max}"),
   "aside.name": same("Name"),
   "aside.email": same("E-Mail"),
+  "aside.organization": same("Firma (optional)"),
+  "hero.public": same("Termin buchen"),
   "aside.extra": same("Weitere Teilnehmer (optional)"),
   "aside.submit": same("Verbindlich buchen"),
   "aside.help": {
