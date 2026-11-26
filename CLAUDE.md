@@ -189,11 +189,12 @@ Mandantenfähiges Terminbuchungstool mit Pipedrive-Integration. Auftrag und Phas
 - Admin → Erscheinungsbild (`/admin/erscheinungsbild`, owner/admin): Logo (PNG/JPG/WebP/SVG ≤ 1 MB,
   Typ am Inhalt geprüft, SVG ohne aktive Inhalte, `lib/admin/branding.ts` → Asset-Storage +
   `tenants.logo_path`), Claim, Schriften und Grundfarben (`lib/admin/branding-logic.ts`:
-  Merge ins Theme, `themeInputSchema`, Kontrast ≥ 4.5:1, Live-Vorschau).
+  Merge ins Theme, `themeInputSchema`, Live-Vorschau). Farbwahl liegt beim Kunden: KEIN
+  Kontrast-Check, keine Warnung, kein Blockieren (entschieden).
 - Texte: `lib/texts` mit Varianten `sie`/`ihr`; Mandanten können einzelne Schlüssel über
   `text_overrides` ersetzen. Neue UI-Texte immer dort anlegen, nie hart im JSX.
-- Barrierefreiheit: echte Buttons/Labels, Kontrast ≥ 4.5:1 (`lib/theme/contrast.ts`,
-  Seed-Themes werden in Tests geprüft), responsiv bis 320 px.
+- Barrierefreiheit: echte Buttons/Labels, Kontrast ≥ 4.5:1 für unsere Standard- und
+  Seed-Themes (`lib/theme/contrast.ts`, in Tests geprüft; Kundenfarben werden nicht geprüft), responsiv bis 320 px.
 
 ## Konventionen
 

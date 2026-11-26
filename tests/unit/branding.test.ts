@@ -1,7 +1,7 @@
 /** Erscheinungsbild: Logo-Prüfung und Speichern der Farben */
 import { describe, expect, it } from "vitest";
 import { detectImageType, svgIsSafe } from "@/lib/admin/branding";
-import { brandingContrastIssues, mergeBrandingTheme, normalizeColor } from "@/lib/admin/branding-logic";
+import { mergeBrandingTheme, normalizeColor } from "@/lib/admin/branding-logic";
 import { DEFAULT_THEME, parseTheme } from "@/lib/theme/schema";
 
 const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0]);
@@ -47,10 +47,9 @@ describe("Farben speichern", () => {
     expect(r.theme).not.toHaveProperty("heroSub");
   });
 
-  it("lehnt CSS-Injection und schlechten Kontrast ab", () => {
+  it("lehnt CSS-Injection ab; Farbwahl (auch schwacher Kontrast) liegt beim Kunden", () => {
     expect(mergeBrandingTheme({}, input({ primary: "red;}body{x" }))).toEqual({ ok: false, error: "invalid_input" });
-    expect(mergeBrandingTheme({}, input({ primary: "#FFFFFF", onPrimary: "#FFFF00" }))).toEqual({ ok: false, error: "contrast_too_low" });
-    expect(brandingContrastIssues(parseTheme({ headerBg: "#FFE500", headerInk: "#FFFFFF" })).map((i) => i.fg)).toContain("headerInk");
+    expect(mergeBrandingTheme({}, input({ primary: "#FFFFFF", onPrimary: "#FFFF00" }))).toMatchObject({ ok: true, theme: { primary: "#FFFFFF", onPrimary: "#FFFF00" } });
   });
 
   it("Seed-Theme ANTENNE ist speicherbar", async () => {
