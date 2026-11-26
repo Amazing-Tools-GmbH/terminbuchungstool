@@ -16,9 +16,9 @@ Mandantenfähiges Terminbuchungstool mit Pipedrive-Integration. Auftrag und Phas
    `tests/db/rls.test.ts` im selben Commit.
 4. **Öffentliche Zugriffe nur token-gebunden.** `anon` hat keinen Tabellenzugriff; die
    Buchungsseite nutzt ausschließlich `SECURITY DEFINER`-Funktionen, die Mandant + Token
-   verlangen (`resolve_tenant`, `get_invitation_context`, `book_slot`, `cancel_booking`; für
-   weitere Teilnehmer `get_guest_context`, `cancel_guest`).
-5. **Buchen nur über `public.book_slot()`** (Slot-Sperre `FOR UPDATE`, Prüfung, Schreiben in
+   verlangen (`resolve_tenant`, `get_invitation_context`, `book_slot_once`, `get_booking_contact`;
+   für weitere Teilnehmer `get_guest_context`).
+5. **Buchen nur über `public.book_slot()`** (öffentlich über `book_slot_once`) (Slot-Sperre `FOR UPDATE`, Prüfung, Schreiben in
    einer Transaktion). Kein direktes `insert into bookings` – auch nicht im Admin.
 6. **Mails nur über `email_outbox`**, nie direkt im Request. Eine Buchung scheitert nie an
    einer Mail. Versand über das Postfach des Mandanten; kein stiller Absenderwechsel.
@@ -143,13 +143,19 @@ Mandantenfähiges Terminbuchungstool mit Pipedrive-Integration. Auftrag und Phas
 
 ## Buchungsseite & Mails
 
+- **Kein Umbuchen/Stornieren durch Kunden (entschieden, hohe Hemmschwelle zum Nicht-Kommen):**
+  Über den Link wird genau einmal gebucht (`public.book_slot_once` → `book_slot`; `book_slot`,
+  `cancel_booking`, `cancel_guest` sind für anon/authenticated entzogen). Danach zeigt die Seite
+  nur Bestätigung + Ansprechpartner (`get_booking_contact` = einladender Mitarbeiter); Mails
+  haben statt Änderungslink den Hinweis `mail.contact`. Änderungen/Storno nur durch das Team
+  (Admin). Nach Storno durch das Team kann über den Link neu gewählt werden.
 - Buchungsseite `/b/[token]`: Server lädt Kontext über `get_invitation_context` (als `anon`),
   Client-Komponente `components/booking/BookingApp.tsx`; Texte als aufgelöstes Wörterbuch
   (`resolveTexts`), Datums-Formatierung serverseitig in der Mandanten-Zeitzone.
 - Weitere Teilnehmer: Namen in `bookings.extra_attendees`; wer eine E-Mail angibt (Haken
   „eigene Einladung“, Buchungsseite + Panel), steht in `booking_guests` mit eigenem Link
-  (`/b/<token>`, nur Hash) und kann nur für sich absagen (`cancel_guest`: Platz frei, Hinweis an
-  den Hauptbucher). Umbuchung ⇒ neue Links, Entfernte bekommen eine Absage; Storno ⇒ alle.
+  (`/b/<token>`, nur Hash; Ansicht + Kalender, kein Absagen). Storno durch das Team ⇒ alle
+  bekommen eine Absage.
 - API-Routen validieren mit zod, rufen `lib/booking/service.ts` und stoßen danach per
   `after()` die Outbox an. Fehlercodes `TB:*` → `lib/booking/errors.ts`.
 - Mails: `lib/mail` – `MailSender`-Interface (`dev`, `smtp`, `google` = Gmail API,

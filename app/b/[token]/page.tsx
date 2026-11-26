@@ -1,10 +1,10 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getCurrentTenant } from "@/lib/tenant/current";
-import { loadBookingGuests, loadGuestContext, loadInvitationContext } from "@/lib/booking/service";
+import { loadBookingContact, loadBookingGuests, loadGuestContext, loadInvitationContext } from "@/lib/booking/service";
 import { runAnon } from "@/lib/booking/api";
 import { createTranslator, resolveTexts } from "@/lib/texts";
-import { formatDateTime, formatSlot } from "@/lib/datetime";
+import { formatSlot } from "@/lib/datetime";
 import { googleCalendarUrl, outlookCalendarUrl } from "@/lib/calendar/links";
 import { bookingUrl } from "@/lib/links";
 import { TenantHeader } from "@/components/tenant/TenantHeader";
@@ -29,7 +29,9 @@ export default async function BookingPage({ params }: { params: Promise<{ token:
   const t = createTranslator(tenant.anrede, tenant.textOverrides);
   const ctx = await loadInvitationContext(runAnon, tenant.id, token);
 
-  // Link eines weiteren Teilnehmers: nur Termin ansehen und für sich absagen
+  const contact = await loadBookingContact(runAnon, tenant.id, token);
+
+  // Link eines weiteren Teilnehmers: nur Termin ansehen (kein Absagen über den Link)
   if (!ctx) {
     const guestCtx = await loadGuestContext(runAnon, tenant.id, token);
     if (guestCtx) {
@@ -46,15 +48,13 @@ export default async function BookingPage({ params }: { params: Promise<{ token:
         <>
           <TenantHeader tenant={tenant} />
           <GuestView
-            token={token}
             texts={resolveTexts(tenant.anrede, tenant.textOverrides)}
             eventTitle={g.event.title}
             guestName={g.guest.name}
             booker={g.booker.organization_name ? `${g.booker.name} (${g.booker.organization_name})` : g.booker.name}
-            state={g.booking.status === "cancelled" ? "ended" : g.guest.status === "cancelled" ? "declined" : "active"}
+            state={g.booking.status === "cancelled" || g.guest.status === "cancelled" ? "ended" : "active"}
             when={{ ...when, location: g.booking.location }}
-            canDecline={g.booking.changeable}
-            declineUntil={formatDateTime(g.booking.change_until, tenant.timezone)}
+            contactName={contact?.name ?? null}
             googleUrl={googleCalendarUrl(calendar)}
             outlookUrl={outlookCalendarUrl(calendar)}
           />
@@ -109,8 +109,6 @@ export default async function BookingPage({ params }: { params: Promise<{ token:
       email: b.email,
       extraAttendees: b.extra_attendees,
       guests: await loadBookingGuests(runAnon, tenant.id, token),
-      changeUntil: formatDateTime(b.change_until, tz),
-      canChange: b.changeable && !ctx.invitation.expired,
       icsUrl: `/b/${encodeURIComponent(token)}/ics`,
       googleUrl: googleCalendarUrl(calendar),
       outlookUrl: outlookCalendarUrl(calendar),
@@ -139,6 +137,7 @@ export default async function BookingPage({ params }: { params: Promise<{ token:
         booking={booking}
         bookingOpen={bookingOpen}
         closedReason={ctx.invitation.expired ? t("hero.expired") : t("hero.unavailable")}
+        contactName={contact?.name ?? null}
       />
       <TenantFooter tenant={tenant} t={t} />
     </>

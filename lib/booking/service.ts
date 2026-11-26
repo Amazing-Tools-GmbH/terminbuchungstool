@@ -1,6 +1,7 @@
 /**
  * Buchungsdienste für die öffentliche Buchungsseite. Laufen als `anon`
- * und nutzen ausschließlich die token-gebundenen DB-Funktionen.
+ * und nutzen ausschließlich die token-gebundenen DB-Funktionen. Kunden
+ * buchen genau einmal (book_slot_once) – kein Umbuchen, kein Stornieren.
  */
 import type pg from "pg";
 import { encryptSecret } from "@/lib/crypto/secretbox";
@@ -50,7 +51,7 @@ export async function loadGuestContext(run: Run, tenantId: string, token: string
   return raw ? guestContextSchema.parse(raw) : null;
 }
 
-/** Teilnehmer mit Einladung der aktiven Buchung (Vorbelegung beim Ändern) */
+/** Teilnehmer mit Einladung der aktiven Buchung (Anzeige der Bestätigung) */
 export async function loadBookingGuests(run: Run, tenantId: string, token: string): Promise<GuestInput[]> {
   if (!looksLikeToken(token)) return [];
   return run(async (c) => {
@@ -65,7 +66,7 @@ export async function bookSlot(run: Run, tenant: TenantRef, input: Omit<BookInpu
   try {
     return await run(async (c) => {
       const { rows } = await c.query(
-        "select public.book_slot($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb) as r",
+        "select public.book_slot_once($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb) as r",
         [
           tenant.id,
           input.token,
@@ -86,29 +87,14 @@ export async function bookSlot(run: Run, tenant: TenantRef, input: Omit<BookInpu
   }
 }
 
-export async function cancelBooking(run: Run, tenant: TenantRef, token: string): Promise<{ bookingId: string }> {
-  try {
-    return await run(async (c) => {
-      const { rows } = await c.query("select public.cancel_booking($1, $2, $3) as r", [
-        tenant.id,
-        token,
-        sealBookingLink(tenant, token),
-      ]);
-      return { bookingId: (rows[0].r as { booking_id: string }).booking_id };
-    });
-  } catch (err) {
-    throw toBookingError(err) ?? err;
-  }
-}
+export type BookingContact = { name: string; email: string | null };
 
-/** Ein Teilnehmer sagt über seinen eigenen Link für sich ab */
-export async function cancelGuest(run: Run, tenant: TenantRef, token: string): Promise<{ bookingId: string }> {
-  try {
-    return await run(async (c) => {
-      const { rows } = await c.query("select public.cancel_guest($1, $2) as r", [tenant.id, token]);
-      return { bookingId: (rows[0].r as { booking_id: string }).booking_id };
-    });
-  } catch (err) {
-    throw toBookingError(err) ?? err;
-  }
+/** Ansprechpartner zum Link (einladender Mitarbeiter) – für „Ihr könnt nicht kommen?“ */
+export async function loadBookingContact(run: Run, tenantId: string, token: string): Promise<BookingContact | null> {
+  if (!looksLikeToken(token)) return null;
+  const raw = await run(async (c) => {
+    const { rows } = await c.query("select public.get_booking_contact($1, $2) as c", [tenantId, token]);
+    return rows[0]?.c ?? null;
+  });
+  return raw && typeof raw.name === "string" ? { name: raw.name, email: typeof raw.email === "string" ? raw.email : null } : null;
 }

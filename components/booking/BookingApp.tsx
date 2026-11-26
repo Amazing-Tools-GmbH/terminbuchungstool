@@ -34,8 +34,6 @@ export type BookingDisplay = {
   extraAttendees: string[];
   /** weitere Teilnehmer mit eigener Einladung */
   guests: { name: string; email: string }[];
-  changeUntil: string;
-  canChange: boolean;
   icsUrl: string;
   googleUrl: string;
   outlookUrl: string;
@@ -50,45 +48,21 @@ type Props = {
   booking: BookingDisplay | null;
   bookingOpen: boolean;
   closedReason: string;
+  /** Ansprechpartner (einladender Mitarbeiter) – Hinweis statt Umbuchen/Stornieren */
+  contactName: string | null;
 };
-
-type Mode = "view" | "change";
 
 export function BookingApp(props: Props) {
   const { texts, booking, slots, bookingOpen } = props;
   const t = (key: TextKey, vars?: Record<string, string | number>) => formatText(texts[key], vars);
   const router = useRouter();
 
-  const [mode, setMode] = useState<Mode>("view");
   const [justBooked, setJustBooked] = useState(false);
-  const [cancelled, setCancelled] = useState(false);
-  // Moduswechsel erst zusammen mit den neu geladenen Serverdaten anzeigen
+  // Bestätigung erst zusammen mit den neu geladenen Serverdaten anzeigen
   const [refreshing, startRefresh] = useTransition();
 
-  const showConfirmation = booking !== null && mode === "view";
-
-  if (showConfirmation) {
-    return (
-      <Confirmation
-        t={t}
-        booking={booking}
-        announce={justBooked}
-        onChange={() => {
-          setJustBooked(false);
-          setMode("change");
-        }}
-        onCancelled={() =>
-          startRefresh(() => {
-            setCancelled(true);
-            setMode("view");
-            router.refresh();
-          })
-        }
-        refreshing={refreshing}
-        token={props.token}
-      />
-    );
-  }
+  // Gebucht: nur noch die Bestätigung (kein Umbuchen/Stornieren durch Kunden)
+  if (booking) return <Confirmation t={t} booking={booking} announce={justBooked} contactName={props.contactName} />;
 
   return (
     <>
@@ -100,11 +74,6 @@ export function BookingApp(props: Props) {
         </div>
       </section>
       <div className={`tb-container ${styles.layout}`}>
-        {cancelled && !booking && (
-          <p className={styles.notice} role="status">
-            {t("cancelled.notice")}
-          </p>
-        )}
         {!bookingOpen && (
           <p className={styles.notice} role="status">
             {props.closedReason}
@@ -113,13 +82,9 @@ export function BookingApp(props: Props) {
         <SelectionView
           {...props}
           t={t}
-          changing={booking !== null && mode === "change"}
-          onBack={() => setMode("view")}
           onBooked={() =>
             startRefresh(() => {
               setJustBooked(true);
-              setCancelled(false);
-              setMode("view");
               router.refresh();
             })
           }
@@ -134,15 +99,15 @@ export function BookingApp(props: Props) {
 type T = (key: TextKey, vars?: Record<string, string | number>) => string;
 
 function SelectionView(
-  props: Props & { t: T; changing: boolean; onBack: () => void; onBooked: () => void; refreshing: boolean },
+  props: Props & { t: T; onBooked: () => void; refreshing: boolean },
 ) {
-  const { t, slots, booking, changing, bookingOpen } = props;
-  const [selectedId, setSelectedId] = useState<string | null>(changing ? (booking?.slotId ?? null) : null);
-  const [seats, setSeats] = useState(changing ? (booking?.seats ?? 1) : 1);
-  const [name, setName] = useState(changing ? (booking?.name ?? props.invitation.name) : props.invitation.name);
-  const [email, setEmail] = useState(changing ? (booking?.email ?? props.invitation.email) : props.invitation.email);
-  const [attendees, setAttendees] = useState<{ name: string; email: string }[]>(() => (changing && booking ? initialAttendees(booking) : []));
-  const [inviteGuests, setInviteGuests] = useState(changing ? (booking?.guests.length ?? 0) > 0 : false);
+  const { t, slots, bookingOpen } = props;
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [seats, setSeats] = useState(1);
+  const [name, setName] = useState(props.invitation.name);
+  const [email, setEmail] = useState(props.invitation.email);
+  const [attendees, setAttendees] = useState<{ name: string; email: string }[]>([]);
+  const [inviteGuests, setInviteGuests] = useState(false);
   const [posting, setPosting] = useState(false);
   const submitting = posting || props.refreshing;
   const [error, setError] = useState<string | null>(null);
@@ -150,7 +115,6 @@ function SelectionView(
   const ids = { seats: useId(), name: useId(), email: useId(), extra: useId(), invite: useId(), inviteHint: useId(), error: useId() };
 
   const selected = slots.find((s) => s.id === selectedId) ?? null;
-  // eigene bisherige Plätze sind beim Umbuchen wieder verfügbar
   const maxSeats = selected ? selected.free + selected.ownSeats : 0;
 
   useEffect(() => {
@@ -160,7 +124,7 @@ function SelectionView(
   function pick(slot: SlotDisplay) {
     setSelectedId(slot.id);
     setError(null);
-    if (!changing) setSeats(1);
+    setSeats(1);
     // Auf schmalen Bildschirmen steht die Buchungsbox unter den Terminen
     if (typeof window !== "undefined" && window.matchMedia("(max-width: 899px)").matches) {
       requestAnimationFrame(() => asideRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
@@ -217,7 +181,7 @@ function SelectionView(
       <aside ref={asideRef} className={styles.aside} aria-labelledby={`${ids.seats}-title`}>
         <div className={styles.asideStrip} aria-hidden="true" />
         <h2 id={`${ids.seats}-title`} className={styles.asideTitle}>
-          {changing ? t("aside.changeTitle") : t("aside.title")}
+          {t("aside.title")}
         </h2>
 
         {!selected ? (
@@ -355,7 +319,7 @@ function SelectionView(
             )}
 
             <button type="submit" className={styles.submit} disabled={submitting || !bookingOpen}>
-              {submitting ? t("aside.submitting") : changing ? t("aside.changeSubmit") : t("aside.submit")}
+              {submitting ? t("aside.submitting") : t("aside.submit")}
               {!submitting && (
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true">
                   <path d="m9 6 6 6-6 6" />
@@ -366,11 +330,6 @@ function SelectionView(
           </form>
         )}
 
-        {changing && (
-          <button type="button" className={styles.linkButton} onClick={props.onBack}>
-            {t("aside.changeBack")}
-          </button>
-        )}
       </aside>
     </>
   );
@@ -424,53 +383,12 @@ function SlotCard({
   );
 }
 
-function Confirmation({
-  t,
-  booking,
-  announce,
-  onChange,
-  onCancelled,
-  token,
-  refreshing,
-}: {
-  t: T;
-  booking: BookingDisplay;
-  announce: boolean;
-  onChange: () => void;
-  onCancelled: () => void;
-  token: string;
-  refreshing: boolean;
-}) {
-  const [confirmCancel, setConfirmCancel] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+function Confirmation({ t, booking, announce, contactName }: { t: T; booking: BookingDisplay; announce: boolean; contactName: string | null }) {
   const headingRef = useRef<HTMLHeadingElement>(null);
 
   useEffect(() => {
     if (announce) headingRef.current?.focus();
   }, [announce]);
-
-  async function cancel() {
-    setBusy(true);
-    setError(null);
-    try {
-      const res = await fetch("/api/bookings/cancel", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ token }),
-      });
-      const data = (await res.json().catch(() => ({}))) as { ok?: boolean; message?: string };
-      if (!res.ok || !data.ok) {
-        setError(data.message ?? t("error.generic"));
-        return;
-      }
-      onCancelled();
-    } catch {
-      setError(t("error.generic"));
-    } finally {
-      setBusy(false);
-    }
-  }
 
   return (
     <main className={`tb-container ${styles.done}`}>
@@ -539,38 +457,7 @@ function Confirmation({
         </a>
       </div>
 
-      {booking.canChange ? (
-        <div className={styles.changeArea}>
-          <p className={styles.muted}>{t("done.changeUntil", { until: booking.changeUntil })}</p>
-          <div className={styles.changeActions}>
-            <button type="button" className={styles.linkButton} onClick={onChange}>
-              {t("done.change")}
-            </button>
-            {!confirmCancel ? (
-              <button type="button" className={styles.linkButtonMuted} onClick={() => setConfirmCancel(true)}>
-                {t("done.cancel")}
-              </button>
-            ) : (
-              <span className={styles.confirmBox} role="group" aria-label={t("done.cancel")}>
-                <span>{t("done.cancelConfirm")}</span>
-                <button type="button" className={styles.dangerButton} onClick={cancel} disabled={busy || refreshing}>
-                  {t("done.cancelYes")}
-                </button>
-                <button type="button" className={styles.linkButtonMuted} onClick={() => setConfirmCancel(false)} disabled={busy}>
-                  {t("done.cancelNo")}
-                </button>
-              </span>
-            )}
-          </div>
-          {error && (
-            <p className={styles.error} role="alert">
-              {error}
-            </p>
-          )}
-        </div>
-      ) : (
-        <p className={styles.muted}>{t("done.deadlinePassed")}</p>
-      )}
+      <p className={styles.contactNote}>{contactName ? t("done.contact", { name: contactName }) : t("done.contactFallback")}</p>
     </main>
   );
 }

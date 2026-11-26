@@ -47,7 +47,7 @@ describe("Buchungsliste", () => {
        values ($1, $2, $3, 'Karl Kunde', 'karl@kunde.example', now() + interval '30 days')`,
       [tenantId, eventId, hashToken(token)],
     );
-    await db.as(ANON, (c) => c.query("select public.book_slot($1, $2, $3, 2, 'Karl Kunde', 'karl@kunde.example')", [tenantId, token, slotId]));
+    await db.as(ANON, (c) => c.query("select public.book_slot_once($1, $2, $3, 2, 'Karl Kunde', 'karl@kunde.example')", [tenantId, token, slotId]));
     // Vertrieb bucht direkt im Deal
     const t2 = generateToken();
     await db.as(sales.actor, (c) =>
@@ -87,7 +87,7 @@ describe("Buchungsliste", () => {
        values ($1, $2, $3, 'Anna Anon', 'anna@kunde.example', now() + interval '30 days')`,
       [tenantId, eventId, hashToken(token)],
     );
-    await db.as(ANON, (c) => c.query("select public.book_slot($1, $2, $3, 1, 'Anna Anon', 'anna@kunde.example')", [tenantId, token, slotId]));
+    await db.as(ANON, (c) => c.query("select public.book_slot_once($1, $2, $3, 1, 'Anna Anon', 'anna@kunde.example')", [tenantId, token, slotId]));
     const [b] = await db.admin<{ booked_by: string | null }>("select booked_by from bookings where email = 'anna@kunde.example'");
     expect(b!.booked_by).toBeNull();
   });

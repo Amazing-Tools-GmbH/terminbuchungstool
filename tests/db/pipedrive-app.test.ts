@@ -6,7 +6,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { ANON, type DbActor } from "@/lib/db/actor";
 import { generateToken, hashToken } from "@/lib/booking/tokens";
 import { encryptSecret } from "@/lib/crypto/secretbox";
-import { bookSlot, cancelBooking } from "@/lib/booking/service";
+import { bookSlot } from "@/lib/booking/service";
 import { processOutbox } from "@/lib/mail/outbox";
 import { processPipedriveJobs } from "@/lib/pipedrive/jobs";
 import { FakePipedriveCrm } from "@/lib/pipedrive/crm";
@@ -130,7 +130,7 @@ describe("Aufträge an Pipedrive", () => {
   const book = (token: string, slotId: string, seats = 2) =>
     bookSlot((fn) => db.as(ANON, fn), tenant, { token, slotId, seats, name: "Maria Muster", email: "maria.muster@kunde.example", extraAttendees: ["Max Muster"] });
 
-  it("Buchung -> Aktivität; Umbuchung -> dieselbe Aktivität aktualisiert; Stornierung -> gelöscht + Notiz", async () => {
+  it("Buchung -> Aktivität; Stornierung -> gelöscht + Notiz", async () => {
     const crm = new FakePipedriveCrm({});
     const { token } = await invite(sales, { slotIds: null });
     await book(token, slots[0]!);
@@ -143,18 +143,12 @@ describe("Aufträge an Pipedrive", () => {
     const [b1] = await db.admin<{ pipedrive_activity_id: string }>("select pipedrive_activity_id from bookings where status = 'confirmed' and email = 'maria.muster@kunde.example' order by created_at desc limit 1");
     expect(b1!.pipedrive_activity_id).toBeTruthy();
 
-    // Umbuchung: KEIN Stornierungsauftrag, Aktivität wird aktualisiert
-    await book(token, slots[1]!, 3);
-    expect((await jobs()).filter((j) => j.status === "queued").map((j) => j.type)).toEqual(["booking_activity"]);
-    await processPipedriveJobs(db.pool, { crm, access });
-    expect(crm.log[1]).toMatchObject({ op: "updateActivity", detail: { id: Number(b1!.pipedrive_activity_id), subject: "Kunden-Workshop Radiowerbung (3 Pers.)" } });
-
-    // Stornierung
-    await cancelBooking((fn) => db.as(ANON, fn), tenant, token);
+    // Stornierung (durch das Team; Kunden können nicht mehr selbst stornieren)
+    await db.admin("select public.cancel_booking($1, $2)", [tenant.id, token]);
     expect((await jobs()).filter((j) => j.status === "queued").map((j) => j.type)).toEqual(["cancel_activity"]);
     await processPipedriveJobs(db.pool, { crm, access });
-    expect(crm.log.slice(2).map((l) => l.op)).toEqual(["deleteActivity", "addNote"]);
-    expect(String((crm.log[3]!.detail as { html: string }).html)).toMatch(/Terminbuchung storniert: Kunden-Workshop Radiowerbung/);
+    expect(crm.log.slice(1).map((l) => l.op)).toEqual(["deleteActivity", "addNote"]);
+    expect(String((crm.log[2]!.detail as { html: string }).html)).toMatch(/Terminbuchung storniert: Kunden-Workshop Radiowerbung/);
   });
 
   it("ohne Pipedrive-Deal keine Aufträge", async () => {

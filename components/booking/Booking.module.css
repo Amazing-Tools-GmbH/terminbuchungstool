@@ -587,3 +587,13 @@
   font-weight: 400;
   color: var(--tb-muted);
 }
+
+/* Hinweis statt Umbuchen/Stornieren: an den Ansprechpartner wenden */
+.contactNote {
+  margin: 0;
+  padding: 14px 16px;
+  border-radius: var(--tb-radius-sm);
+  background: var(--tb-selected-bg);
+  border: 1px solid var(--tb-selected-line);
+  font-size: 15px;
+}

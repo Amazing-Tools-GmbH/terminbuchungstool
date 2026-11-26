@@ -15,13 +15,13 @@ export const MAIL_TEMPLATE_GROUPS: MailTemplateGroup[] = [
   },
   {
     id: "confirmation",
-    keys: ["mail.confirmation.subject", "mail.confirmation.title", "mail.ics.hint", "mail.change", "mail.changeLink", "mail.person", "mail.persons"],
+    keys: ["mail.confirmation.subject", "mail.confirmation.title", "mail.ics.hint", "mail.contact", "mail.contactFallback", "mail.person", "mail.persons"],
   },
   { id: "changed", keys: ["mail.confirmation.changedSubject", "mail.confirmation.changedTitle", "mail.rescheduled", "mail.guestCancelled"] },
   { id: "cancellation", keys: ["mail.cancellation.subject", "mail.cancellation.title", "mail.cancellation.byOrganizer", "mail.cancellation.text"] },
   {
     id: "guest",
-    keys: ["mail.guest.subject", "mail.guest.title", "mail.guest.text", "mail.guest.decline", "mail.guest.declineLink", "mail.guest.changedSubject", "mail.guest.changedTitle"],
+    keys: ["mail.guest.subject", "mail.guest.title", "mail.guest.text", "mail.guest.changedSubject", "mail.guest.changedTitle"],
   },
   { id: "guestCancelled", keys: ["mail.guest.cancelled.subject", "mail.guest.cancelled.title", "mail.guest.cancelled.text"] },
 ];
@@ -40,9 +40,7 @@ export function allowedPlaceholders(key: TextKey): string[] {
 
 /** Ohne diese Platzhalter fehlt in der Mail etwas Wichtiges (z. B. der Link) */
 const REQUIRED: Partial<Record<TextKey, string[]>> = {
-  "mail.change": ["link"],
   "mail.cancellation.text": ["link"],
-  "mail.guest.decline": ["link"],
 };
 
 export type TemplateIssue = { key: TextKey; kind: "unknown_placeholder" | "missing_placeholder" | "too_long"; placeholder?: string };

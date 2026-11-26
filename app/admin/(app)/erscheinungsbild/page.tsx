@@ -90,7 +90,7 @@ export default async function BrandingPage({ searchParams }: { searchParams: Sea
             logoUrl: tenant.logoUrl,
             heroIntro: tb("hero.intro"),
             submit: tb("aside.submit"),
-            change: tb("done.change"),
+            change: tb("done.google"),
             slotsTitle: tb("slots.title"),
           }}
           initial={{

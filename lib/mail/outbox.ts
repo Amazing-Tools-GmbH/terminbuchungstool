@@ -557,7 +557,7 @@ function buildMessage(row: OutboxRow, plan: Plan, ctx: MailContext): MailMessage
           ...base,
           location: b.location,
           bookerName: b.booker_name,
-          guestUrl,
+          contactName: ctx.inviter?.active ? (ctx.inviter.name ?? ctx.inviter.email) : null,
           icsFilename,
           changed: row.payload.changed === true,
           organizerChanged: byOrganizer,
@@ -588,6 +588,7 @@ function buildMessage(row: OutboxRow, plan: Plan, ctx: MailContext): MailMessage
         ? renderConfirmation(tenant, {
             ...base,
             extraAttendees: b.extra_attendees ?? [],
+            contactName: ctx.inviter?.active ? (ctx.inviter.name ?? ctx.inviter.email) : null,
             icsFilename,
             changed: Boolean(row.payload.replaces_booking_id) || typeof row.payload.guest_cancelled === "string" || row.payload.by_organizer === true,
             organizerChanged: row.payload.by_organizer === true,
