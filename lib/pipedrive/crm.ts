@@ -12,7 +12,7 @@ type Fetch = typeof fetch;
 export type PipedriveApiAccess = { apiDomain: string; accessToken: string };
 
 export type CrmDeal = { id: number; title: string; personId: number | null; orgId: number | null; ownerId: number | null };
-export type CrmPerson = { id: number; name: string; email: string | null };
+export type CrmPerson = { id: number; name: string; email: string | null; orgId?: number | null };
 export type ActivityAttendee = { email: string; name: string | null; personId: number | null };
 export type ActivityInput = {
   subject: string;
@@ -45,7 +45,7 @@ export interface PipedriveCrm {
   updateActivity(a: PipedriveApiAccess, id: number, input: ActivityInput): Promise<void>;
   /** false = gab es nicht (mehr) */
   deleteActivity(a: PipedriveApiAccess, id: number): Promise<boolean>;
-  addNote(a: PipedriveApiAccess, note: { dealId: number; personId: number | null; html: string }): Promise<number>;
+  addNote(a: PipedriveApiAccess, note: { dealId: number | null; personId: number | null; html: string }): Promise<number>;
 }
 
 const pad = (n: number) => String(n).padStart(2, "0");
@@ -82,6 +82,7 @@ const personSchema = z.object({
   id: z.number().int(),
   name: z.string(),
   emails: z.array(z.object({ value: z.string(), primary: z.boolean().optional() })).nullable().optional(),
+  org_id: z.number().int().nullable().optional(),
 });
 
 export class ApiPipedriveCrm implements PipedriveCrm {
@@ -155,7 +156,7 @@ export class ApiPipedriveCrm implements PipedriveCrm {
     if (!p.success) return null;
     const emails = p.data.emails ?? [];
     const email = (emails.find((e) => e.primary) ?? emails[0])?.value?.trim().toLowerCase() || null;
-    return { id: p.data.id, name: p.data.name, email };
+    return { id: p.data.id, name: p.data.name, email, orgId: p.data.org_id ?? null };
   }
 
   async getOrganizationName(a: PipedriveApiAccess, id: number) {
@@ -181,10 +182,10 @@ export class ApiPipedriveCrm implements PipedriveCrm {
     return status !== 404;
   }
 
-  async addNote(a: PipedriveApiAccess, note: { dealId: number; personId: number | null; html: string }) {
+  async addNote(a: PipedriveApiAccess, note: { dealId: number | null; personId: number | null; html: string }) {
     const { data } = await this.call(a, "POST", "/api/v1/notes", {
       content: note.html,
-      deal_id: note.dealId,
+      ...(note.dealId ? { deal_id: note.dealId } : {}),
       ...(note.personId ? { person_id: note.personId } : {}),
     });
     const r = idOnly.safeParse(data);
@@ -233,7 +234,7 @@ export class FakePipedriveCrm implements PipedriveCrm {
     this.log.push({ op: "deleteActivity", detail: { id } });
     return true;
   }
-  async addNote(_a: PipedriveApiAccess, note: { dealId: number; personId: number | null; html: string }) {
+  async addNote(_a: PipedriveApiAccess, note: { dealId: number | null; personId: number | null; html: string }) {
     this.log.push({ op: "addNote", detail: note });
     return ++this.next;
   }

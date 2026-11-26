@@ -32,7 +32,8 @@ export type PanelContext = {
   timezone: string;
   /** heutiges Datum (YYYY-MM-DD) in der Mandanten-Zeitzone */
   todayKey: string;
-  deal: { id: number; title: string | null };
+  /** null = Panel im Kontakt (ohne Deal) */
+  deal: { id: number; title: string | null } | null;
   person: { name: string; email: string | null; organization: string | null } | null;
   events: PanelEvent[];
   invitation: PanelInvitation | null;
@@ -58,6 +59,12 @@ export async function dealContact(s: PanelSession) {
   const access = await pipedriveApiAccess(s.tid, s.uid);
   if (!access) return { deal: null, person: null as CrmPerson | null, organization: null as string | null };
   const crm = pipedriveCrm();
+  if (!s.deal) {
+    // Panel im Kontakt: Person direkt, Firma aus der Person
+    const person = s.person ? await crm.getPerson(access, s.person) : null;
+    const organization = person?.orgId ? await crm.getOrganizationName(access, person.orgId) : null;
+    return { deal: null, person, organization };
+  }
   const deal = await crm.getDeal(access, s.deal);
   const person = deal?.personId ? await crm.getPerson(access, deal.personId) : null;
   const organization = deal?.orgId ? await crm.getOrganizationName(access, deal.orgId) : null;
@@ -86,7 +93,7 @@ export async function loadPanelContext(s: PanelSession, actor: DbActor, tenant: 
         id: string; created_at: Date; allowed_slot_ids: string[] | null; link_enc: string | null; status: PanelInvitation["status"]; expires_at: Date;
       }>(
         `select id, created_at, allowed_slot_ids, link_enc, status::text as status, expires_at from public.invitations
-          where tenant_id = $1 and pipedrive_deal_id = $2
+          where tenant_id = $1 and ($2::bigint is null or pipedrive_deal_id = $2)
             and ((pipedrive_person_id is not null and pipedrive_person_id = $3) or lower(email) = lower($4))
           order by created_at desc limit 1`,
         [tenant.id, s.deal, person?.id ?? null, person?.email ?? ""],
@@ -156,7 +163,7 @@ export async function loadPanelContext(s: PanelSession, actor: DbActor, tenant: 
     tenantName: tenant.name,
     timezone: tz,
     todayKey: dayKeyOf(new Date(), tz),
-    deal: { id: s.deal, title: deal?.title ?? null },
+    deal: s.deal ? { id: s.deal, title: deal?.title ?? null } : null,
     person: person ? { name: person.name, email: person.email, organization } : null,
     events: [...events.values()],
     invitation: data.i

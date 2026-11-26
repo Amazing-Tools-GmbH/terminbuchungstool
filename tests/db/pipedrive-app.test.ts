@@ -153,10 +153,15 @@ describe("Aufträge an Pipedrive", () => {
     expect(String((crm.log[2]!.detail as { html: string }).html)).toMatch(/Terminbuchung storniert: Kunden-Workshop Radiowerbung/);
   });
 
-  it("ohne Pipedrive-Deal keine Aufträge", async () => {
+  it("ohne Deal (Panel im Kontakt): Aktivität nur am Kontakt", async () => {
+    const crm = new FakePipedriveCrm({});
     const { token } = await invite(sales, { deal: null, email: "ohne.deal@kunde.example", slotIds: null });
     await book(token, slots[0]!);
-    expect(await jobs()).toEqual([]);
+    expect((await jobs()).map((j) => j.type)).toEqual(["booking_activity"]);
+    await processPipedriveJobs(db.pool, { crm, access });
+    const created = crm.log.find((l) => l.op === "createActivity")!;
+    expect(created.detail).not.toHaveProperty("deal_id");
+    expect(created.detail).toMatchObject({ participants: [{ person_id: 5001, primary: true }] });
   });
 
   it("Notiz 'Link gesendet' nach Versand der Einladung", async () => {

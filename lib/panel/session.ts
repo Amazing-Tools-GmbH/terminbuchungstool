@@ -12,7 +12,7 @@ import { grantPipedriveAdminById } from "@/lib/pipedrive/admin-sync";
 
 export type PanelStart =
   | { ok: true; session: PanelSession; bearer: string }
-  | { ok: false; error: "not_connected" | "no_access" | "disabled"; tid?: string };
+  | { ok: false; error: "not_connected" | "no_access" | "disabled" | "person_disabled"; tid?: string };
 
 export async function startPanelSession(entry: PanelEntry): Promise<PanelStart> {
   const tid = await tenantIdForPipedriveCompany(entry.companyId);
@@ -30,6 +30,14 @@ export async function startPanelSession(entry: PanelEntry): Promise<PanelStart> 
   if (!member && (await grantPipedriveAdminById(tid, entry.userId))) member = await lookup();
   if (!member) return { ok: false, error: "no_access", tid };
   if (member.status !== "active") return { ok: false, error: "disabled" };
-  const session: PanelSession = { uid: member.user_id, tid, pd: entry.userId, deal: entry.dealId };
+  // Panel im Kontakt nur, wenn die Firma es eingeschaltet hat (Admin → Pipedrive-Verbindung)
+  if (!entry.dealId) {
+    const enabled = await withActor({ role: "service_role" }, async (db) => {
+      const { rows } = await db.query<{ on: boolean }>("select panel_person_enabled as on from public.tenants where id = $1", [tid]);
+      return rows[0]?.on === true;
+    });
+    if (!enabled) return { ok: false, error: "person_disabled" };
+  }
+  const session: PanelSession = { uid: member.user_id, tid, pd: entry.userId, deal: entry.dealId, person: entry.personId };
   return { ok: true, session, bearer: seal("panel", session, PANEL_TTL_SECONDS) };
 }

@@ -31,8 +31,17 @@ describe("Panel-Einstieg", () => {
   it("gültiges Token + Deal", () => {
     expect(verifyPanelEntry(params({ resource: "deal", selectedIds: "1001" }), SECRET, now)).toEqual({
       ok: true,
-      entry: { userId: 11, companyId: 22, dealId: 1001 },
+      entry: { userId: 11, companyId: 22, dealId: 1001, personId: null },
     });
+  });
+
+  it("gültiges Token + Kontakt (Panel im Kontakt)", () => {
+    expect(verifyPanelEntry(params({ resource: "person", selectedIds: "5001" }), SECRET, now)).toEqual({
+      ok: true,
+      entry: { userId: 11, companyId: 22, dealId: null, personId: 5001 },
+    });
+    expect(verifyPanelEntry(params({ resource: "person" }), SECRET, now)).toEqual({ ok: false, error: "no_deal" });
+    expect(verifyPanelEntry(params({ resource: "organization", selectedIds: "3" }), SECRET, now)).toEqual({ ok: false, error: "no_deal" });
   });
 
   it("ohne Deal / mit falscher Signatur / ohne Geheimnis abgelehnt", () => {
@@ -130,7 +139,7 @@ describe("Pipedrive-CRM", () => {
     });
     const crm = new ApiPipedriveCrm(f);
     expect(await crm.getDeal(access, 1001)).toEqual({ id: 1001, title: "Deal", personId: 5001, orgId: 3, ownerId: 7 });
-    expect(await crm.getPerson(access, 5001)).toEqual({ id: 5001, name: "Maria", email: "maria@b.at" });
+    expect(await crm.getPerson(access, 5001)).toEqual({ id: 5001, name: "Maria", email: "maria@b.at", orgId: null });
     expect(await crm.getOrganizationName(access, 3)).toBe("Muster GmbH");
     expect(await crm.getDeal(access, 9)).toBeNull();
     expect(calls[0]!.auth).toBe("Bearer tok");

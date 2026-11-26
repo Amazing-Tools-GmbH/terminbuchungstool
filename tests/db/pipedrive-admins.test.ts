@@ -94,11 +94,11 @@ describe("Pipedrive-Admins werden automatisch Admin", () => {
   it("Panel: Pipedrive-Admin ohne Mitgliedschaft bekommt direkt eine Sitzung", async () => {
     // Julia Bechter (7200003) ist im Seed Admin in Pipedrive, aber kein Mitglied
     expect(await member(7200003)).toBeNull();
-    const r = await panel.startPanelSession({ userId: 7200003, companyId: 7100001, dealId: 1001 });
+    const r = await panel.startPanelSession({ userId: 7200003, companyId: 7100001, dealId: 1001, personId: null });
     expect(r.ok).toBe(true);
     expect(await member(7200003)).toEqual({ role: "admin", status: "active" });
     // kein Admin in Pipedrive: weiterhin kein Zugriff
-    expect(await panel.startPanelSession({ userId: 7200004, companyId: 7100001, dealId: 1001 })).toMatchObject({ ok: false, error: "no_access" });
+    expect(await panel.startPanelSession({ userId: 7200004, companyId: 7100001, dealId: 1001, personId: null })).toMatchObject({ ok: false, error: "no_access" });
   });
 
   it("Nutzerverwaltung übernimmt alle aktiven Pipedrive-Admins", async () => {
@@ -146,6 +146,21 @@ describe("Mindestens ein Owner", () => {
       /TB:last_owner/,
     );
     await expect(db.admin("delete from tenant_members where tenant_id = $1 and user_id = $2", [tenant.id, o!.user_id])).rejects.toThrow(/TB:last_owner/);
+  });
+});
+
+describe("Panel im Kontakt", () => {
+  it("nur, wenn die Firma es eingeschaltet hat", async () => {
+    const entry = { userId: 7200001, companyId: 7100001, dealId: null, personId: 5001 };
+    expect(await panel.startPanelSession(entry)).toMatchObject({ ok: false, error: "person_disabled" });
+    await db.admin("update tenants set panel_person_enabled = true where id = $1", [tenant.id]);
+    try {
+      const r = await panel.startPanelSession(entry);
+      expect(r.ok).toBe(true);
+      if (r.ok) expect(r.session).toMatchObject({ deal: null, person: 5001 });
+    } finally {
+      await db.admin("update tenants set panel_person_enabled = false where id = $1", [tenant.id]);
+    }
   });
 });
 

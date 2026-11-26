@@ -140,19 +140,20 @@ async function runJob(pool: pg.Pool, deps: PdJobDeps, job: JobRow): Promise<void
         [job.payload.invitation_id, job.tenant_id],
       );
       const r = rows[0];
-      if (!r?.deal_id) return null;
+      // ohne Deal und ohne Kontakt (z. B. öffentlicher Link vor dem Anlegen) nichts zu tun
+      if (!r?.deal_id && !r?.person_id) return null;
       const { rows: slots } = r.slot_ids?.length
         ? await c.query<{ starts_at: Date; ends_at: Date }>("select starts_at, ends_at from public.slots where id = any($1::uuid[]) order by starts_at", [r.slot_ids])
         : { rows: [] };
       return { ...r, slots };
     });
-    if (!inv?.deal_id) return; // ohne Deal nichts zu tun
+    if (!inv) return;
     const offer = inv.slots.length
       ? inv.slots.map((s) => { const f = formatSlot(s.starts_at, s.ends_at, inv.timezone); return `${f.weekdayShort}, ${f.date}, ${f.time}`; }).join("; ")
       : at("pd.note.offerAll");
     const access = await accessFor(deps, job.tenant_id, inv.created_by);
     await deps.crm.addNote(access, {
-      dealId: Number(inv.deal_id),
+      dealId: inv.deal_id ? Number(inv.deal_id) : null,
       personId: inv.person_id ? Number(inv.person_id) : null,
       html: `<p>${escapeHtml(at("pd.note.invited", { name: inv.name, offer }))}</p>`,
     });
@@ -160,7 +161,8 @@ async function runJob(pool: pg.Pool, deps: PdJobDeps, job: JobRow): Promise<void
   }
 
   const b = await loadBooking(pool, job.tenant_id, String(job.payload.booking_id ?? ""));
-  if (!b?.deal_id) return;
+  // Einträge am Deal bzw. – ohne Deal – am Kontakt
+  if (!b?.deal_id && !b?.person_id) return;
   const access = await accessFor(deps, job.tenant_id, b.created_by);
 
   if (job.type === "booking_activity") {
@@ -180,7 +182,7 @@ async function runJob(pool: pg.Pool, deps: PdJobDeps, job: JobRow): Promise<void
         ...(b.guests ?? []).map((g) => ({ email: g.email, name: g.name, personId: null })),
       ],
       ownerId: b.owner_pd_id ? Number(b.owner_pd_id) : null,
-      dealId: Number(b.deal_id),
+      dealId: b.deal_id ? Number(b.deal_id) : null,
       personId,
       start: new Date(b.starts_at),
       durationMinutes: minutes,
@@ -211,7 +213,7 @@ async function runJob(pool: pg.Pool, deps: PdJobDeps, job: JobRow): Promise<void
   }
   const f = formatSlot(b.starts_at, b.ends_at, b.timezone);
   await deps.crm.addNote(access, {
-    dealId: Number(b.deal_id),
+    dealId: b.deal_id ? Number(b.deal_id) : null,
     personId: b.person_id ? Number(b.person_id) : null,
     html: `<p>${escapeHtml(at("pd.note.cancelled", { event: b.event_title, date: `${f.date}, ${f.time}`, seats: b.seats }))}</p>`,
   });
