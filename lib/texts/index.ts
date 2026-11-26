@@ -28,7 +28,6 @@ export const TEXTS = {
   "slots.free": same("{free} von {capacity} Plätzen frei"),
   "slots.freeOne": same("1 von {capacity} Plätzen frei"),
   "slots.full": same("Ausgebucht"),
-  "slots.available": same("Plätze frei"),
   "slots.days": same("Verfügbare Tage"),
   "slots.onDay": same("Termine am {day}"),
   "slots.empty": same("Aktuell sind keine Termine verfügbar."),

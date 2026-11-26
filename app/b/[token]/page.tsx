@@ -69,7 +69,8 @@ export default async function BookingPage({ params }: { params: Promise<{ token:
     const pub = await loadPublicEventContext(runAnon, tenant.id, token);
     if (pub && pub.event.status === "published") {
       const ptz = tenant.timezone;
-      const pubSlots: SlotDisplay[] = pub.slots.map((s) => {
+      // ohne Platzanzeige nur buchbare Termine (Datum + Uhrzeit, keine Belegung)
+      const pubSlots: SlotDisplay[] = pub.slots.filter((s) => pub.event.show_seats || s.bookable).map((s) => {
         const d = new Date(s.starts_at);
         const part = (o: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat("de-AT", { timeZone: ptz, ...o }).format(d);
         return {
@@ -131,7 +132,8 @@ export default async function BookingPage({ params }: { params: Promise<{ token:
       monthShort: part({ month: "short" }),
     };
   };
-  const slots: SlotDisplay[] = ctx.slots.map((s) => ({
+  // ohne Platzanzeige nur buchbare Termine (Datum + Uhrzeit, keine Belegung)
+  const slots: SlotDisplay[] = ctx.slots.filter((s) => ctx.event.show_seats || s.bookable).map((s) => ({
     id: s.id,
     ...formatSlot(s.starts_at, s.ends_at, tz),
     ...dayParts(s.starts_at),

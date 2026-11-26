@@ -223,7 +223,14 @@ function SelectionView(
                 <ul className={styles.grid} role="list">
                   {daySlots.map((s) => (
                     <li key={s.id}>
-                      <SlotCard slot={s} t={t} selected={s.id === selectedId} disabled={!bookingOpen || !s.bookable} onPick={() => pick(s)} />
+                      <SlotCard
+                        slot={s}
+                        t={t}
+                        showSeats={props.event.showSeats}
+                        selected={s.id === selectedId}
+                        disabled={!bookingOpen || !s.bookable}
+                        onPick={() => pick(s)}
+                      />
                     </li>
                   ))}
                 </ul>
@@ -283,7 +290,7 @@ function SelectionView(
                 >
                   +
                 </button>
-                <span className={styles.muted}>{t("aside.seatsMax", { max: maxSeats })}</span>
+                {props.event.showSeats && <span className={styles.muted}>{t("aside.seatsMax", { max: maxSeats })}</span>}
               </div>
             </div>
 
@@ -409,27 +416,28 @@ function SelectionView(
 function SlotCard({
   slot,
   t,
+  showSeats: eventShowsSeats,
   selected,
   disabled,
   onPick,
 }: {
   slot: SlotDisplay;
   t: T;
+  /** Event zeigt Platzzahlen (sonst nur Datum/Uhrzeit) */
+  showSeats: boolean;
   selected: boolean;
   disabled: boolean;
   onPick: () => void;
 }) {
   const full = slot.free + slot.ownSeats <= 0;
-  const showSeats = slot.capacity !== null && slot.booked !== null;
+  const showSeats = eventShowsSeats && slot.capacity !== null && slot.booked !== null;
   const pct = showSeats && slot.capacity! > 0 ? Math.min(100, Math.round((slot.booked! / slot.capacity!) * 100)) : full ? 100 : 0;
   const level = full ? "full" : showSeats && slot.free <= 3 ? "low" : "ok";
   const freeText = full
     ? t("slots.full")
-    : !showSeats
-      ? t("slots.available")
-      : slot.free === 1
-        ? t("slots.freeOne", { capacity: slot.capacity! })
-        : t("slots.free", { free: slot.free, capacity: slot.capacity! });
+    : slot.free === 1
+      ? t("slots.freeOne", { capacity: slot.capacity ?? 0 })
+      : t("slots.free", { free: slot.free, capacity: slot.capacity ?? 0 });
 
   return (
     <button
@@ -447,14 +455,15 @@ function SlotCard({
         {slot.time}
         {slot.location ? ` · ${slot.location}` : ""}
       </span>
-      <span className={styles.cardLoad}>
-        {showSeats && (
+      {/* ohne Platzanzeige: nur Datum und Uhrzeit */}
+      {showSeats && (
+        <span className={styles.cardLoad}>
           <span className={styles.bar} aria-hidden="true">
             <span className={styles.barFill} style={{ width: `${pct}%` }} />
           </span>
-        )}
-        <span className={styles.cardFree}>{freeText}</span>
-      </span>
+          <span className={styles.cardFree}>{freeText}</span>
+        </span>
+      )}
     </button>
   );
 }
