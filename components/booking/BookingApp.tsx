@@ -12,9 +12,14 @@ export type SlotDisplay = {
   weekdayShort: string;
   date: string;
   time: string;
+  /** Tag (YYYY-MM-DD, Mandanten-Zeitzone) für die Tagesauswahl */
+  dayKey: string;
+  dayNum: string;
+  monthShort: string;
   location: string | null;
-  capacity: number;
-  booked: number;
+  /** null = Event zeigt keine Platzzahlen */
+  capacity: number | null;
+  booked: number | null;
   free: number;
   /** eigene Plätze in diesem Slot (bei bestehender Buchung) */
   ownSeats: number;
@@ -42,7 +47,7 @@ export type BookingDisplay = {
 type Props = {
   token: string;
   texts: ResolvedTexts;
-  event: { title: string; intro: string | null };
+  event: { title: string; intro: string | null; showSeats: boolean };
   invitation: { name: string; email: string };
   slots: SlotDisplay[];
   booking: BookingDisplay | null;
@@ -70,7 +75,7 @@ export function BookingApp(props: Props) {
         <div className={`tb-container ${styles.heroInner}`}>
           <span className={styles.eyebrow}>{t("hero.eyebrow")}</span>
           <h1 className={styles.heroTitle}>{props.event.title}</h1>
-          <p className={styles.heroIntro}>{props.event.intro || t("hero.intro")}</p>
+          <p className={styles.heroIntro}>{props.event.intro || t(props.event.showSeats ? "hero.intro" : "hero.introNoSeats")}</p>
         </div>
       </section>
       <div className={`tb-container ${styles.layout}`}>
@@ -103,6 +108,9 @@ function SelectionView(
 ) {
   const { t, slots, bookingOpen } = props;
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const days = [...new Set(slots.map((x) => x.dayKey))];
+  const [day, setDay] = useState<string | null>(() => slots.find((x) => x.bookable)?.dayKey ?? days[0] ?? null);
+  const daySlots = slots.filter((x) => x.dayKey === day);
   const [seats, setSeats] = useState(1);
   const [name, setName] = useState(props.invitation.name);
   const [email, setEmail] = useState(props.invitation.email);
@@ -168,13 +176,43 @@ function SelectionView(
         {slots.length === 0 ? (
           <p className={styles.muted}>{t("slots.empty")}</p>
         ) : (
-          <ul className={styles.grid} role="list">
-            {slots.map((s) => (
-              <li key={s.id}>
-                <SlotCard slot={s} t={t} selected={s.id === selectedId} disabled={!bookingOpen || !s.bookable} onPick={() => pick(s)} />
-              </li>
-            ))}
-          </ul>
+          <>
+            <div role="group" aria-label={t("slots.days")} className={styles.days}>
+              {days.map((k) => {
+                const list = slots.filter((x) => x.dayKey === k);
+                const first = list[0]!;
+                const full = !list.some((x) => x.bookable);
+                return (
+                  <button
+                    key={k}
+                    type="button"
+                    className={styles.day}
+                    aria-pressed={day === k}
+                    data-full={full || undefined}
+                    data-picked={list.some((x) => x.id === selectedId) || undefined}
+                    aria-label={`${first.weekday}, ${first.date}${full ? `, ${t("slots.full")}` : ""}`}
+                    onClick={() => setDay(k)}
+                  >
+                    <span className={styles.dayWd}>{first.weekdayShort}</span>
+                    <span className={styles.dayNum}>{first.dayNum}</span>
+                    <span className={styles.daySub}>{full ? t("slots.full") : first.monthShort}</span>
+                  </button>
+                );
+              })}
+            </div>
+            {day && (
+              <>
+                <h3 className={styles.dayTitle}>{t("slots.onDay", { day: `${daySlots[0]?.weekday ?? ""}, ${daySlots[0]?.date ?? ""}` })}</h3>
+                <ul className={styles.grid} role="list">
+                  {daySlots.map((s) => (
+                    <li key={s.id}>
+                      <SlotCard slot={s} t={t} selected={s.id === selectedId} disabled={!bookingOpen || !s.bookable} onPick={() => pick(s)} />
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+          </>
         )}
       </main>
 
@@ -349,13 +387,16 @@ function SlotCard({
   onPick: () => void;
 }) {
   const full = slot.free + slot.ownSeats <= 0;
-  const pct = slot.capacity > 0 ? Math.min(100, Math.round((slot.booked / slot.capacity) * 100)) : 100;
-  const level = full ? "full" : slot.free <= 3 ? "low" : "ok";
+  const showSeats = slot.capacity !== null && slot.booked !== null;
+  const pct = showSeats && slot.capacity! > 0 ? Math.min(100, Math.round((slot.booked! / slot.capacity!) * 100)) : full ? 100 : 0;
+  const level = full ? "full" : showSeats && slot.free <= 3 ? "low" : "ok";
   const freeText = full
     ? t("slots.full")
-    : slot.free === 1
-      ? t("slots.freeOne", { capacity: slot.capacity })
-      : t("slots.free", { free: slot.free, capacity: slot.capacity });
+    : !showSeats
+      ? t("slots.available")
+      : slot.free === 1
+        ? t("slots.freeOne", { capacity: slot.capacity! })
+        : t("slots.free", { free: slot.free, capacity: slot.capacity! });
 
   return (
     <button
@@ -374,9 +415,11 @@ function SlotCard({
         {slot.location ? ` · ${slot.location}` : ""}
       </span>
       <span className={styles.cardLoad}>
-        <span className={styles.bar} aria-hidden="true">
-          <span className={styles.barFill} style={{ width: `${pct}%` }} />
-        </span>
+        {showSeats && (
+          <span className={styles.bar} aria-hidden="true">
+            <span className={styles.barFill} style={{ width: `${pct}%` }} />
+          </span>
+        )}
         <span className={styles.cardFree}>{freeText}</span>
       </span>
     </button>

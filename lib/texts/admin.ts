@@ -360,6 +360,7 @@ export const ADMIN_TEXTS = {
   "manage.slot.deleteText": "Dieser Termin hat keine Buchungen und wird gelöscht.",
   "manage.slot.cancelSubmit": "Termin absagen",
   "manage.slot.deleteSubmit": "Termin löschen",
+  "manage.event.showSeats": "Freie Plätze für Kunden anzeigen (sonst nur „frei“ / „ausgebucht“)",
   "manage.event.edit": "Event bearbeiten",
   "manage.event.editSubmit": "Speichern",
   "manage.event.delete": "Event löschen",

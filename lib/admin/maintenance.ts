@@ -21,8 +21,8 @@ async function run<T>(ctx: AdminContext, fn: (db: import("pg").PoolClient) => Pr
 export function updateEvent(ctx: AdminContext, input: UpdateEventInput): Promise<void> {
   return run(ctx, async (db) => {
     const res = await db.query(
-      "update public.events set title = $3, location = $4, description = $5 where id = $1 and tenant_id = $2 and status <> 'archived'",
-      [input.eventId, ctx.tenant.id, input.title, input.location, input.description],
+      "update public.events set title = $3, location = $4, description = $5, show_seats = $6 where id = $1 and tenant_id = $2 and status <> 'archived'",
+      [input.eventId, ctx.tenant.id, input.title, input.location, input.description, input.showSeats],
     );
     if (res.rowCount === 0) throw new AdminError("forbidden");
   });

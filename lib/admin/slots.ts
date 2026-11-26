@@ -13,7 +13,7 @@ import { dealUrl, slotLevel, type SlotLevel } from "./slot-logic";
 
 export { kpis, type SlotLevel } from "./slot-logic";
 
-export type AdminEvent = { id: string; title: string; location: string | null; description: string | null; status: string };
+export type AdminEvent = { id: string; title: string; location: string | null; description: string | null; status: string; showSeats: boolean };
 
 export type AdminSlot = {
   id: string;
@@ -46,7 +46,7 @@ export type AdminBooking = {
 export async function listEvents(ctx: AdminContext): Promise<AdminEvent[]> {
   return withActor(ctx.actor, async (db) => {
     const { rows } = await db.query<AdminEvent>(
-      `select id, title, location, description, status::text as status from public.events
+      `select id, title, location, description, status::text as status, show_seats as "showSeats" from public.events
         where tenant_id = $1 and status <> 'archived' order by created_at`,
       [ctx.tenant.id],
     );

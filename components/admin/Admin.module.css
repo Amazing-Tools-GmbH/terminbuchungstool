@@ -240,3 +240,4 @@
 .radioCard { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--adm-line); border-radius: 8px; margin-bottom: 8px; cursor: pointer; }
 .radioCard input { margin-top: 4px; }
 .radioCard:has(input:checked) { border-color: var(--adm-accent, #1f6feb); }
+.checkRow { display: flex; gap: 8px; align-items: center; font-weight: 500; }

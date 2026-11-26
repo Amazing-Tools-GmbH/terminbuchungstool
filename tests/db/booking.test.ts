@@ -155,6 +155,24 @@ describe("book_slot", () => {
   });
 });
 
+describe("Platzzahlen je Event", () => {
+  it("Event ohne Platzanzeige: keine Zahlen an den Browser, freie Plätze gedeckelt", async () => {
+    const slot = await newSlot({ capacity: 50 });
+    const token = await newInvitation();
+    await db.admin("update events set show_seats = false where id = $1", [eventId]);
+    try {
+      const ctx = await context(token);
+      expect(ctx.event.show_seats).toBe(false);
+      const s = ctx.slots.find((x: { id: string }) => x.id === slot);
+      expect(s).toMatchObject({ capacity: null, booked: null, free: 10, bookable: true });
+    } finally {
+      await db.admin("update events set show_seats = true where id = $1", [eventId]);
+    }
+    const s2 = (await context(token)).slots.find((x: { id: string }) => x.id === slot);
+    expect(s2).toMatchObject({ capacity: 50, free: 50 });
+  });
+});
+
 describe("kein Umbuchen/Stornieren von außen", () => {
   it("anon/authenticated dürfen book_slot, cancel_booking und cancel_guest nicht direkt aufrufen", async () => {
     const token = await newInvitation();

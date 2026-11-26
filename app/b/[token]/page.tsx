@@ -78,9 +78,20 @@ export default async function BookingPage({ params }: { params: Promise<{ token:
   }
 
   const tz = tenant.timezone;
+  // Tag je Termin in der Mandanten-Zeitzone (Tagesauswahl wie im Panel)
+  const dayParts = (iso: string) => {
+    const d = new Date(iso);
+    const part = (o: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat("de-AT", { timeZone: tz, ...o }).format(d);
+    return {
+      dayKey: new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }).format(d),
+      dayNum: part({ day: "numeric" }).replace(".", ""),
+      monthShort: part({ month: "short" }),
+    };
+  };
   const slots: SlotDisplay[] = ctx.slots.map((s) => ({
     id: s.id,
     ...formatSlot(s.starts_at, s.ends_at, tz),
+    ...dayParts(s.starts_at),
     location: s.location,
     capacity: s.capacity,
     booked: s.booked,
@@ -131,7 +142,7 @@ export default async function BookingPage({ params }: { params: Promise<{ token:
       <BookingApp
         token={token}
         texts={resolveTexts(tenant.anrede, tenant.textOverrides)}
-        event={{ title: ctx.event.title, intro: ctx.event.intro_text }}
+        event={{ title: ctx.event.title, intro: ctx.event.intro_text, showSeats: ctx.event.show_seats }}
         invitation={{ name: ctx.invitation.name, email: ctx.invitation.email }}
         slots={slots}
         booking={booking}

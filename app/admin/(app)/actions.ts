@@ -153,6 +153,7 @@ export async function updateEventAction(form: FormData) {
     title: str(form, "title"),
     location: str(form, "location") ?? "",
     description: str(form, "description") ?? "",
+    showSeats: str(form, "showSeats"),
   });
   const r = parsed.success ? await attempt(() => updateEvent(ctx, parsed.data)) : { ok: false as const, error: "invalid_input" };
   revalidatePath("/admin");

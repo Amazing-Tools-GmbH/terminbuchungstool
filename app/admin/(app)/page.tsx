@@ -172,6 +172,9 @@ function EventPanel(props: {
                   <label htmlFor={`ed-${event.id}`}>{at("event.form.description")}</label>
                   <textarea id={`ed-${event.id}`} name="description" rows={3} maxLength={2000} className={styles.textarea} defaultValue={event.description ?? ""} />
                 </div>
+                <label className={`${styles.checkRow} ${styles.full}`}>
+                  <input type="checkbox" name="showSeats" defaultChecked={event.showSeats} /> {at("manage.event.showSeats")}
+                </label>
                 <div className={styles.full}>
                   <button type="submit" className={styles.btn}>
                     {at("manage.event.editSubmit")}
