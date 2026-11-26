@@ -259,7 +259,7 @@ export const ADMIN_TEXTS = {
   "login.error.not_connected": "Für deine Pipedrive-Firma ist das Terminbuchungstool noch nicht installiert.",
   "login.install.text": "Installiere die App für deine Pipedrive-Firma. Du wirst dabei Owner und kannst danach weitere Benutzer freischalten.",
   "login.install.button": "App in Pipedrive installieren",
-  "login.error.no_access": "Du hast noch keinen Zugriff. Deine Anfrage wurde gespeichert, und die Owner und Admins deiner Firma wurden per E-Mail informiert. Sobald du freigeschaltet bist, bekommst du eine E-Mail.",
+  "login.error.no_access": "Du hast noch keinen Zugriff. {owner}Deine Anfrage wurde gespeichert, und die Owner und Admins deiner Firma wurden per E-Mail informiert. Sobald du freigeschaltet bist, bekommst du eine E-Mail.",
   "login.error.disabled": "Dein Zugriff wurde gesperrt. Bitte wende dich an einen Owner oder Admin deiner Firma.",
   "login.error.install_failed": "Die Installation der Pipedrive-App ist fehlgeschlagen. Bitte erneut versuchen.",
   "login.error.settings_invalid": "Der Link aus den Pipedrive-Einstellungen ist ungültig oder abgelaufen. Bitte die Einstellungen in Pipedrive erneut öffnen.",
@@ -619,7 +619,10 @@ export const ADMIN_TEXTS = {
   "panel.error.invalid": "Das Panel konnte nicht geprüft werden. Bitte den Deal in Pipedrive neu laden.",
   "panel.error.not_configured": "Die Pipedrive-App ist noch nicht vollständig eingerichtet.",
   "panel.error.not_connected": "Für diese Pipedrive-Firma ist das Terminbuchungstool nicht installiert.",
-  "panel.error.access_requested": "Du hast noch keinen Zugriff auf das Terminbuchungstool. Deine Anfrage wurde gespeichert, und die Owner und Admins deiner Firma wurden per E-Mail informiert. Sobald du freigeschaltet bist, bekommst du eine E-Mail – danach die Seite neu laden.",
+  "access.owner.one": "Bitte wende dich an den Owner „{email}“. ",
+  "access.owner.many": "Bitte wende dich an einen der Owner: {emails}. ",
+  "users.pdAdminHint": "Admins in Pipedrive sind automatisch Admin im Terminbuchungstool (sperren geht, herabstufen nicht).",
+  "panel.error.access_requested": "Du hast noch keinen Zugriff auf das Terminbuchungstool. {owner}Deine Anfrage wurde gespeichert, und die Owner und Admins deiner Firma wurden per E-Mail informiert. Sobald du freigeschaltet bist, bekommst du eine E-Mail – danach die Seite neu laden.",
   "panel.error.no_access": "Du hast noch keinen Zugriff auf das Terminbuchungstool. Bitte wende dich an einen Owner oder Admin deiner Firma.",
   "panel.error.disabled": "Dein Zugriff wurde gesperrt. Bitte wende dich an einen Owner oder Admin deiner Firma.",
   "panel.error.no_deal": "Das Panel ist nur in einem Deal verfügbar.",
@@ -650,6 +653,13 @@ export function mailErrorText(code: string | null | undefined): string {
   return key in ADMIN_TEXTS ? at(key) : at("mailError.generic");
 }
 
+/** „Bitte wende dich an den Owner …“ (leer, wenn keiner bekannt ist) */
+export function ownerHint(emails: readonly string[]): string {
+  if (emails.length === 0) return "";
+  if (emails.length === 1) return at("access.owner.one", { email: emails[0]! });
+  return at("access.owner.many", { emails: emails.map((e) => `„${e}“`).join(", ") });
+}
+
 export function adminErrorText(code: AdminErrorCode): string {
   return at(`error.${code}`);
 }
@@ -667,8 +677,8 @@ const LOGIN_ERRORS = [
   "email_mismatch",
 ] as const;
 
-export function loginErrorText(code: string | undefined): string | null {
-  return code && (LOGIN_ERRORS as readonly string[]).includes(code) ? at(`login.error.${code}` as AdminTextKey) : null;
+export function loginErrorText(code: string | undefined, owners: readonly string[] = []): string | null {
+  return code && (LOGIN_ERRORS as readonly string[]).includes(code) ? at(`login.error.${code}` as AdminTextKey, { owner: ownerHint(owners) }) : null;
 }
 
 export const PANEL_ERRORS = [

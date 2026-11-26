@@ -62,8 +62,12 @@ Mandantenfähiges Terminbuchungstool mit Pipedrive-Integration. Auftrag und Phas
 - Nutzerverwaltung (`/admin/benutzer`, später auch in den Pipedrive-App-Einstellungen): listet
   die Pipedrive-Benutzer der Firma; neue Benutzer haben keinen Zugriff, bis owner/admin sie
   freischalten. owner verwaltet alle, admin alle außer owner, sales nichts (RLS). Immer
-  mindestens ein aktiver owner (Trigger, `TB:last_owner`). Pipedrive-Admins werden nicht
-  automatisch Admin. auth-Benutzer entstehen beim Freischalten (`lib/auth/users.ts`,
+  mindestens ein aktiver owner (Trigger, `TB:last_owner`). Pipedrive-Admins werden
+  automatisch Admin (`lib/pipedrive/admin-sync.ts`: bei Installation, Login, Panel,
+  App-Einstellungen, `/settings` und beim Laden der Nutzerverwaltung; neu anlegen bzw. sales
+  anheben, gesperrt bleibt gesperrt, owner bleibt owner, kein automatisches Herabstufen).
+  Ohne Zugriff nennt die Meldung die aktiven Owner (`ownerContacts`; Login-Seite über
+  versiegelten Parameter `hint`, Zweck `login-hint`). auth-Benutzer entstehen beim Freischalten (`lib/auth/users.ts`,
   `AUTH_ADMIN=local|supabase`), ohne Mail.
 - Pipedrive-App: Installation/Deinstallation über die Callback-Route (`lib/pipedrive/install.ts`;
   Installierende:r = owner, Deinstallation ⇒ `pipedrive_connections.status = revoked`, Daten

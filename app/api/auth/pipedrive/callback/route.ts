@@ -11,6 +11,8 @@ import { LOGIN_NONCE_COOKIE, loginStateSchema, relinkStateSchema, unseal, type R
 import { getAdminContext, sessionCookie } from "@/lib/auth/admin";
 import { relinkFromOAuth } from "@/lib/pipedrive/manage";
 import { recordAccessRequest } from "@/lib/access-requests";
+import { grantPipedriveAdmin } from "@/lib/pipedrive/admin-sync";
+import { loginHintFor } from "@/lib/auth/login-hint";
 import { appUrl } from "@/lib/auth/urls";
 import { syncCompanyDomain, installFromOAuth, uninstallCompany } from "@/lib/pipedrive/install";
 
@@ -37,8 +39,8 @@ function sameNonce(a: string, b: string | undefined): boolean {
  */
 export async function GET(req: NextRequest) {
   const params = req.nextUrl.searchParams;
-  const fail = (error: string) => {
-    const res = NextResponse.redirect(appUrl("/admin/login", { error }));
+  const fail = (error: string, hint?: string | null) => {
+    const res = NextResponse.redirect(appUrl("/admin/login", hint ? { error, hint } : { error }));
     res.cookies.set(LOGIN_NONCE_COOKIE, "", { path: "/api/auth", maxAge: 0 });
     return res;
   };
@@ -80,13 +82,14 @@ export async function GET(req: NextRequest) {
           me.email,
         ]);
       }),
+    grantAdmin: (tid, me) => grantPipedriveAdmin(tid, me),
     onNoAccess: (tid, me) => recordAccessRequest({ id: tid }, me.id, { name: me.name, email: me.email }),
     storeUserTokens: async (tid, uid, me, tokens) => {
       await storeUserTokens(getPool(), tid, uid, me, tokens);
       await syncCompanyDomain(me.companyId, me.companyDomain).catch((err) => console.error("Pipedrive-Domain nicht aktualisiert", err));
     },
   });
-  if (!result.ok) return fail(result.error);
+  if (!result.ok) return fail(result.error, result.error === "no_access" && result.tid ? await loginHintFor(result.tid) : null);
 
   const res = NextResponse.redirect(appUrl("/admin"));
   res.cookies.set(sessionCookie(result.session));
@@ -129,7 +132,7 @@ async function relink(state: RelinkState, code: string | null) {
 }
 
 /** Installation über den Installationslink (ohne unseren State) */
-async function install(code: string | null, fail: (e: string) => NextResponse) {
+async function install(code: string | null, fail: (e: string, hint?: string | null) => NextResponse) {
   const cfg = oauthConfig();
   if (!cfg) return fail("not_configured");
   if (!code) return fail("cancelled");
@@ -142,7 +145,7 @@ async function install(code: string | null, fail: (e: string) => NextResponse) {
     console.error("Installation der Pipedrive-App fehlgeschlagen:", (err as Error).message);
     return fail("install_failed");
   }
-  if (!result.ok) return fail(result.error);
+  if (!result.ok) return fail(result.error, result.error === "no_access" && result.tid ? await loginHintFor(result.tid) : null);
   const res = NextResponse.redirect(appUrl("/admin", result.created || result.adopted ? { installed: "1" } : {}));
   res.cookies.set(sessionCookie(result.session));
   return res;

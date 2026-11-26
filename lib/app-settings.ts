@@ -14,10 +14,11 @@ import { tenantForMember } from "@/lib/tenant/current";
 import { tenantIdForPipedriveCompany } from "@/lib/pipedrive/runtime";
 import type { SettingsIdentity } from "@/lib/pipedrive/settings-token";
 import { recordAccessRequest } from "@/lib/access-requests";
+import { grantPipedriveAdminById, ownerContacts } from "@/lib/pipedrive/admin-sync";
 
 export type AppSettingsStart =
   | { ok: true; ctx: AdminContext; bearer: string }
-  | { ok: false; error: "not_connected" | "access_requested" | "disabled" | "sales" };
+  | { ok: false; error: "not_connected" | "access_requested" | "disabled" | "sales"; owners?: string[] };
 
 async function contextFor(session: Session): Promise<AdminContext | null> {
   const tenant = await tenantForMember(session.uid, session.tid);
@@ -38,16 +39,22 @@ async function contextFor(session: Session): Promise<AdminContext | null> {
 export async function startAppSettings(identity: SettingsIdentity): Promise<AppSettingsStart> {
   const tid = await tenantIdForPipedriveCompany(identity.companyId);
   if (!tid) return { ok: false, error: "not_connected" };
-  const member = await withActor({ role: "service_role" }, async (db) => {
-    const { rows } = await db.query<{ user_id: string; status: "active" | "disabled" }>(
-      "select user_id, status from public.member_login_lookup($1, $2)",
-      [tid, identity.userId],
-    );
-    return rows[0] ?? null;
-  });
+  const lookup = () =>
+    withActor({ role: "service_role" }, async (db) => {
+      const { rows } = await db.query<{ user_id: string; status: "active" | "disabled" }>(
+        "select user_id, status from public.member_login_lookup($1, $2)",
+        [tid, identity.userId],
+      );
+      return rows[0] ?? null;
+    });
+  let member = await lookup();
+  // Pipedrive-Admin: automatisch Admin (neu oder von sales angehoben)
+  if (!member || member.status === "active") {
+    if (await grantPipedriveAdminById(tid, identity.userId)) member = await lookup();
+  }
   if (!member) {
     await recordAccessRequest({ id: tid }, identity.userId);
-    return { ok: false, error: "access_requested" };
+    return { ok: false, error: "access_requested", owners: await ownerContacts(tid).catch(() => []) };
   }
   if (member.status !== "active") return { ok: false, error: "disabled" };
   const session: Session = { uid: member.user_id, tid, pd: identity.userId };

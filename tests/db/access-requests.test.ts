@@ -105,9 +105,11 @@ describe("App-Einstellungen in Pipedrive", () => {
     const s = await appSettings.startAppSettings({ userId: 7200002, companyId: 7100001 });
     expect(s).toEqual({ ok: false, error: "sales" });
     await db.admin("delete from access_requests");
-    const n = await appSettings.startAppSettings({ userId: 7200003, companyId: 7100001 });
-    expect(n).toEqual({ ok: false, error: "access_requested" });
-    expect(await db.admin("select 1 from access_requests where pipedrive_user_id = 7200003 and status = 'open'")).toHaveLength(1);
+    await db.admin("delete from tenant_members where pipedrive_user_id = 7200004");
+    const n = await appSettings.startAppSettings({ userId: 7200004, companyId: 7100001 });
+    // Hinweis nennt den Owner
+    expect(n).toEqual({ ok: false, error: "access_requested", owners: ["admin@antenne-vorarlberg.example"] });
+    expect(await db.admin("select 1 from access_requests where pipedrive_user_id = 7200004 and status = 'open'")).toHaveLength(1);
     expect(await appSettings.startAppSettings({ userId: 1, companyId: 999 })).toEqual({ ok: false, error: "not_connected" });
   });
 });

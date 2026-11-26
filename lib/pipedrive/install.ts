@@ -20,10 +20,11 @@ import { tenantSlugFromPipedrive } from "./domain";
 import { storeUserTokens } from "./user-connection";
 import { syncCompanyDomainOn } from "./domain-sync";
 import { recordAccessRequest } from "@/lib/access-requests";
+import { grantPipedriveAdmin } from "./admin-sync";
 
 export type InstallResult =
   | { ok: true; created: boolean; adopted: boolean; session: Session }
-  | { ok: false; error: "no_access" | "install_failed"; created: boolean };
+  | { ok: false; error: "no_access" | "install_failed"; created: boolean; tid?: string };
 
 function validTimezone(tz: string | undefined): string {
   if (!tz) return "Europe/Vienna";
@@ -133,10 +134,13 @@ export async function installFromOAuth(me: PipedriveMe, t: PipedriveTokens): Pro
     return { tid, created: true, adopted: false, uid: authUserId };
   });
 
+  // weiterer Benutzer einer bereits verbundenen Firma: Pipedrive-Admin -> automatisch Admin
+  // (auch ein vorhandenes sales-Mitglied wird angehoben)
+  if (me.isAdmin && !res.created && !res.adopted) res.uid = (await grantPipedriveAdmin(res.tid, me)) ?? res.uid;
   if (!res.uid) {
-    // weiterer Benutzer einer bereits verbundenen Firma: Anfrage an Owner/Admins
+    // sonst: Anfrage an Owner/Admins
     await recordAccessRequest({ id: res.tid }, me.id, { name: me.name, email: me.email });
-    return { ok: false, error: "no_access", created: res.created };
+    return { ok: false, error: "no_access", created: res.created, tid: res.tid };
   }
   await storeUserTokens(getPool(), res.tid, res.uid, me, t);
   return { ok: true, created: res.created, adopted: res.adopted, session: { uid: res.uid, tid: res.tid, pd: me.id } };

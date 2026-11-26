@@ -11,6 +11,7 @@ import type { AdminContext, MemberRole } from "@/lib/auth/admin";
 import { listPipedriveUsers } from "@/lib/pipedrive/directory";
 import { AdminError, toAdminError } from "./errors";
 import { closeAccessRequest, listOpenAccessRequests } from "@/lib/access-requests";
+import { syncPipedriveAdmins } from "@/lib/pipedrive/admin-sync";
 
 import { mergeTeam, type MemberRow, type Team } from "./team";
 
@@ -42,7 +43,10 @@ async function listMembers(ctx: AdminContext): Promise<MemberRow[]> {
 }
 
 export async function loadTeam(ctx: AdminContext): Promise<Team> {
-  const [dir, members] = await Promise.all([listPipedriveUsers(ctx.tenant), listMembers(ctx)]);
+  const dir = await listPipedriveUsers(ctx.tenant);
+  // Admins in Pipedrive sind automatisch Admin (neue anlegen, sales anheben)
+  if (dir.ok) await syncPipedriveAdmins(ctx.tenant.id, dir.users);
+  const members = await listMembers(ctx);
   return {
     entries: mergeTeam(dir.ok ? dir.users : [], members, ctx.userId),
     directory: dir.ok ? "ok" : dir.reason,
