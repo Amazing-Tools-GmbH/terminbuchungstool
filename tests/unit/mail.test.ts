@@ -33,24 +33,26 @@ const data = {
 };
 
 describe("Mail-Vorlagen", () => {
-  it("Bestätigung (Sie): Betreff, Inhalte, Link, Theme-Farben", () => {
-    const m = renderConfirmation(tenant("demo"), data);
+  it("Bestätigung (Sie): Betreff, Inhalte, Ansprechpartner statt Änderungslink, Theme-Farben", () => {
+    const m = renderConfirmation(tenant("demo"), { ...data, contactName: "Markus Fink" });
     expect(m.subject).toBe("Buchungsbestätigung: Kunden-Workshop Radiowerbung am 09.12.2026");
     expect(m.html).toContain("Ihre Buchung ist bestätigt");
     expect(m.html).toContain("Mi, 09.12.2026");
     expect(m.html).toContain("10:00–12:00");
     expect(m.html).toContain("3 Personen");
-    expect(m.html).toContain('href="https://example.at/b/tok?x=1&amp;y=2"');
-    expect(m.html).toContain("Ihren Buchungslink");
+    // kein Umbuchen/Stornieren über einen Link
+    expect(m.html).not.toContain("https://example.at/b/tok");
+    expect(m.text).not.toContain("https://example.at/b/tok");
+    expect(m.html).toContain("Sie können nicht kommen oder müssen etwas ändern? Bitte wenden Sie sich an Markus Fink");
     expect(m.html).toContain("#1F4FB4");
-    expect(m.text).toContain("https://example.at/b/tok?x=1&y=2");
   });
 
   it("Bestätigung (Ihr) im ANTENNE-Theme", () => {
     const m = renderConfirmation(tenant("antennevorarlberg"), { ...data, seats: 1, changed: true });
     expect(m.subject).toMatch(/^Geänderte Buchung/);
     expect(m.html).toContain("Eure Buchung wurde geändert");
-    expect(m.html).toContain("euren Buchungslink");
+    // ohne bekannten Ansprechpartner: Antwort auf die Mail
+    expect(m.html).toContain("Ihr könnt nicht kommen oder müsst etwas ändern? Bitte meldet euch per Antwort auf diese E-Mail.");
     expect(m.html).toContain("1 Person");
     expect(m.html).toContain("#FFE500");
     expect(m.html).toContain("Fragen? Ruft uns an");

@@ -10,7 +10,8 @@ const bodySchema = z.object({
   token: z.string().min(1).max(2048),
   userId: z.number().int().positive(),
   companyId: z.number().int().positive(),
-  dealId: z.number().int().positive(),
+  dealId: z.number().int().positive().nullable(),
+  personId: z.number().int().positive().nullable().optional(),
 });
 
 /**
@@ -22,7 +23,12 @@ export async function POST(req: Request) {
   const parsed = bodySchema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return panelError("invalid_input");
   const b = parsed.data;
-  const q = new URLSearchParams({ token: b.token, userId: String(b.userId), companyId: String(b.companyId), selectedIds: String(b.dealId) });
+  const q = new URLSearchParams({
+    token: b.token,
+    userId: String(b.userId),
+    companyId: String(b.companyId),
+    ...(b.dealId ? { resource: "deal", selectedIds: String(b.dealId) } : { resource: "person", selectedIds: String(b.personId ?? "") }),
+  });
   const v = verifyPanelEntry(q, settingsJwtSecret());
   if (!v.ok) return panelError("session");
   const start = await startPanelSession(v.entry);

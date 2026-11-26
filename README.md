@@ -232,8 +232,10 @@ Hinweise:
 
 - Buchungsseite: `/b/<token>` (persönlicher Link aus der Einladung). Lokal mit
   `npm run db:reset` gibt fertige Links aus (Mandant ergibt sich aus dem Token).
-- API: `POST /api/bookings` (buchen/umbuchen), `POST /api/bookings/cancel`,
-  `.ics`: `GET /b/<token>/ics`.
+- API: `POST /api/bookings` (buchen, genau einmal je Link), `.ics`: `GET /b/<token>/ics`.
+- Kein Umbuchen/Stornieren durch Kunden (entschieden: hohe Hemmschwelle zum Nicht-Kommen).
+  Nach der Buchung zeigt der Link nur die Bestätigung und den Ansprechpartner
+  (einladender Mitarbeiter); Änderungen/Stornierungen macht das Team im Admin.
 - Mails laufen immer über `email_outbox`. Direkt nach einer Buchung wird die Outbox des
   Mandanten im Hintergrund abgearbeitet (`after()`), zusätzlich per Cron
   `GET /api/cron/outbox` (Header `Authorization: Bearer $CRON_SECRET`).
@@ -299,7 +301,8 @@ Den Weg wählt jede Firma unter **Admin → E-Mail** (`tenants.mail_route`):
 | App-Deinstallation (Webhook) | dieselbe Callback-URL (Pipedrive ruft sie mit `DELETE` und Basic-Auth auf) |
 | App settings (eigene Seite) | `https://meetings.atools.de/settings` |
 | App-Erweiterung „Custom panel“, Deal-Detailansicht | `https://meetings.atools.de/panel`, JWT-Secret = `PIPEDRIVE_JWT_SECRET` (oder leer = Client-Secret) |
-| Scopes | Basis, Deals (voll), Kontakte (lesen), Aktivitäten (voll), Benutzer (lesen), Mail (voll) – einen Scope zum Senden gibt es für Apps nicht |
+| Scopes | Basis, Deals (voll), Kontakte (voll – der öffentliche Event-Link legt Kontakte an), Aktivitäten (voll), Benutzer (lesen), Mail (voll) – einen Scope zum Senden gibt es für Apps nicht |
+| App-Erweiterung „Custom panel“, Kontakt-Detailansicht (optional) | `https://meetings.atools.de/panel` – wirkt nur bei Firmen, die „Panel im Kontakt“ eingeschaltet haben |
 
 - **Installation:** Die Installation läuft über dieselbe Callback-URL (ohne `state`). Neue
   Pipedrive-Firma ⇒ Mandant (Slug = Unternehmensdomain, Name/Zeitzone aus Pipedrive),
@@ -323,8 +326,8 @@ Den Weg wählt jede Firma unter **Admin → E-Mail** (`tenants.mail_route`):
 - **Einträge im Deal** (Warteschlange `pipedrive_jobs`, abgearbeitet nach jeder Buchung
   und per Cron, mit Backoff): Notiz „Link gesendet“ beim Versand (außer beim Versand über
   Pipedrive – der steht dort ohnehin im Verlauf), Aktivität „Meeting“ bei Buchung
-  (Besitzer = einladender Mitarbeiter, Teilnehmer = Kontakt), Umbuchung ändert dieselbe
-  Aktivität, Stornierung löscht sie und legt eine Notiz an.
+  (Besitzer = einladender Mitarbeiter, Teilnehmer = Kontakt), Änderung durch das Team
+  ändert dieselbe Aktivität, Stornierung löscht sie und legt eine Notiz an.
 - **Lokal:** `/dev/panel` (mit `DEV_TOOLS_ENABLED=true`) simuliert den Aufruf aus einem Deal
   mit Seed-Benutzern und -Deals (`PIPEDRIVE_DIRECTORY=fake`).
 

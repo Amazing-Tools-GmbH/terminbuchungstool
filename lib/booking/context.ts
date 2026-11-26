@@ -7,14 +7,29 @@ export const slotSchema = z.object({
   id: z.string().uuid(),
   starts_at: ts,
   ends_at: ts,
-  capacity: z.number().int(),
-  booked: z.number().int(),
+  /** null = Event zeigt Kunden keine Platzzahlen */
+  capacity: z.number().int().nullable(),
+  booked: z.number().int().nullable(),
   free: z.number().int(),
   own_seats: z.number().int(),
   location: z.string().nullable(),
   status: z.enum(["open", "closed", "cancelled"]),
   bookable: z.boolean(),
 });
+
+export const publicEventContextSchema = z.object({
+  event: z.object({
+    id: z.string().uuid(),
+    title: z.string(),
+    description: z.string().nullable(),
+    intro_text: z.string().nullable(),
+    location: z.string().nullable(),
+    status: z.enum(["draft", "published", "archived"]),
+    show_seats: z.boolean().default(true),
+  }),
+  slots: z.array(slotSchema),
+});
+export type PublicEventContext = z.infer<typeof publicEventContextSchema>;
 
 export const invitationContextSchema = z.object({
   invitation: z.object({
@@ -33,6 +48,7 @@ export const invitationContextSchema = z.object({
     intro_text: z.string().nullable(),
     location: z.string().nullable(),
     status: z.enum(["draft", "published", "archived"]),
+    show_seats: z.boolean().default(true),
   }),
   slots: z.array(slotSchema),
   booking: z

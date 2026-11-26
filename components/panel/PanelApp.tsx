@@ -13,7 +13,7 @@ import styles from "./Panel.module.css";
 import { usePipedriveSdk } from "./usePipedriveSdk";
 
 type Texts = Record<string, string>;
-type Identity = { userId: number; companyId: number; dealId: number };
+type Identity = { userId: number; companyId: number; dealId: number | null; personId: number | null };
 
 const toDate = (key: string) => {
   const [y, m, d] = key.split("-").map(Number);

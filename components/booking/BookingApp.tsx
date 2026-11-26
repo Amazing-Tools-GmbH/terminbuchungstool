@@ -12,9 +12,14 @@ export type SlotDisplay = {
   weekdayShort: string;
   date: string;
   time: string;
+  /** Tag (YYYY-MM-DD, Mandanten-Zeitzone) für die Tagesauswahl */
+  dayKey: string;
+  dayNum: string;
+  monthShort: string;
   location: string | null;
-  capacity: number;
-  booked: number;
+  /** null = Event zeigt keine Platzzahlen */
+  capacity: number | null;
+  booked: number | null;
   free: number;
   /** eigene Plätze in diesem Slot (bei bestehender Buchung) */
   ownSeats: number;
@@ -34,8 +39,6 @@ export type BookingDisplay = {
   extraAttendees: string[];
   /** weitere Teilnehmer mit eigener Einladung */
   guests: { name: string; email: string }[];
-  changeUntil: string;
-  canChange: boolean;
   icsUrl: string;
   googleUrl: string;
   outlookUrl: string;
@@ -44,67 +47,40 @@ export type BookingDisplay = {
 type Props = {
   token: string;
   texts: ResolvedTexts;
-  event: { title: string; intro: string | null };
+  event: { title: string; intro: string | null; showSeats: boolean };
   invitation: { name: string; email: string };
   slots: SlotDisplay[];
   booking: BookingDisplay | null;
   bookingOpen: boolean;
   closedReason: string;
+  /** Ansprechpartner (einladender Mitarbeiter) – Hinweis statt Umbuchen/Stornieren */
+  contactName: string | null;
+  /** öffentlicher Event-Link: Name/E-Mail/Firma selbst eingeben, danach zum persönlichen Link */
+  publicLink?: boolean;
 };
-
-type Mode = "view" | "change";
 
 export function BookingApp(props: Props) {
   const { texts, booking, slots, bookingOpen } = props;
   const t = (key: TextKey, vars?: Record<string, string | number>) => formatText(texts[key], vars);
   const router = useRouter();
 
-  const [mode, setMode] = useState<Mode>("view");
   const [justBooked, setJustBooked] = useState(false);
-  const [cancelled, setCancelled] = useState(false);
-  // Moduswechsel erst zusammen mit den neu geladenen Serverdaten anzeigen
+  // Bestätigung erst zusammen mit den neu geladenen Serverdaten anzeigen
   const [refreshing, startRefresh] = useTransition();
 
-  const showConfirmation = booking !== null && mode === "view";
-
-  if (showConfirmation) {
-    return (
-      <Confirmation
-        t={t}
-        booking={booking}
-        announce={justBooked}
-        onChange={() => {
-          setJustBooked(false);
-          setMode("change");
-        }}
-        onCancelled={() =>
-          startRefresh(() => {
-            setCancelled(true);
-            setMode("view");
-            router.refresh();
-          })
-        }
-        refreshing={refreshing}
-        token={props.token}
-      />
-    );
-  }
+  // Gebucht: nur noch die Bestätigung (kein Umbuchen/Stornieren durch Kunden)
+  if (booking) return <Confirmation t={t} booking={booking} announce={justBooked} contactName={props.contactName} />;
 
   return (
     <>
       <section className={styles.hero}>
         <div className={`tb-container ${styles.heroInner}`}>
-          <span className={styles.eyebrow}>{t("hero.eyebrow")}</span>
+          <span className={styles.eyebrow}>{t(props.publicLink ? "hero.public" : "hero.eyebrow")}</span>
           <h1 className={styles.heroTitle}>{props.event.title}</h1>
-          <p className={styles.heroIntro}>{props.event.intro || t("hero.intro")}</p>
+          <p className={styles.heroIntro}>{props.event.intro || t(props.event.showSeats ? "hero.intro" : "hero.introNoSeats")}</p>
         </div>
       </section>
       <div className={`tb-container ${styles.layout}`}>
-        {cancelled && !booking && (
-          <p className={styles.notice} role="status">
-            {t("cancelled.notice")}
-          </p>
-        )}
         {!bookingOpen && (
           <p className={styles.notice} role="status">
             {props.closedReason}
@@ -113,13 +89,9 @@ export function BookingApp(props: Props) {
         <SelectionView
           {...props}
           t={t}
-          changing={booking !== null && mode === "change"}
-          onBack={() => setMode("view")}
           onBooked={() =>
             startRefresh(() => {
               setJustBooked(true);
-              setCancelled(false);
-              setMode("view");
               router.refresh();
             })
           }
@@ -134,23 +106,26 @@ export function BookingApp(props: Props) {
 type T = (key: TextKey, vars?: Record<string, string | number>) => string;
 
 function SelectionView(
-  props: Props & { t: T; changing: boolean; onBack: () => void; onBooked: () => void; refreshing: boolean },
+  props: Props & { t: T; onBooked: () => void; refreshing: boolean },
 ) {
-  const { t, slots, booking, changing, bookingOpen } = props;
-  const [selectedId, setSelectedId] = useState<string | null>(changing ? (booking?.slotId ?? null) : null);
-  const [seats, setSeats] = useState(changing ? (booking?.seats ?? 1) : 1);
-  const [name, setName] = useState(changing ? (booking?.name ?? props.invitation.name) : props.invitation.name);
-  const [email, setEmail] = useState(changing ? (booking?.email ?? props.invitation.email) : props.invitation.email);
-  const [attendees, setAttendees] = useState<{ name: string; email: string }[]>(() => (changing && booking ? initialAttendees(booking) : []));
-  const [inviteGuests, setInviteGuests] = useState(changing ? (booking?.guests.length ?? 0) > 0 : false);
+  const { t, slots, bookingOpen } = props;
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const days = [...new Set(slots.map((x) => x.dayKey))];
+  const [day, setDay] = useState<string | null>(() => slots.find((x) => x.bookable)?.dayKey ?? days[0] ?? null);
+  const daySlots = slots.filter((x) => x.dayKey === day);
+  const [seats, setSeats] = useState(1);
+  const [name, setName] = useState(props.invitation.name);
+  const [email, setEmail] = useState(props.invitation.email);
+  const [organization, setOrganization] = useState("");
+  const [attendees, setAttendees] = useState<{ name: string; email: string }[]>([]);
+  const [inviteGuests, setInviteGuests] = useState(false);
   const [posting, setPosting] = useState(false);
   const submitting = posting || props.refreshing;
   const [error, setError] = useState<string | null>(null);
   const asideRef = useRef<HTMLElement>(null);
-  const ids = { seats: useId(), name: useId(), email: useId(), extra: useId(), invite: useId(), inviteHint: useId(), error: useId() };
+  const ids = { seats: useId(), name: useId(), email: useId(), org: useId(), extra: useId(), invite: useId(), inviteHint: useId(), error: useId() };
 
   const selected = slots.find((s) => s.id === selectedId) ?? null;
-  // eigene bisherige Plätze sind beim Umbuchen wieder verfügbar
   const maxSeats = selected ? selected.free + selected.ownSeats : 0;
 
   useEffect(() => {
@@ -160,7 +135,7 @@ function SelectionView(
   function pick(slot: SlotDisplay) {
     setSelectedId(slot.id);
     setError(null);
-    if (!changing) setSeats(1);
+    setSeats(1);
     // Auf schmalen Bildschirmen steht die Buchungsbox unter den Terminen
     if (typeof window !== "undefined" && window.matchMedia("(max-width: 899px)").matches) {
       requestAnimationFrame(() => asideRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
@@ -179,14 +154,28 @@ function SelectionView(
     setPosting(true);
     setError(null);
     try {
-      const res = await fetch("/api/bookings", {
+      const res = await fetch(props.publicLink ? "/api/bookings/public" : "/api/bookings", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ token: props.token, slotId: selected.id, seats, name, email, extraAttendees, guests }),
+        body: JSON.stringify({
+          token: props.token,
+          slotId: selected.id,
+          seats,
+          name,
+          email,
+          extraAttendees,
+          guests,
+          ...(props.publicLink ? { organization } : {}),
+        }),
       });
-      const data = (await res.json().catch(() => ({}))) as { ok?: boolean; message?: string };
+      const data = (await res.json().catch(() => ({}))) as { ok?: boolean; message?: string; redirect?: string };
       if (!res.ok || !data.ok) {
         setError(data.message ?? t("error.generic"));
+        return;
+      }
+      // öffentlicher Link: Bestätigung auf dem persönlichen Link (dort auch später abrufbar)
+      if (data.redirect && data.redirect.startsWith("/b/")) {
+        window.location.assign(data.redirect);
         return;
       }
       props.onBooked();
@@ -204,20 +193,50 @@ function SelectionView(
         {slots.length === 0 ? (
           <p className={styles.muted}>{t("slots.empty")}</p>
         ) : (
-          <ul className={styles.grid} role="list">
-            {slots.map((s) => (
-              <li key={s.id}>
-                <SlotCard slot={s} t={t} selected={s.id === selectedId} disabled={!bookingOpen || !s.bookable} onPick={() => pick(s)} />
-              </li>
-            ))}
-          </ul>
+          <>
+            <div role="group" aria-label={t("slots.days")} className={styles.days}>
+              {days.map((k) => {
+                const list = slots.filter((x) => x.dayKey === k);
+                const first = list[0]!;
+                const full = !list.some((x) => x.bookable);
+                return (
+                  <button
+                    key={k}
+                    type="button"
+                    className={styles.day}
+                    aria-pressed={day === k}
+                    data-full={full || undefined}
+                    data-picked={list.some((x) => x.id === selectedId) || undefined}
+                    aria-label={`${first.weekday}, ${first.date}${full ? `, ${t("slots.full")}` : ""}`}
+                    onClick={() => setDay(k)}
+                  >
+                    <span className={styles.dayWd}>{first.weekdayShort}</span>
+                    <span className={styles.dayNum}>{first.dayNum}</span>
+                    <span className={styles.daySub}>{full ? t("slots.full") : first.monthShort}</span>
+                  </button>
+                );
+              })}
+            </div>
+            {day && (
+              <>
+                <h3 className={styles.dayTitle}>{t("slots.onDay", { day: `${daySlots[0]?.weekday ?? ""}, ${daySlots[0]?.date ?? ""}` })}</h3>
+                <ul className={styles.grid} role="list">
+                  {daySlots.map((s) => (
+                    <li key={s.id}>
+                      <SlotCard slot={s} t={t} selected={s.id === selectedId} disabled={!bookingOpen || !s.bookable} onPick={() => pick(s)} />
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+          </>
         )}
       </main>
 
       <aside ref={asideRef} className={styles.aside} aria-labelledby={`${ids.seats}-title`}>
         <div className={styles.asideStrip} aria-hidden="true" />
         <h2 id={`${ids.seats}-title`} className={styles.asideTitle}>
-          {changing ? t("aside.changeTitle") : t("aside.title")}
+          {t("aside.title")}
         </h2>
 
         {!selected ? (
@@ -299,6 +318,22 @@ function SelectionView(
               />
             </div>
 
+            {props.publicLink && (
+              <div className={styles.field}>
+                <label htmlFor={ids.org} className={styles.label}>
+                  {t("aside.organization")}
+                </label>
+                <input
+                  id={ids.org}
+                  className={styles.input}
+                  value={organization}
+                  onChange={(e) => setOrganization(e.target.value)}
+                  autoComplete="organization"
+                  maxLength={200}
+                />
+              </div>
+            )}
+
             {seats > 1 && (
               <fieldset className={styles.guests}>
                 <legend className={styles.label}>{t("aside.extra")}</legend>
@@ -355,7 +390,7 @@ function SelectionView(
             )}
 
             <button type="submit" className={styles.submit} disabled={submitting || !bookingOpen}>
-              {submitting ? t("aside.submitting") : changing ? t("aside.changeSubmit") : t("aside.submit")}
+              {submitting ? t("aside.submitting") : t("aside.submit")}
               {!submitting && (
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true">
                   <path d="m9 6 6 6-6 6" />
@@ -366,11 +401,6 @@ function SelectionView(
           </form>
         )}
 
-        {changing && (
-          <button type="button" className={styles.linkButton} onClick={props.onBack}>
-            {t("aside.changeBack")}
-          </button>
-        )}
       </aside>
     </>
   );
@@ -390,13 +420,16 @@ function SlotCard({
   onPick: () => void;
 }) {
   const full = slot.free + slot.ownSeats <= 0;
-  const pct = slot.capacity > 0 ? Math.min(100, Math.round((slot.booked / slot.capacity) * 100)) : 100;
-  const level = full ? "full" : slot.free <= 3 ? "low" : "ok";
+  const showSeats = slot.capacity !== null && slot.booked !== null;
+  const pct = showSeats && slot.capacity! > 0 ? Math.min(100, Math.round((slot.booked! / slot.capacity!) * 100)) : full ? 100 : 0;
+  const level = full ? "full" : showSeats && slot.free <= 3 ? "low" : "ok";
   const freeText = full
     ? t("slots.full")
-    : slot.free === 1
-      ? t("slots.freeOne", { capacity: slot.capacity })
-      : t("slots.free", { free: slot.free, capacity: slot.capacity });
+    : !showSeats
+      ? t("slots.available")
+      : slot.free === 1
+        ? t("slots.freeOne", { capacity: slot.capacity! })
+        : t("slots.free", { free: slot.free, capacity: slot.capacity! });
 
   return (
     <button
@@ -415,62 +448,23 @@ function SlotCard({
         {slot.location ? ` · ${slot.location}` : ""}
       </span>
       <span className={styles.cardLoad}>
-        <span className={styles.bar} aria-hidden="true">
-          <span className={styles.barFill} style={{ width: `${pct}%` }} />
-        </span>
+        {showSeats && (
+          <span className={styles.bar} aria-hidden="true">
+            <span className={styles.barFill} style={{ width: `${pct}%` }} />
+          </span>
+        )}
         <span className={styles.cardFree}>{freeText}</span>
       </span>
     </button>
   );
 }
 
-function Confirmation({
-  t,
-  booking,
-  announce,
-  onChange,
-  onCancelled,
-  token,
-  refreshing,
-}: {
-  t: T;
-  booking: BookingDisplay;
-  announce: boolean;
-  onChange: () => void;
-  onCancelled: () => void;
-  token: string;
-  refreshing: boolean;
-}) {
-  const [confirmCancel, setConfirmCancel] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+function Confirmation({ t, booking, announce, contactName }: { t: T; booking: BookingDisplay; announce: boolean; contactName: string | null }) {
   const headingRef = useRef<HTMLHeadingElement>(null);
 
   useEffect(() => {
     if (announce) headingRef.current?.focus();
   }, [announce]);
-
-  async function cancel() {
-    setBusy(true);
-    setError(null);
-    try {
-      const res = await fetch("/api/bookings/cancel", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ token }),
-      });
-      const data = (await res.json().catch(() => ({}))) as { ok?: boolean; message?: string };
-      if (!res.ok || !data.ok) {
-        setError(data.message ?? t("error.generic"));
-        return;
-      }
-      onCancelled();
-    } catch {
-      setError(t("error.generic"));
-    } finally {
-      setBusy(false);
-    }
-  }
 
   return (
     <main className={`tb-container ${styles.done}`}>
@@ -539,38 +533,7 @@ function Confirmation({
         </a>
       </div>
 
-      {booking.canChange ? (
-        <div className={styles.changeArea}>
-          <p className={styles.muted}>{t("done.changeUntil", { until: booking.changeUntil })}</p>
-          <div className={styles.changeActions}>
-            <button type="button" className={styles.linkButton} onClick={onChange}>
-              {t("done.change")}
-            </button>
-            {!confirmCancel ? (
-              <button type="button" className={styles.linkButtonMuted} onClick={() => setConfirmCancel(true)}>
-                {t("done.cancel")}
-              </button>
-            ) : (
-              <span className={styles.confirmBox} role="group" aria-label={t("done.cancel")}>
-                <span>{t("done.cancelConfirm")}</span>
-                <button type="button" className={styles.dangerButton} onClick={cancel} disabled={busy || refreshing}>
-                  {t("done.cancelYes")}
-                </button>
-                <button type="button" className={styles.linkButtonMuted} onClick={() => setConfirmCancel(false)} disabled={busy}>
-                  {t("done.cancelNo")}
-                </button>
-              </span>
-            )}
-          </div>
-          {error && (
-            <p className={styles.error} role="alert">
-              {error}
-            </p>
-          )}
-        </div>
-      ) : (
-        <p className={styles.muted}>{t("done.deadlinePassed")}</p>
-      )}
+      <p className={styles.contactNote}>{contactName ? t("done.contact", { name: contactName }) : t("done.contactFallback")}</p>
     </main>
   );
 }

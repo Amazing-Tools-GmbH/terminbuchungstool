@@ -99,6 +99,8 @@ export type BookingMailData = {
   bookingUrl: string | null;
   icsFilename: string;
   changed: boolean;
+  /** Ansprechpartner (einladender Mitarbeiter) für „Ihr könnt nicht kommen?“ */
+  contactName?: string | null;
   /** Ein weiterer Teilnehmer hat für sich abgesagt (Hinweis an den Hauptbucher) */
   guestCancelled?: string | null;
   /** Veranstalter hat Datum/Uhrzeit/Ort geändert */
@@ -127,12 +129,8 @@ export function renderConfirmation(tenant: MailTenant, d: BookingMailData): Rend
     : d.guestCancelled
       ? tr("mail.guestCancelled", { name: d.guestCancelled, persons })
       : null;
-  const changeLine = d.bookingUrl
-    ? tr("mail.change", { hours: tenant.changeDeadlineHours, link: "\u0000" })
-    : null;
-  const changeHtml = changeLine
-    ? escapeHtml(changeLine).replace("\u0000", link(t, d.bookingUrl!, tr("mail.changeLink")))
-    : "";
+  // kein Umbuchen/Stornieren über einen Link – Hinweis auf den Ansprechpartner
+  const contact = d.contactName ? tr("mail.contact", { name: d.contactName }) : tr("mail.contactFallback");
   const html = layout(
     tenant,
     `<p style="margin:0 0 4px;font-size:14px;color:${t.muted}">${escapeHtml(d.eventTitle)}</p>
@@ -141,7 +139,7 @@ export function renderConfirmation(tenant: MailTenant, d: BookingMailData): Rend
 ${note ? `<p style="margin:0 0 8px">${escapeHtml(note)}</p>` : ""}
 ${summaryTable(t, rows)}
 <p style="margin:0 0 16px;font-size:14px;color:${t.muted}">📅 ${escapeHtml(d.icsFilename)} – ${escapeHtml(tr("mail.ics.hint"))}</p>
-${changeHtml ? `<p style="margin:0 0 20px;font-size:14px">${changeHtml}</p>` : ""}`,
+<p style="margin:0 0 20px;font-size:14px">${escapeHtml(contact)}</p>`,
     `${title}: ${when.weekdayShort}, ${when.date}, ${when.time}`,
   );
   const text = [
@@ -153,7 +151,8 @@ ${changeHtml ? `<p style="margin:0 0 20px;font-size:14px">${changeHtml}</p>` : "
     ...rows.map(([k, v]) => `${k}: ${v}`),
     "",
     `${tr("done.ics")}: ${d.icsFilename}`,
-    ...(changeLine && d.bookingUrl ? ["", changeLine.replace("\u0000", tr("mail.changeLink")) + `\n${d.bookingUrl}`] : []),
+    "",
+    contact,
     "",
     tenant.contactLine ?? "",
   ].join("\n");
@@ -208,8 +207,8 @@ export type GuestMailData = {
   location: string | null;
   name: string;
   bookerName: string;
-  /** eigener Link des Teilnehmers (nur Absage für sich) */
-  guestUrl: string | null;
+  /** Ansprechpartner (einladender Mitarbeiter) für „Ihr könnt nicht kommen?“ */
+  contactName?: string | null;
   icsFilename: string;
   changed: boolean;
   organizerChanged?: boolean;
@@ -227,7 +226,7 @@ export function renderGuestConfirmation(tenant: MailTenant, d: GuestMailData): R
     [tr("done.time"), when.time],
     ...(d.location ? ([[tr("done.place"), d.location]] as [string, string][]) : []),
   ];
-  const decline = d.guestUrl ? tr("mail.guest.decline", { hours: tenant.changeDeadlineHours, link: "\u0000" }) : null;
+  const contact = d.contactName ? tr("mail.contact", { name: d.contactName }) : tr("mail.contactFallback");
   const html = layout(
     tenant,
     `<p style="margin:0 0 4px;font-size:14px;color:${t.muted}">${escapeHtml(d.eventTitle)}</p>
@@ -236,7 +235,7 @@ export function renderGuestConfirmation(tenant: MailTenant, d: GuestMailData): R
 <p style="margin:0 0 8px">${escapeHtml(intro)}</p>
 ${summaryTable(t, rows)}
 <p style="margin:0 0 16px;font-size:14px;color:${t.muted}">📅 ${escapeHtml(d.icsFilename)} – ${escapeHtml(tr("mail.ics.hint"))}</p>
-${decline ? `<p style="margin:0 0 20px;font-size:14px">${escapeHtml(decline).replace("\u0000", link(t, d.guestUrl!, tr("mail.guest.declineLink")))}</p>` : ""}`,
+<p style="margin:0 0 20px;font-size:14px">${escapeHtml(contact)}</p>`,
     `${title}: ${when.weekdayShort}, ${when.date}, ${when.time}`,
   );
   const text = [
@@ -248,7 +247,8 @@ ${decline ? `<p style="margin:0 0 20px;font-size:14px">${escapeHtml(decline).rep
     ...rows.map(([k, v]) => `${k}: ${v}`),
     "",
     `${tr("done.ics")}: ${d.icsFilename}`,
-    ...(decline && d.guestUrl ? ["", decline.replace("\u0000", tr("mail.guest.declineLink")) + `\n${d.guestUrl}`] : []),
+    "",
+    contact,
     "",
     tenant.contactLine ?? "",
   ].join("\n");

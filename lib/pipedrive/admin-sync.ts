@@ -3,7 +3,8 @@ import "server-only";
  * Pipedrive-Admins werden automatisch Admin im Terminbuchungstool:
  *   - noch kein Mitglied  -> auth-Benutzer + Mitgliedschaft (admin, aktiv);
  *                            eine offene Zugriffsanfrage gilt als erledigt
- *   - Mitglied als sales  -> wird admin
+ *   - Mitglied als sales  -> wird admin, außer ein Owner/Admin hat die Rolle von
+ *                            Hand festgelegt (tenant_members.role_manual) – dann bleibt sie
  *   - owner/admin         -> bleibt
  *   - gesperrt            -> bleibt gesperrt (Entscheidung eines Owners/Admins)
  * Kein automatisches Herabstufen, wenn jemand in Pipedrive kein Admin mehr ist.
@@ -15,23 +16,23 @@ import { ensureAuthUser } from "@/lib/auth/users";
 import type { PipedriveUser } from "./client";
 import { listPipedriveUsers } from "./directory";
 
-type Member = { user_id: string; role: "owner" | "admin" | "sales"; status: "active" | "disabled" };
+type Member = { user_id: string; role: "owner" | "admin" | "sales"; status: "active" | "disabled"; role_manual: boolean };
 
-/** Ergebnis: auth-Benutzer-ID, wenn er (jetzt) aktiver owner/admin ist; sonst null */
+/** Ergebnis: auth-Benutzer-ID, wenn er (jetzt) aktives Mitglied ist; sonst null */
 export async function grantPipedriveAdmin(tenantId: string, user: PipedriveUser): Promise<string | null> {
   if (!user.isAdmin || !user.active) return null;
   const existing = await withActor({ role: "service_role" }, async (db) => {
     const { rows } = await db.query<Member>(
-      "select user_id, role::text as role, status::text as status from public.tenant_members where tenant_id = $1 and pipedrive_user_id = $2",
+      "select user_id, role::text as role, status::text as status, role_manual from public.tenant_members where tenant_id = $1 and pipedrive_user_id = $2",
       [tenantId, user.id],
     );
     return rows[0] ?? null;
   });
   if (existing) {
     if (existing.status !== "active") return null;
-    if (existing.role === "sales") {
+    if (existing.role === "sales" && !existing.role_manual) {
       await withActor({ role: "service_role" }, (db) =>
-        db.query("update public.tenant_members set role = 'admin' where tenant_id = $1 and user_id = $2 and role = 'sales'", [tenantId, existing.user_id]),
+        db.query("update public.tenant_members set role = 'admin' where tenant_id = $1 and user_id = $2 and role = 'sales' and not role_manual", [tenantId, existing.user_id]),
       );
     }
     return existing.user_id;
@@ -45,7 +46,8 @@ export async function grantPipedriveAdmin(tenantId: string, user: PipedriveUser)
        values ($1, $2, 'admin', 'active', $3, $4, $5)
        on conflict (tenant_id, user_id) do update
          set pipedrive_user_id = excluded.pipedrive_user_id,
-             role = case when public.tenant_members.role = 'owner' then 'owner'::public.member_role else 'admin'::public.member_role end,
+             role = case when public.tenant_members.role = 'owner' or public.tenant_members.role_manual
+                         then public.tenant_members.role else 'admin'::public.member_role end,
              display_name = excluded.display_name, email = excluded.email
        returning status::text as status`,
       [tenantId, userId, user.id, user.name.slice(0, 200), user.email],

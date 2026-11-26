@@ -52,7 +52,7 @@ export function MailTemplatesEditor(props: Props) {
     const start = new Date(s.startsAt);
     const end = new Date(s.endsAt);
     const base = { eventTitle: s.eventTitle, startsAt: start, endsAt: end, location: s.location, name: "Maria Muster" };
-    const booking = { ...base, seats: 3, extraAttendees: ["Max Gast", "Lea Gast"], bookingUrl: s.bookingUrl, icsFilename: "termin.ics" };
+    const booking = { ...base, seats: 3, extraAttendees: ["Max Gast", "Lea Gast"], bookingUrl: s.bookingUrl, icsFilename: "termin.ics", contactName: s.senderName };
     switch (group) {
       case "invitation":
         return renderInvitation(tenant, { eventTitle: s.eventTitle, name: "Maria Muster", bookingUrl: s.bookingUrl, validDays: 60, senderName: s.senderName });
@@ -61,7 +61,7 @@ export function MailTemplatesEditor(props: Props) {
       case "cancellation":
         return renderCancellation(tenant, { ...base, seats: 3, bookingUrl: s.bookingUrl });
       case "guest":
-        return renderGuestConfirmation(tenant, { ...base, name: "Max Gast", bookerName: "Maria Muster", guestUrl: s.bookingUrl, icsFilename: "termin.ics", changed: false });
+        return renderGuestConfirmation(tenant, { ...base, name: "Max Gast", bookerName: "Maria Muster", contactName: s.senderName, icsFilename: "termin.ics", changed: false });
       case "guestCancelled":
         return renderGuestCancellation(tenant, { ...base, name: "Max Gast" });
       default:

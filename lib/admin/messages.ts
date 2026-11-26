@@ -18,6 +18,7 @@ const OK: Record<string, AdminTextKey> = {
   pdConnected: "pd.ok.connected",
   pdChanged: "pd.ok.changed",
   pdDisconnected: "pd.ok.disconnected",
+  pdSettings: "pd.ok.settings",
   logo: "branding.ok.logo",
   logoRemoved: "branding.ok.logoRemoved",
 };

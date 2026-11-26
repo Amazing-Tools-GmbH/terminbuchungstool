@@ -214,7 +214,7 @@ export function buildSteps(items: ActivityItem[], tz: string): Step[] {
           ...base,
           at: status === "ok" && str(d.done_at) ? new Date(String(d.done_at)) : base.at,
           status,
-          text: ["invitation_note", "booking_activity", "cancel_activity"].includes(i.kind) ? at(key as never) : i.kind,
+          text: ["invitation_note", "booking_activity", "cancel_activity", "link_contact"].includes(i.kind) ? at(key as never) : i.kind,
           note:
             status === "error"
               ? [at("activity.state.failed"), at("activity.state.attempts", { n: num(d.attempts) }), error?.slice(0, 200)].filter(Boolean).join(" – ")

@@ -8,6 +8,9 @@ import { withActor } from "@/lib/db";
 import type { AdminContext } from "@/lib/auth/admin";
 import { AdminError, toAdminError } from "./errors";
 import type { UpdateEventInput, UpdateSlotInput } from "./input";
+import { encryptSecret } from "@/lib/crypto/secretbox";
+import { generateToken, hashToken } from "@/lib/booking/tokens";
+import { bookingUrl } from "@/lib/links";
 
 async function run<T>(ctx: AdminContext, fn: (db: import("pg").PoolClient) => Promise<T>): Promise<T> {
   if (ctx.role === "sales") throw new AdminError("forbidden");
@@ -18,11 +21,32 @@ async function run<T>(ctx: AdminContext, fn: (db: import("pg").PoolClient) => Pr
   }
 }
 
+/**
+ * Öffentlichen Buchungslink eines Events erzeugen (neu = alter Link ungültig)
+ * oder abschalten. In der DB nur Hash + verschlüsselter Link (fürs Admin).
+ */
+export function setPublicLink(ctx: AdminContext, eventId: string, enable: boolean): Promise<void> {
+  return run(ctx, async (db) => {
+    let hash: Buffer | null = null;
+    let enc: string | null = null;
+    if (enable) {
+      const token = generateToken();
+      hash = hashToken(token);
+      enc = encryptSecret(bookingUrl({ slug: ctx.tenant.slug, customDomain: ctx.tenant.customDomain }, token));
+    }
+    const res = await db.query(
+      "update public.events set public_token_hash = $3, public_link_enc = $4 where id = $1 and tenant_id = $2 and status <> 'archived'",
+      [eventId, ctx.tenant.id, hash, enc],
+    );
+    if (res.rowCount === 0) throw new AdminError("forbidden");
+  });
+}
+
 export function updateEvent(ctx: AdminContext, input: UpdateEventInput): Promise<void> {
   return run(ctx, async (db) => {
     const res = await db.query(
-      "update public.events set title = $3, location = $4, description = $5 where id = $1 and tenant_id = $2 and status <> 'archived'",
-      [input.eventId, ctx.tenant.id, input.title, input.location, input.description],
+      "update public.events set title = $3, location = $4, description = $5, show_seats = $6 where id = $1 and tenant_id = $2 and status <> 'archived'",
+      [input.eventId, ctx.tenant.id, input.title, input.location, input.description, input.showSeats],
     );
     if (res.rowCount === 0) throw new AdminError("forbidden");
   });

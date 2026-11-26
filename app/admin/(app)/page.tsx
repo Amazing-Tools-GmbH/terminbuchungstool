@@ -12,6 +12,7 @@ import {
   createSlotAction,
   deleteEventAction,
   setCapacityAction,
+  publicLinkAction,
   updateEventAction,
   updateSlotAction,
 } from "./actions";
@@ -38,6 +39,8 @@ const OK_TEXT: Record<string, (n: string) => string> = {
   slotCancelled: (n) => at("manage.ok.slotCancelled", { n }),
   slotDeleted: () => at("manage.ok.slotDeleted"),
   bookingCancelled: () => at("manage.ok.bookingCancelled"),
+  publicLinkOn: () => at("publicLink.ok.on"),
+  publicLinkOff: () => at("publicLink.ok.off"),
 };
 
 function Occupancy({ s }: { s: AdminSlot }) {
@@ -172,6 +175,9 @@ function EventPanel(props: {
                   <label htmlFor={`ed-${event.id}`}>{at("event.form.description")}</label>
                   <textarea id={`ed-${event.id}`} name="description" rows={3} maxLength={2000} className={styles.textarea} defaultValue={event.description ?? ""} />
                 </div>
+                <label className={`${styles.checkRow} ${styles.full}`}>
+                  <input type="checkbox" name="showSeats" defaultChecked={event.showSeats} /> {at("manage.event.showSeats")}
+                </label>
                 <div className={styles.full}>
                   <button type="submit" className={styles.btn}>
                     {at("manage.event.editSubmit")}
@@ -203,6 +209,40 @@ function EventPanel(props: {
           </div>
         )}
       </div>
+
+      {manage && (
+        <div className={styles.publicLink}>
+          <strong>{at("publicLink.title")}</strong>
+          {event.publicLink ? (
+            <>
+              <input className={styles.linkInput} readOnly value={event.publicLink} aria-label={at("publicLink.title")} />
+              <form action={publicLinkAction}>
+                <input type="hidden" name="eventId" value={event.id} />
+                <input type="hidden" name="enable" value="1" />
+                <button type="submit" className={styles.btnGhost}>
+                  {at("publicLink.renew")}
+                </button>
+              </form>
+              <form action={publicLinkAction}>
+                <input type="hidden" name="eventId" value={event.id} />
+                <input type="hidden" name="enable" value="0" />
+                <button type="submit" className={styles.btnGhost}>
+                  {at("publicLink.off")}
+                </button>
+              </form>
+            </>
+          ) : (
+            <form action={publicLinkAction}>
+              <input type="hidden" name="eventId" value={event.id} />
+              <input type="hidden" name="enable" value="1" />
+              <button type="submit" className={styles.btnGhost}>
+                {at("publicLink.on")}
+              </button>
+            </form>
+          )}
+          <span className={styles.hint}>{at("publicLink.hint")}</span>
+        </div>
+      )}
 
       {slots.length === 0 ? (
         <p className={styles.muted}>{at("slots.empty")}</p>

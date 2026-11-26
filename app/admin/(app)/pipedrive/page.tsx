@@ -4,7 +4,8 @@ import { loadConnectionStatus } from "@/lib/pipedrive/manage";
 import { formatDateTime } from "@/lib/datetime";
 import { at } from "@/lib/texts/admin";
 import styles from "@/components/admin/Admin.module.css";
-import { disconnectPipedriveAction, testPipedriveAction } from "./actions";
+import { disconnectPipedriveAction, savePipedriveSettingsAction, testPipedriveAction } from "./actions";
+import { loadPipedriveSettings } from "@/lib/admin/pipedrive-settings";
 
 type Search = Promise<Record<string, string | string[] | undefined>>;
 const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
@@ -15,6 +16,8 @@ export default async function PipedrivePage({ searchParams }: { searchParams: Se
   const sp = await searchParams;
   const { ok, error } = flashMessages(sp);
   const s = await loadConnectionStatus(ctx);
+  const pds = await loadPipedriveSettings(ctx);
+  const st = pds.settings;
   const tz = ctx.tenant.timezone;
   const owner = ctx.role === "owner";
   const testOk = one(sp.test) === "ok" ? at("pd.testOk", { company: one(sp.company) || s.companyDomain || "—", user: one(sp.user) ?? "—" }) : null;
@@ -93,6 +96,61 @@ export default async function PipedrivePage({ searchParams }: { searchParams: Se
             </button>
           </form>
         )}
+      </section>
+
+      <section className={styles.card} aria-labelledby="pd-settings">
+        <h2 className={styles.h2} id="pd-settings">
+          {at("pd.settings.title")}
+        </h2>
+        {!pds.optionsAvailable && <p className={styles.info}>{at("pd.settings.offline")}</p>}
+        <form action={savePipedriveSettingsAction} className={styles.form}>
+          <div className={`${styles.field} ${styles.full}`}>
+            <label htmlFor="pd-activity-type">{at("pd.settings.activityType")}</label>
+            <select id="pd-activity-type" name="activityType" defaultValue={st.activityType} aria-describedby="pd-activity-type-hint">
+              {pds.activityTypes.map((t) => (
+                <option key={t.key} value={t.key}>
+                  {t.name}
+                </option>
+              ))}
+            </select>
+            <span id="pd-activity-type-hint" className={styles.hint}>
+              {at("pd.settings.activityTypeHint")}
+            </span>
+          </div>
+          <div className={`${styles.field} ${styles.full}`}>
+            <label htmlFor="pd-stage">{at("pd.settings.newDeal")}</label>
+            <select id="pd-stage" name="stage" defaultValue={st.pipelineId && st.stageId ? `${st.pipelineId}:${st.stageId}` : ""} aria-describedby="pd-stage-hint">
+              <option value="">{at("pd.settings.newDealDefault")}</option>
+              {pds.pipelines.map((p) => (
+                <optgroup key={p.id} label={p.name}>
+                  {p.stages.map((x) => (
+                    <option key={x.id} value={`${p.id}:${x.id}`}>
+                      {p.name} – {x.name}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
+              {st.pipelineId && st.stageId && !pds.pipelines.some((p) => p.stages.some((x) => x.id === st.stageId)) && (
+                <option value={`${st.pipelineId}:${st.stageId}`}>{at("pd.settings.savedStage", { id: st.stageId })}</option>
+              )}
+            </select>
+            <span id="pd-stage-hint" className={styles.hint}>
+              {at("pd.settings.newDealHint")}
+            </span>
+          </div>
+          <label className={`${styles.check} ${styles.full}`}>
+            <input type="checkbox" name="panelPerson" defaultChecked={st.panelPerson} />
+            {at("pd.settings.panelPerson")}
+          </label>
+          <p className={`${styles.hint} ${styles.full}`} style={{ margin: 0 }}>
+            {at("pd.settings.panelPersonHint")}
+          </p>
+          <div className={styles.full}>
+            <button type="submit" className={styles.btn}>
+              {at("pd.settings.save")}
+            </button>
+          </div>
+        </form>
       </section>
 
       <section className={styles.card} aria-labelledby="pd-connect">

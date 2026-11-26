@@ -1,5 +1,5 @@
 /**
- * Buchungsfunktionen: get_invitation_context, book_slot, cancel_booking
+ * Buchungsfunktionen: get_invitation_context, book_slot_once (kein Umbuchen/Stornieren durch Kunden)
  * – inkl. Überbuchungsschutz bei parallelen Buchungen auf den letzten Platz.
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
@@ -41,7 +41,7 @@ async function newSlot(opts: { capacity: number; startsIn?: string }) {
 
 function book(token: string, slotId: string, seats = 1, extra: string[] = [], tenant = tenantId) {
   return db.as(ANON, async (c) => {
-    const { rows } = await c.query("select public.book_slot($1, $2, $3, $4, 'Test Kunde', 'Test@Kunde.example', $5) as r", [
+    const { rows } = await c.query("select public.book_slot_once($1, $2, $3, $4, 'Test Kunde', 'Test@Kunde.example', $5) as r", [
       tenant,
       token,
       slotId,
@@ -142,45 +142,61 @@ describe("book_slot", () => {
     await expectCode(book(await newInvitation(), slotId), "slot_not_available");
   });
 
-  it("Umbuchen ersetzt die alte Buchung (auch auf demselben Termin mit mehr Plätzen)", async () => {
+  it("kein Umbuchen: zweite Buchung über denselben Link -> already_booked; nach Storno durch den Veranstalter wieder buchbar", async () => {
     const token = await newInvitation();
-    const first = await book(token, slotId, 5); // Slot jetzt voll
-    const second = await book(token, slotId, 5); // eigene Plätze zählen nicht gegen
-    expect(second.replaced_booking_id).toBe(first.booking_id);
+    const first = await book(token, slotId, 1);
     const other = await newSlot({ capacity: 3 });
-    const third = await book(token, other, 2);
-    const rows = await db.admin<{ id: string; status: string; replaced_by: string | null }>(
-      "select id, status, replaced_by from bookings where id = any($1) order by created_at",
-      [[first.booking_id, second.booking_id, third.booking_id]],
-    );
-    expect(rows.map((r) => r.status)).toEqual(["cancelled", "cancelled", "confirmed"]);
-    expect(rows[1]!.replaced_by).toBe(third.booking_id);
-    const ctx = await context(token);
-    expect(ctx.booking).toMatchObject({ id: third.booking_id, seats: 2, changeable: true });
-  });
-
-  it("Umbuchen und Stornieren nur bis zur Frist (48 h vor Beginn)", async () => {
-    const soon = await newSlot({ capacity: 5, startsIn: "24 hours" });
-    const token = await newInvitation();
-    await book(token, soon, 1); // Buchen kurz vorher ist erlaubt
-    await expectCode(book(token, slotId, 1), "change_deadline_passed");
-    await expectCode(db.as(ANON, (c) => c.query("select public.cancel_booking($1, $2)", [tenantId, token])), "change_deadline_passed");
-    expect((await context(token)).booking.changeable).toBe(false);
+    await expectCode(book(token, other, 1), "already_booked");
+    await expectCode(book(token, slotId, 2), "already_booked");
+    // Veranstalter storniert (Admin) -> Kunde kann über seinen Link neu wählen
+    await db.admin("update bookings set status = 'cancelled', cancelled_at = now() where id = $1", [first.booking_id]);
+    const again = await book(token, other, 1);
+    expect(again.replaced_booking_id).toBeNull();
   });
 });
 
-describe("cancel_booking", () => {
-  it("storniert, gibt Plätze frei und legt Stornomail in die Outbox", async () => {
-    const slotId = await newSlot({ capacity: 2 });
+describe("Platzzahlen je Event", () => {
+  it("Event ohne Platzanzeige: keine Zahlen an den Browser, freie Plätze gedeckelt", async () => {
+    const slot = await newSlot({ capacity: 50 });
     const token = await newInvitation();
-    const { booking_id } = await book(token, slotId, 2);
-    await db.as(ANON, (c) => c.query("select public.cancel_booking($1, $2)", [tenantId, token]));
-    const [b] = await db.admin<{ status: string }>("select status from bookings where id = $1", [booking_id]);
-    expect(b!.status).toBe("cancelled");
-    await book(await newInvitation(), slotId, 2); // Plätze wieder frei
-    const mails = await db.admin("select type from email_outbox where payload->>'booking_id' = $1 order by created_at", [booking_id]);
-    expect(mails.map((m) => m.type)).toEqual(["confirmation", "cancellation"]);
-    await expectCode(db.as(ANON, (c) => c.query("select public.cancel_booking($1, $2)", [tenantId, token])), "no_active_booking");
+    await db.admin("update events set show_seats = false where id = $1", [eventId]);
+    try {
+      const ctx = await context(token);
+      expect(ctx.event.show_seats).toBe(false);
+      const s = ctx.slots.find((x: { id: string }) => x.id === slot);
+      expect(s).toMatchObject({ capacity: null, booked: null, free: 10, bookable: true });
+    } finally {
+      await db.admin("update events set show_seats = true where id = $1", [eventId]);
+    }
+    const s2 = (await context(token)).slots.find((x: { id: string }) => x.id === slot);
+    expect(s2).toMatchObject({ capacity: 50, free: 50 });
+  });
+});
+
+describe("kein Umbuchen/Stornieren von außen", () => {
+  it("anon/authenticated dürfen book_slot, cancel_booking und cancel_guest nicht direkt aufrufen", async () => {
+    const token = await newInvitation();
+    const slot = await newSlot({ capacity: 2 });
+    for (const sql of [
+      "select public.book_slot($1, $2, $3, 1, 'X', 'x@kunde.example')",
+      "select public.cancel_booking($1, $2)",
+      "select public.cancel_guest($1, $2)",
+    ]) {
+      const params = sql.includes("$3") ? [tenantId, token, slot] : [tenantId, token];
+      await expect(db.as(ANON, (c) => c.query(sql, params))).rejects.toThrow(/permission denied/);
+    }
+  });
+
+  it("Ansprechpartner zum Link: einladender Mitarbeiter (nur aktiv), sonst null", async () => {
+    const [m] = await db.admin<{ user_id: string; display_name: string | null }>(
+      "select user_id, display_name from tenant_members where tenant_id = $1 and status = 'active' and display_name is not null limit 1",
+      [tenantId],
+    );
+    const token = await newInvitation();
+    const contact = async () => (await db.as(ANON, (c) => c.query("select public.get_booking_contact($1, $2) as r", [tenantId, token]))).rows[0].r;
+    expect(await contact()).toBeNull();
+    await db.admin("update invitations set created_by = $1 where token_hash = $2", [m!.user_id, hashToken(token)]);
+    expect(await contact()).toMatchObject({ name: m!.display_name });
   });
 });
 

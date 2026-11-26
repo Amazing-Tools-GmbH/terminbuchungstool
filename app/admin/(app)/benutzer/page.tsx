@@ -24,10 +24,7 @@ function RoleSelect({ form, name, roles, value }: { form: string; name: string; 
 }
 
 function Row({ e, viewerRole, idx, requested }: { e: TeamEntry; viewerRole: MemberRole; idx: number; requested: boolean }) {
-  // Admins in Pipedrive sind automatisch Admin – nicht zu sales herabstufbar
-  const roles: MemberRole[] = (viewerRole === "owner" ? (["owner", "admin", "sales"] as const) : (["admin", "sales"] as const)).filter(
-    (r) => !(e.pipedrive?.isAdmin && r === "sales"),
-  );
+  const roles: MemberRole[] = viewerRole === "owner" ? ["owner", "admin", "sales"] : ["admin", "sales"];
   const m = e.member;
   // admin darf owner nicht ändern; niemand ändert sich selbst
   const locked = e.isSelf || (viewerRole !== "owner" && m?.role === "owner");

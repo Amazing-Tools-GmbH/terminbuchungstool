@@ -5,7 +5,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { ANON } from "@/lib/db/actor";
 import { generateToken, hashToken } from "@/lib/booking/tokens";
-import { bookSlot, cancelBooking } from "@/lib/booking/service";
+import { bookSlot } from "@/lib/booking/service";
 import { processOutbox } from "@/lib/mail/outbox";
 import { MailSendError, type MailSender } from "@/lib/mail/types";
 import { setupTestDb, type TestDb } from "./helpers";
@@ -132,7 +132,8 @@ describe("Verlauf", () => {
   it("Änderungen durch das Team und Storno erscheinen mit Namen", async () => {
     const date = new Date(Date.now() + 31 * 86_400_000).toISOString().slice(0, 10);
     await maintenance.updateSlot(owner, { slotId, date, from: "09:00", to: "10:00", location: "Saal 2", notify: false });
-    await cancelBooking(anon as never, tenant, token);
+    // Storno durch den Kunden (früher über den Link möglich; Altbestand)
+    await db.admin("select public.cancel_booking($1, $2)", [tenant.id, token]);
     const { runs } = await activity.loadActivity(owner, { onlyErrors: false, eventId: null, page: 0, invitationId });
     const texts = runs[0]!.steps.map((s) => s.text);
     expect(texts.some((t) => t.startsWith("Termin geändert von Olga Owner:"))).toBe(true);

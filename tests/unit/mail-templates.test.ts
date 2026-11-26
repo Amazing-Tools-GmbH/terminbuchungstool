@@ -17,9 +17,9 @@ describe("Vorlagen", () => {
     expect(checkTemplate("mail.confirmation.subject", "Hallo {vorname}")).toEqual([
       { key: "mail.confirmation.subject", kind: "unknown_placeholder", placeholder: "vorname" },
     ]);
-    // ohne {link} fehlt der Link zum Ändern
-    expect(checkTemplate("mail.change", "Ändern bis {hours} Stunden vorher.")).toEqual([
-      { key: "mail.change", kind: "missing_placeholder", placeholder: "link" },
+    // ohne {link} fehlt der Link zur neuen Terminwahl
+    expect(checkTemplate("mail.cancellation.text", "Bitte wählt einen neuen Termin.")).toEqual([
+      { key: "mail.cancellation.text", kind: "missing_placeholder", placeholder: "link" },
     ]);
   });
 

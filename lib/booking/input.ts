@@ -21,6 +21,17 @@ export const bookInputSchema = z.object({
 });
 export type BookInput = z.infer<typeof bookInputSchema>;
 
+/** Buchen über den öffentlichen Event-Link: zusätzlich optional die Firma */
+export const publicBookInputSchema = bookInputSchema.extend({
+  organization: z
+    .string()
+    .trim()
+    .max(200)
+    .default("")
+    .transform((v) => v || null),
+});
+export type PublicBookInput = z.infer<typeof publicBookInputSchema>;
+
 /** Name und E-Mail je weiterem Teilnehmer (E-Mail nur mit Einladung, je Zeile optional) */
 export type AttendeeRow = { name: string; email: string };
 

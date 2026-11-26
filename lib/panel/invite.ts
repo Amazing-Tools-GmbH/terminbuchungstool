@@ -63,7 +63,8 @@ export async function createPanelBooking(
     throw new PanelError("pipedrive_unavailable");
   }
   const person = contact.person;
-  if (!contact.deal || !person?.email) throw new PanelError("no_contact");
+  // im Deal: Kontakt des Deals; im Kontakt-Panel: die Person selbst (ohne Deal)
+  if ((s.deal && !contact.deal) || !person?.email) throw new PanelError("no_contact");
 
   const token = generateToken();
   const linkEnc = encryptSecret(bookingUrl({ slug: tenant.slug, customDomain: tenant.customDomain }, token));
@@ -107,7 +108,8 @@ export async function createPanelInvitation(
     throw new PanelError("pipedrive_unavailable");
   }
   const person = contact.person;
-  if (!contact.deal || !person?.email) throw new PanelError("no_contact");
+  // im Deal: Kontakt des Deals; im Kontakt-Panel: die Person selbst (ohne Deal)
+  if ((s.deal && !contact.deal) || !person?.email) throw new PanelError("no_contact");
 
   const token = generateToken();
   const linkEnc = encryptSecret(bookingUrl({ slug: tenant.slug, customDomain: tenant.customDomain }, token));

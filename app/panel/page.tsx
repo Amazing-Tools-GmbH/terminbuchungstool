@@ -62,7 +62,7 @@ export default async function PanelPage({ searchParams }: { searchParams: Search
     <PanelApp
       initial={context}
       bearer={start.bearer}
-      identity={{ userId: v.entry.userId, companyId: v.entry.companyId, dealId: v.entry.dealId }}
+      identity={{ userId: v.entry.userId, companyId: v.entry.companyId, dealId: v.entry.dealId, personId: v.entry.personId }}
       texts={panelTexts()}
       theme={theme}
       adminUrl="/admin"

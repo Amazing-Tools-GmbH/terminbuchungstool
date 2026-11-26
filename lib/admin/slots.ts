@@ -4,6 +4,7 @@ import type { PoolClient } from "pg";
  * Termine & Kapazitäten. Alle Zugriffe laufen als angemeldeter Benutzer
  * (withActor) – Lese- und Schreibrechte erzwingt RLS (sales: nur lesen).
  */
+import { decryptSecret } from "@/lib/crypto/secretbox";
 import { withActor } from "@/lib/db";
 import { formatSlot } from "@/lib/datetime";
 import type { AdminContext } from "@/lib/auth/admin";
@@ -13,7 +14,16 @@ import { dealUrl, slotLevel, type SlotLevel } from "./slot-logic";
 
 export { kpis, type SlotLevel } from "./slot-logic";
 
-export type AdminEvent = { id: string; title: string; location: string | null; description: string | null; status: string };
+export type AdminEvent = {
+  id: string;
+  title: string;
+  location: string | null;
+  description: string | null;
+  status: string;
+  showSeats: boolean;
+  /** öffentlicher Buchungslink (entschlüsselt; null = aus) */
+  publicLink: string | null;
+};
 
 export type AdminSlot = {
   id: string;
@@ -45,12 +55,22 @@ export type AdminBooking = {
 
 export async function listEvents(ctx: AdminContext): Promise<AdminEvent[]> {
   return withActor(ctx.actor, async (db) => {
-    const { rows } = await db.query<AdminEvent>(
-      `select id, title, location, description, status::text as status from public.events
+    const { rows } = await db.query<Omit<AdminEvent, "publicLink"> & { public_link_enc: string | null }>(
+      `select id, title, location, description, status::text as status, show_seats as "showSeats", public_link_enc from public.events
         where tenant_id = $1 and status <> 'archived' order by created_at`,
       [ctx.tenant.id],
     );
-    return rows;
+    return rows.map(({ public_link_enc, ...e }) => {
+      let publicLink: string | null = null;
+      if (public_link_enc) {
+        try {
+          publicLink = decryptSecret(public_link_enc);
+        } catch {
+          publicLink = null;
+        }
+      }
+      return { ...e, publicLink };
+    });
   });
 }
 

@@ -1,10 +1,10 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getCurrentTenant } from "@/lib/tenant/current";
-import { loadBookingGuests, loadGuestContext, loadInvitationContext } from "@/lib/booking/service";
+import { loadBookingContact, loadBookingGuests, loadGuestContext, loadInvitationContext, loadPublicEventContext } from "@/lib/booking/service";
 import { runAnon } from "@/lib/booking/api";
 import { createTranslator, resolveTexts } from "@/lib/texts";
-import { formatDateTime, formatSlot } from "@/lib/datetime";
+import { formatSlot } from "@/lib/datetime";
 import { googleCalendarUrl, outlookCalendarUrl } from "@/lib/calendar/links";
 import { bookingUrl } from "@/lib/links";
 import { TenantHeader } from "@/components/tenant/TenantHeader";
@@ -29,7 +29,9 @@ export default async function BookingPage({ params }: { params: Promise<{ token:
   const t = createTranslator(tenant.anrede, tenant.textOverrides);
   const ctx = await loadInvitationContext(runAnon, tenant.id, token);
 
-  // Link eines weiteren Teilnehmers: nur Termin ansehen und für sich absagen
+  const contact = await loadBookingContact(runAnon, tenant.id, token);
+
+  // Link eines weiteren Teilnehmers: nur Termin ansehen (kein Absagen über den Link)
   if (!ctx) {
     const guestCtx = await loadGuestContext(runAnon, tenant.id, token);
     if (guestCtx) {
@@ -46,17 +48,58 @@ export default async function BookingPage({ params }: { params: Promise<{ token:
         <>
           <TenantHeader tenant={tenant} />
           <GuestView
-            token={token}
             texts={resolveTexts(tenant.anrede, tenant.textOverrides)}
             eventTitle={g.event.title}
             guestName={g.guest.name}
             booker={g.booker.organization_name ? `${g.booker.name} (${g.booker.organization_name})` : g.booker.name}
-            state={g.booking.status === "cancelled" ? "ended" : g.guest.status === "cancelled" ? "declined" : "active"}
+            state={g.booking.status === "cancelled" || g.guest.status === "cancelled" ? "ended" : "active"}
             when={{ ...when, location: g.booking.location }}
-            canDecline={g.booking.changeable}
-            declineUntil={formatDateTime(g.booking.change_until, tenant.timezone)}
+            contactName={contact?.name ?? null}
             googleUrl={googleCalendarUrl(calendar)}
             outlookUrl={outlookCalendarUrl(calendar)}
+          />
+          <TenantFooter tenant={tenant} t={t} />
+        </>
+      );
+    }
+  }
+
+  // öffentlicher Event-Link: Termin wählen, Name/E-Mail/Firma selbst eingeben
+  if (!ctx) {
+    const pub = await loadPublicEventContext(runAnon, tenant.id, token);
+    if (pub && pub.event.status === "published") {
+      const ptz = tenant.timezone;
+      const pubSlots: SlotDisplay[] = pub.slots.map((s) => {
+        const d = new Date(s.starts_at);
+        const part = (o: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat("de-AT", { timeZone: ptz, ...o }).format(d);
+        return {
+          id: s.id,
+          ...formatSlot(s.starts_at, s.ends_at, ptz),
+          dayKey: new Intl.DateTimeFormat("en-CA", { timeZone: ptz, year: "numeric", month: "2-digit", day: "2-digit" }).format(d),
+          dayNum: part({ day: "numeric" }).replace(".", ""),
+          monthShort: part({ month: "short" }),
+          location: s.location,
+          capacity: s.capacity,
+          booked: s.booked,
+          free: s.free,
+          ownSeats: 0,
+          bookable: s.bookable,
+        };
+      });
+      return (
+        <>
+          <TenantHeader tenant={tenant} />
+          <BookingApp
+            token={token}
+            texts={resolveTexts(tenant.anrede, tenant.textOverrides)}
+            event={{ title: pub.event.title, intro: pub.event.intro_text, showSeats: pub.event.show_seats }}
+            invitation={{ name: "", email: "" }}
+            slots={pubSlots}
+            booking={null}
+            bookingOpen
+            closedReason={t("hero.unavailable")}
+            contactName={null}
+            publicLink
           />
           <TenantFooter tenant={tenant} t={t} />
         </>
@@ -78,9 +121,20 @@ export default async function BookingPage({ params }: { params: Promise<{ token:
   }
 
   const tz = tenant.timezone;
+  // Tag je Termin in der Mandanten-Zeitzone (Tagesauswahl wie im Panel)
+  const dayParts = (iso: string) => {
+    const d = new Date(iso);
+    const part = (o: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat("de-AT", { timeZone: tz, ...o }).format(d);
+    return {
+      dayKey: new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }).format(d),
+      dayNum: part({ day: "numeric" }).replace(".", ""),
+      monthShort: part({ month: "short" }),
+    };
+  };
   const slots: SlotDisplay[] = ctx.slots.map((s) => ({
     id: s.id,
     ...formatSlot(s.starts_at, s.ends_at, tz),
+    ...dayParts(s.starts_at),
     location: s.location,
     capacity: s.capacity,
     booked: s.booked,
@@ -109,8 +163,6 @@ export default async function BookingPage({ params }: { params: Promise<{ token:
       email: b.email,
       extraAttendees: b.extra_attendees,
       guests: await loadBookingGuests(runAnon, tenant.id, token),
-      changeUntil: formatDateTime(b.change_until, tz),
-      canChange: b.changeable && !ctx.invitation.expired,
       icsUrl: `/b/${encodeURIComponent(token)}/ics`,
       googleUrl: googleCalendarUrl(calendar),
       outlookUrl: outlookCalendarUrl(calendar),
@@ -133,12 +185,13 @@ export default async function BookingPage({ params }: { params: Promise<{ token:
       <BookingApp
         token={token}
         texts={resolveTexts(tenant.anrede, tenant.textOverrides)}
-        event={{ title: ctx.event.title, intro: ctx.event.intro_text }}
+        event={{ title: ctx.event.title, intro: ctx.event.intro_text, showSeats: ctx.event.show_seats }}
         invitation={{ name: ctx.invitation.name, email: ctx.invitation.email }}
         slots={slots}
         booking={booking}
         bookingOpen={bookingOpen}
         closedReason={ctx.invitation.expired ? t("hero.expired") : t("hero.unavailable")}
+        contactName={contact?.name ?? null}
       />
       <TenantFooter tenant={tenant} t={t} />
     </>

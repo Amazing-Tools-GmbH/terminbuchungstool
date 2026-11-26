@@ -115,5 +115,9 @@ export const LOGIN_HINT_TTL_SECONDS = 30 * 60;
 export const loginHintSchema = z.object({ owners: z.array(z.string().email()).max(10) });
 /** Sitzung der eingebetteten App-Einstellungen in Pipedrive (Bearer wie beim Panel) */
 export const APP_SETTINGS_TTL_SECONDS = 2 * 60 * 60;
-export const panelSessionSchema = sessionSchema.extend({ deal: z.number().int().positive() });
+/** deal = Panel im Deal; person (deal null) = Panel im Kontakt */
+export const panelSessionSchema = sessionSchema.extend({
+  deal: z.number().int().positive().nullable(),
+  person: z.number().int().positive().nullable().optional(),
+});
 export type PanelSession = z.infer<typeof panelSessionSchema>;

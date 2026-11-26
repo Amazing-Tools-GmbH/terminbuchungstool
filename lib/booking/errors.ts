@@ -15,6 +15,7 @@ export const BOOKING_ERROR_CODES = [
   "slot_not_available",
   "not_enough_seats",
   "no_active_booking",
+  "already_booked",
 ] as const;
 export type BookingErrorCode = (typeof BOOKING_ERROR_CODES)[number];
 
@@ -55,6 +56,7 @@ export function httpStatusFor(code: BookingErrorCode): number {
     case "slot_not_available":
     case "slot_not_allowed":
     case "no_active_booking":
+    case "already_booked":
       return 409;
     default:
       return 400;
@@ -81,6 +83,8 @@ export function messageKeyFor(code: BookingErrorCode): TextKey {
       return "error.invalid_attendees";
     case "invalid_guest_email":
       return "error.invalid_guest_email";
+    case "already_booked":
+      return "error.already_booked";
     default:
       return "error.generic";
   }

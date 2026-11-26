@@ -1,25 +1,20 @@
-"use client";
 /**
- * Link eines weiteren Teilnehmers: Termin ansehen, in den Kalender
- * übernehmen und NUR für sich absagen (die ganze Buchung verwaltet der
- * Hauptbucher über seinen eigenen Link).
+ * Link eines weiteren Teilnehmers: Termin ansehen und in den Kalender
+ * übernehmen. Kein Absagen über den Link – bei Verhinderung an den
+ * Ansprechpartner wenden (die Hemmschwelle zum Nicht-Kommen soll hoch sein).
  */
-import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { formatText, type ResolvedTexts, type TextKey } from "@/lib/texts";
 import styles from "./Booking.module.css";
 
 type Props = {
-  token: string;
   texts: ResolvedTexts;
   eventTitle: string;
   guestName: string;
   booker: string;
-  /** active = angemeldet, declined = selbst abgesagt, ended = Buchung storniert/geändert */
-  state: "active" | "declined" | "ended";
+  /** active = angemeldet, ended = Buchung oder Teilnahme nicht mehr aktiv */
+  state: "active" | "ended";
   when: { weekday: string; date: string; time: string; location: string | null };
-  canDecline: boolean;
-  declineUntil: string;
+  contactName: string | null;
   googleUrl: string;
   outlookUrl: string;
 };
@@ -27,39 +22,12 @@ type Props = {
 export function GuestView(props: Props) {
   const { texts, when } = props;
   const t = (key: TextKey, vars?: Record<string, string | number>) => formatText(texts[key], vars);
-  const router = useRouter();
-  const [confirm, setConfirm] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function decline() {
-    setBusy(true);
-    setError(null);
-    try {
-      const res = await fetch("/api/bookings/guest-cancel", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ token: props.token }),
-      });
-      const data = (await res.json().catch(() => ({}))) as { ok?: boolean; message?: string };
-      if (!res.ok || !data.ok) {
-        setError(data.message ?? t("error.generic"));
-        return;
-      }
-      router.refresh();
-    } catch {
-      setError(t("error.generic"));
-    } finally {
-      setBusy(false);
-    }
-  }
 
   if (props.state !== "active") {
-    const ended = props.state === "ended";
     return (
       <main className={`tb-container ${styles.message}`}>
-        <h1>{t(ended ? "guest.bookingEnded.title" : "guest.declined.title")}</h1>
-        <p>{ended ? t("guest.bookingEnded.text") : t("guest.declined.text", { booker: props.booker })}</p>
+        <h1>{t("guest.bookingEnded.title")}</h1>
+        <p>{t("guest.bookingEnded.text")}</p>
       </main>
     );
   }
@@ -107,35 +75,7 @@ export function GuestView(props: Props) {
         </a>
       </div>
 
-      {props.canDecline ? (
-        <div className={styles.changeArea}>
-          <p className={styles.muted}>{t("guest.declineUntil", { until: props.declineUntil })}</p>
-          <div className={styles.changeActions}>
-            {!confirm ? (
-              <button type="button" className={styles.linkButtonMuted} onClick={() => setConfirm(true)}>
-                {t("guest.decline")}
-              </button>
-            ) : (
-              <span className={styles.confirmBox} role="group" aria-label={t("guest.decline")}>
-                <span>{t("guest.declineConfirm")}</span>
-                <button type="button" className={styles.dangerButton} onClick={decline} disabled={busy}>
-                  {t("guest.declineYes")}
-                </button>
-                <button type="button" className={styles.linkButtonMuted} onClick={() => setConfirm(false)} disabled={busy}>
-                  {t("done.cancelNo")}
-                </button>
-              </span>
-            )}
-          </div>
-          {error && (
-            <p className={styles.error} role="alert">
-              {error}
-            </p>
-          )}
-        </div>
-      ) : (
-        <p className={styles.muted}>{t("guest.deadlinePassed", { booker: props.booker })}</p>
-      )}
+      <p className={styles.contactNote}>{props.contactName ? t("done.contact", { name: props.contactName }) : t("done.contactFallback")}</p>
     </main>
   );
 }

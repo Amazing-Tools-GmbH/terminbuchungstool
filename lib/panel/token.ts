@@ -1,6 +1,6 @@
 /**
- * Einstieg in das Vertriebs-Panel (Custom Panel im Deal). Pipedrive lädt
- *   <APP_BASE_URL>/panel?resource=deal&view=details&userId=…&companyId=…&selectedIds=<dealId>&token=<JWT>&id=<uuid>&theme=…
+ * Einstieg in das Vertriebs-Panel (Custom Panel im Deal bzw. im Kontakt). Pipedrive lädt
+ *   <APP_BASE_URL>/panel?resource=deal|person&view=details&userId=…&companyId=…&selectedIds=<id>&token=<JWT>&id=<uuid>&theme=…
  * Das JWT ist wie beim Einstieg aus den App-Einstellungen mit dem JWT-Geheimnis
  * der App signiert (userId, companyId). selectedIds ist NICHT signiert: Es legt
  * nur fest, welcher Deal angezeigt wird; Rechte ergeben sich aus der
@@ -9,11 +9,16 @@
  */
 import { verifySettingsToken, type SettingsIdentity, type SettingsTokenError } from "@/lib/pipedrive/settings-token";
 
-export type PanelEntry = SettingsIdentity & { dealId: number };
+/** dealId = Panel im Deal; personId (ohne Deal) = Panel im Kontakt */
+export type PanelEntry = SettingsIdentity & { dealId: number | null; personId: number | null };
 export type PanelEntryError = SettingsTokenError | "no_deal";
 
 export function dealIdFrom(resource: string | null, selectedIds: string | null): number | null {
   if (resource !== null && resource !== "deal") return null;
+  return firstId(selectedIds);
+}
+
+function firstId(selectedIds: string | null): number | null {
   const first = (selectedIds ?? "").split(",")[0]?.trim() ?? "";
   if (!/^\d{1,15}$/.test(first)) return null;
   const n = Number(first);
@@ -27,7 +32,13 @@ export function verifyPanelEntry(
 ): { ok: true; entry: PanelEntry } | { ok: false; error: PanelEntryError } {
   const v = verifySettingsToken({ token: q.get("token"), userId: q.get("userId"), companyId: q.get("companyId") }, secret, now);
   if (!v.ok) return v;
-  const dealId = dealIdFrom(q.get("resource"), q.get("selectedIds"));
+  const resource = q.get("resource");
+  if (resource === "person") {
+    const personId = firstId(q.get("selectedIds"));
+    if (!personId) return { ok: false, error: "no_deal" };
+    return { ok: true, entry: { ...v.identity, dealId: null, personId } };
+  }
+  const dealId = dealIdFrom(resource, q.get("selectedIds"));
   if (!dealId) return { ok: false, error: "no_deal" };
-  return { ok: true, entry: { ...v.identity, dealId } };
+  return { ok: true, entry: { ...v.identity, dealId, personId: null } };
 }

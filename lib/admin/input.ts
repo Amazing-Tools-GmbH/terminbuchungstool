@@ -114,6 +114,8 @@ export const updateEventSchema = z.object({
     .trim()
     .max(2000)
     .transform((v) => (v === "" ? null : v)),
+  /** Platzzahlen auf der Buchungsseite zeigen (Checkbox) */
+  showSeats: z.preprocess((v) => v === "on" || v === "true" || v === true, z.boolean()),
 });
 export type UpdateEventInput = z.infer<typeof updateEventSchema>;
 

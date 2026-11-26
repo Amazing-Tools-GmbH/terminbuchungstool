@@ -4,7 +4,7 @@ import { bookSlot } from "@/lib/booking/service";
 import { errorResponse, runAnon, sendMailsSoon } from "@/lib/booking/api";
 import { createTranslator } from "@/lib/texts";
 
-/** Buchen bzw. Umbuchen über den persönlichen Buchungslink */
+/** Buchen über den persönlichen Buchungslink (genau einmal; kein Umbuchen) */
 export async function POST(req: Request) {
   const body = await req.json().catch(() => null);
   const token = typeof body?.token === "string" ? body.token : "";

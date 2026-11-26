@@ -166,8 +166,8 @@ async function processOne(pool: pg.Pool, row: OutboxRow, env: Env): Promise<keyo
           where id = $1`,
         [row.id, messageId, plan.connection?.id ?? null, plan.storeRendered, JSON.stringify(message), plan.channel],
       );
-      // Einladung versendet -> Notiz "Link gesendet" im Deal
-      if (row.type === "invitation" && ctx.invitation?.pipedrive_deal_id) {
+      // Einladung versendet -> Notiz "Link gesendet" im Deal bzw. am Kontakt (Job prüft, ob es einen gibt)
+      if (row.type === "invitation" && ctx.invitation) {
         await c.query(
           "insert into public.pipedrive_jobs (tenant_id, type, payload) values ($1, 'invitation_note', $2)",
           [row.tenant_id, { invitation_id: ctx.invitation.id, outbox_id: row.id }],
@@ -429,7 +429,9 @@ async function prepare(pool: pg.Pool, row: OutboxRow, env: Env): Promise<Prepare
   }
 
   // Eigenes Postfach des Einladenden (nur beim Weg "employee")
-  const setting = parseMailRoute(ctx.tenantRow.mail_route);
+  // Buchung ohne einladenden Mitarbeiter (öffentlicher Event-Link): es gibt kein
+  // Mitarbeiter-Postfach -> System-Adresse (fest so geregelt, kein stiller Wechsel)
+  const setting = ctx.invitation && !ctx.invitation.created_by ? "system" : parseMailRoute(ctx.tenantRow.mail_route);
   let userConnection: MailConnection | null = null;
   if (setting === "employee" && ctx.inviter) {
     userConnection = await asService(pool, async (c) => {
@@ -557,7 +559,7 @@ function buildMessage(row: OutboxRow, plan: Plan, ctx: MailContext): MailMessage
           ...base,
           location: b.location,
           bookerName: b.booker_name,
-          guestUrl,
+          contactName: ctx.inviter?.active ? (ctx.inviter.name ?? ctx.inviter.email) : null,
           icsFilename,
           changed: row.payload.changed === true,
           organizerChanged: byOrganizer,
@@ -588,6 +590,7 @@ function buildMessage(row: OutboxRow, plan: Plan, ctx: MailContext): MailMessage
         ? renderConfirmation(tenant, {
             ...base,
             extraAttendees: b.extra_attendees ?? [],
+            contactName: ctx.inviter?.active ? (ctx.inviter.name ?? ctx.inviter.email) : null,
             icsFilename,
             changed: Boolean(row.payload.replaces_booking_id) || typeof row.payload.guest_cancelled === "string" || row.payload.by_organizer === true,
             organizerChanged: row.payload.by_organizer === true,

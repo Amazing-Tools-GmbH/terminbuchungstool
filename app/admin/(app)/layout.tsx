@@ -14,6 +14,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   const ctx = await requireAdmin();
   const [problems, requests] = await Promise.all([activityProblemCount(ctx), listOpenAccessRequests(ctx).catch(() => [])]);
   const items: NavItem[] = [
+    { href: "/admin/uebersicht", label: at("nav.dashboard") },
     { href: "/admin", label: at("nav.slots") },
     { href: "/admin/buchungen", label: at("nav.bookings") },
     ...(canManage(ctx.role) ? [{ href: "/admin/verlauf", label: at("nav.activity") }] : []),

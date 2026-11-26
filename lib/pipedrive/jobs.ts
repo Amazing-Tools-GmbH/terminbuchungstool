@@ -28,7 +28,7 @@ export type PdJobDeps = {
   access: (tenantId: string, userId: string | null) => Promise<PipedriveApiAccess | null>;
 };
 
-type JobRow = { id: string; tenant_id: string; type: "booking_activity" | "cancel_activity" | "invitation_note"; payload: Record<string, unknown>; attempts: number };
+type JobRow = { id: string; tenant_id: string; type: "booking_activity" | "cancel_activity" | "invitation_note" | "link_contact"; payload: Record<string, unknown>; attempts: number };
 export type PdJobResult = { done: number; requeued: number; failed: number };
 
 const asService = <T>(pool: pg.Pool, fn: (c: pg.PoolClient) => Promise<T>) => withActorOn(pool, { role: "service_role" }, fn);
@@ -95,6 +95,8 @@ type BookingInfo = {
   owner_pd_id: string | null;
   timezone: string;
   prev_activity_id: string | null;
+  activity_type: string;
+  guests: { name: string; email: string }[] | null;
 };
 
 async function loadBooking(pool: pg.Pool, tenantId: string, bookingId: string): Promise<BookingInfo | null> {
@@ -103,7 +105,9 @@ async function loadBooking(pool: pg.Pool, tenantId: string, bookingId: string): 
       `select b.id, b.name, b.email, b.seats, b.extra_attendees, b.pipedrive_activity_id::text,
               s.starts_at, s.ends_at, coalesce(s.location, e.location) as location, e.title as event_title,
               i.pipedrive_deal_id::text as deal_id, i.pipedrive_person_id::text as person_id, i.created_by,
-              m.pipedrive_user_id::text as owner_pd_id, t.timezone,
+              m.pipedrive_user_id::text as owner_pd_id, t.timezone, t.pd_activity_type as activity_type,
+              (select jsonb_agg(jsonb_build_object('name', g.name, 'email', g.email) order by g.created_at)
+                 from public.booking_guests g where g.booking_id = b.id and g.status = 'confirmed') as guests,
               (select p.pipedrive_activity_id::text from public.bookings p
                 where p.replaced_by = b.id and p.pipedrive_activity_id is not null limit 1) as prev_activity_id
          from public.bookings b
@@ -136,27 +140,34 @@ async function runJob(pool: pg.Pool, deps: PdJobDeps, job: JobRow): Promise<void
         [job.payload.invitation_id, job.tenant_id],
       );
       const r = rows[0];
-      if (!r?.deal_id) return null;
+      // ohne Deal und ohne Kontakt (z. B. öffentlicher Link vor dem Anlegen) nichts zu tun
+      if (!r?.deal_id && !r?.person_id) return null;
       const { rows: slots } = r.slot_ids?.length
         ? await c.query<{ starts_at: Date; ends_at: Date }>("select starts_at, ends_at from public.slots where id = any($1::uuid[]) order by starts_at", [r.slot_ids])
         : { rows: [] };
       return { ...r, slots };
     });
-    if (!inv?.deal_id) return; // ohne Deal nichts zu tun
+    if (!inv) return;
     const offer = inv.slots.length
       ? inv.slots.map((s) => { const f = formatSlot(s.starts_at, s.ends_at, inv.timezone); return `${f.weekdayShort}, ${f.date}, ${f.time}`; }).join("; ")
       : at("pd.note.offerAll");
     const access = await accessFor(deps, job.tenant_id, inv.created_by);
     await deps.crm.addNote(access, {
-      dealId: Number(inv.deal_id),
+      dealId: inv.deal_id ? Number(inv.deal_id) : null,
       personId: inv.person_id ? Number(inv.person_id) : null,
       html: `<p>${escapeHtml(at("pd.note.invited", { name: inv.name, offer }))}</p>`,
     });
     return;
   }
 
+  if (job.type === "link_contact") {
+    await linkContact(pool, deps, job);
+    return;
+  }
+
   const b = await loadBooking(pool, job.tenant_id, String(job.payload.booking_id ?? ""));
-  if (!b?.deal_id) return;
+  // Einträge am Deal bzw. – ohne Deal – am Kontakt
+  if (!b?.deal_id && !b?.person_id) return;
   const access = await accessFor(deps, job.tenant_id, b.created_by);
 
   if (job.type === "booking_activity") {
@@ -166,11 +177,21 @@ async function runJob(pool: pg.Pool, deps: PdJobDeps, job: JobRow): Promise<void
       ...(b.extra_attendees?.length ? [at("pd.activity.extra", { names: b.extra_attendees.join(", ") })] : []),
       ...(b.location ? [at("pd.activity.location", { location: b.location })] : []),
     ];
+    const personId = b.person_id ? Number(b.person_id) : null;
+    // ohne einladenden Mitarbeiter (öffentlicher Link): Besitzer des Deals
+    let ownerId = b.owner_pd_id ? Number(b.owner_pd_id) : null;
+    if (!ownerId && b.deal_id) ownerId = (await deps.crm.getDeal(access, Number(b.deal_id)).catch(() => null))?.ownerId ?? null;
     const input = {
       subject: at("pd.activity.subject", { event: b.event_title, seats: b.seats }),
-      ownerId: b.owner_pd_id ? Number(b.owner_pd_id) : null,
-      dealId: Number(b.deal_id),
-      personId: b.person_id ? Number(b.person_id) : null,
+      type: b.activity_type,
+      // Kunde (mit Kontakt verknüpft) und weitere Teilnehmer mit E-Mail als Gäste
+      attendees: [
+        { email: b.email, name: b.name, personId },
+        ...(b.guests ?? []).map((g) => ({ email: g.email, name: g.name, personId: null })),
+      ],
+      ownerId,
+      dealId: b.deal_id ? Number(b.deal_id) : null,
+      personId,
       start: new Date(b.starts_at),
       durationMinutes: minutes,
       note: lines.map((l) => `<p>${escapeHtml(l)}</p>`).join(""),
@@ -200,8 +221,84 @@ async function runJob(pool: pg.Pool, deps: PdJobDeps, job: JobRow): Promise<void
   }
   const f = formatSlot(b.starts_at, b.ends_at, b.timezone);
   await deps.crm.addNote(access, {
-    dealId: Number(b.deal_id),
+    dealId: b.deal_id ? Number(b.deal_id) : null,
     personId: b.person_id ? Number(b.person_id) : null,
     html: `<p>${escapeHtml(at("pd.note.cancelled", { event: b.event_title, date: `${f.date}, ${f.time}`, seats: b.seats }))}</p>`,
   });
+}
+
+/**
+ * Öffentlicher Event-Link: Kontakt und Deal in Pipedrive zuordnen
+ * (Dublettencheck per E-Mail), sonst anlegen; danach die Aktivität.
+ *   1. Kontakt mit dieser E-Mail?  ja -> nehmen; nein -> anlegen (mit Firma)
+ *   2. offener Deal des Kontakts?  ja -> nehmen; nein -> anlegen
+ *      (Pipeline/Phase aus tenants.new_deal_*, sonst Standard von Pipedrive)
+ *   3. Einladung verknüpfen, Auftrag booking_activity
+ * Braucht in Pipedrive das Recht, Kontakte anzulegen (Scope contacts:full).
+ */
+async function linkContact(pool: pg.Pool, deps: PdJobDeps, job: JobRow): Promise<void> {
+  const r = await asService(pool, async (c) => {
+    const { rows } = await c.query<{
+      invitation_id: string;
+      name: string;
+      email: string;
+      organization_name: string | null;
+      deal_id: string | null;
+      person_id: string | null;
+      event_title: string;
+      pipeline_id: string | null;
+      stage_id: string | null;
+      status: string;
+    }>(
+      `select i.id as invitation_id, b.name, b.email, i.organization_name, i.pipedrive_deal_id::text as deal_id,
+              i.pipedrive_person_id::text as person_id, e.title as event_title,
+              t.new_deal_pipeline_id::text as pipeline_id, t.new_deal_stage_id::text as stage_id, b.status::text as status
+         from public.bookings b
+         join public.invitations i on i.id = b.invitation_id
+         join public.events e on e.id = i.event_id
+         join public.tenants t on t.id = b.tenant_id
+        where b.id = $1 and b.tenant_id = $2`,
+      [job.payload.booking_id, job.tenant_id],
+    );
+    return rows[0] ?? null;
+  });
+  if (!r || r.status !== "confirmed") return; // inzwischen storniert: nichts anlegen
+  if (r.deal_id || r.person_id) {
+    // schon zugeordnet (erneuter Versuch): nur noch die Aktivität
+    await queueActivity(pool, job);
+    return;
+  }
+  const access = await accessFor(deps, job.tenant_id, null);
+  const crm = deps.crm;
+
+  let person = await crm.findPersonByEmail(access, r.email);
+  let orgId: number | null = person?.orgId ?? null;
+  if (!person) {
+    if (r.organization_name) orgId = (await crm.findOrganization(access, r.organization_name)) ?? (await crm.createOrganization(access, r.organization_name));
+    const id = await crm.createPerson(access, { name: r.name, email: r.email, orgId });
+    person = { id, name: r.name, email: r.email, orgId };
+  }
+  const deal =
+    (await crm.findOpenDeal(access, person.id)) ??
+    (await crm.createDeal(access, {
+      title: at("pd.deal.title", { name: r.organization_name ?? r.name, event: r.event_title }),
+      personId: person.id,
+      orgId,
+      pipelineId: r.pipeline_id ? Number(r.pipeline_id) : null,
+      stageId: r.stage_id ? Number(r.stage_id) : null,
+    }));
+
+  await asService(pool, (c) =>
+    c.query("update public.invitations set pipedrive_person_id = $2, pipedrive_deal_id = $3 where id = $1", [r.invitation_id, person.id, deal.id]),
+  );
+  await queueActivity(pool, job);
+}
+
+async function queueActivity(pool: pg.Pool, job: JobRow) {
+  await asService(pool, (c) =>
+    c.query("insert into public.pipedrive_jobs (tenant_id, type, payload) values ($1, 'booking_activity', $2)", [
+      job.tenant_id,
+      { booking_id: job.payload.booking_id },
+    ]),
+  );
 }
