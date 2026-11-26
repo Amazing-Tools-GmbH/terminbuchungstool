@@ -1,10 +1,10 @@
 "use client";
 /**
- * Farben & Schriften mit Live-Vorschau und Kontrastprüfung. Gespeichert wird
- * über die Server Action (prüft dasselbe noch einmal streng).
+ * Farben & Schriften mit Live-Vorschau. Die Farbwahl liegt beim Kunden – kein
+ * Kontrast-Check. Gespeichert wird über die Server Action (prüft das Format streng).
  */
 import { useMemo, useState } from "react";
-import { BRANDING_COLORS, BRANDING_GROUPS, brandingContrastIssues, normalizeColor, type BrandingColorKey } from "@/lib/admin/branding-logic";
+import { BRANDING_COLORS, BRANDING_GROUPS, normalizeColor, type BrandingColorKey } from "@/lib/admin/branding-logic";
 import { DEFAULT_THEME, parseTheme, themeInputSchema } from "@/lib/theme/schema";
 import { FONT_NAMES } from "@/lib/theme/font-names";
 import { colorsOf } from "@/lib/theme/contrast";
@@ -35,14 +35,7 @@ export function BrandingEditor({ action, texts, preview, initial }: Props) {
     return parseTheme(raw);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [colors, fontBody, fontDisplay]);
-  const issues = brandingContrastIssues(theme);
   const invalid = BRANDING_COLORS.filter((c) => !valid(c.key, colors[c.key])).map((c) => c.key);
-  const label = (key: string) => {
-    const k = key.split(" ")[0]!;
-    const c = BRANDING_COLORS.find((x) => x.key === k);
-    return c ? `${t(`branding.group.${c.group}`)} – ${t(`branding.color.${k}`)}` : k;
-  };
-  const flagged = new Set(issues.flatMap((i) => [i.fg, i.bg.split(" ")[0]!]));
 
   const font = (name: string) => `var(--font-${name.toLowerCase().replace(/\s+/g, "-")}), ${name}, system-ui, sans-serif`;
 
@@ -82,7 +75,7 @@ export function BrandingEditor({ action, texts, preview, initial }: Props) {
               {BRANDING_COLORS.filter((c) => c.group === g).map((c) => {
                 const v = colors[c.key];
                 const id = `branding-${c.key}`;
-                const bad = invalid.includes(c.key) || flagged.has(c.key);
+                const bad = invalid.includes(c.key);
                 const isPaint = "paint" in c && c.paint;
                 // bei Verläufen zeigt der Farbwähler die erste Farbe (Auswahl ersetzt den Verlauf)
                 const first = normalizeColor(colorsOf(v)[0] ?? "");
@@ -122,16 +115,8 @@ export function BrandingEditor({ action, texts, preview, initial }: Props) {
           </fieldset>
         ))}
 
-        {issues.length > 0 && (
-          <ul className={`${styles.notice} ${styles.error}`} role="status">
-            {issues.map((i, n) => (
-              <li key={n}>{t("branding.contrast", { fg: label(i.fg), bg: label(i.bg), ratio: String(i.ratio).replace(".", ",") })}</li>
-            ))}
-          </ul>
-        )}
-
         <div className={styles.actions}>
-          <button type="submit" className={styles.btn} disabled={issues.length > 0 || invalid.length > 0}>
+          <button type="submit" className={styles.btn} disabled={invalid.length > 0}>
             {t("branding.save")}
           </button>
           <button

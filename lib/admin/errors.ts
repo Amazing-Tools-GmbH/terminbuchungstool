@@ -19,7 +19,6 @@ export const ADMIN_ERROR_CODES = [
   "logo_invalid",
   "logo_too_large",
   "logo_upload_failed",
-  "contrast_too_low",
   "template_invalid",
   "pipedrive_not_connected",
   "pipedrive_unauthorized",

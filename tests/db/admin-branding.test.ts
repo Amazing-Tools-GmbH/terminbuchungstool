@@ -53,11 +53,9 @@ describe("Erscheinungsbild", () => {
     await expect(branding.removeLogo(sales)).rejects.toMatchObject({ code: "forbidden" });
   });
 
-  it("schlechter Kontrast wird nicht gespeichert", async () => {
-    await expect(
-      branding.saveBranding(owner, { claim: null, fontBody: "Inter", fontDisplay: "Inter", colors: { primary: "#FFFFFF", onPrimary: "#FAFAFA" } }),
-    ).rejects.toMatchObject({ code: "contrast_too_low" });
-    expect((await tenantRow()).claim).toBe("Neuer Claim");
+  it("Farben mit schwachem Kontrast werden gespeichert (Entscheidung des Kunden)", async () => {
+    await branding.saveBranding(owner, { claim: "Neuer Claim", fontBody: "Inter", fontDisplay: "Inter", colors: { primary: "#FFFFFF", onPrimary: "#FAFAFA" } });
+    expect((await tenantRow()).theme).toMatchObject({ primary: "#FFFFFF", onPrimary: "#FAFAFA" });
   });
 
   it("Logo: Typ und Größe werden geprüft, Pfad wird gespeichert und entfernt", async () => {

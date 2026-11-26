@@ -3,9 +3,8 @@
  * gespeichert werden (reine Logik, auch im Browser für Vorschau/Prüfung).
  */
 import { z } from "zod";
-import { DEFAULT_THEME, parseTheme, themeInputSchema, type Theme } from "@/lib/theme/schema";
+import { DEFAULT_THEME, themeInputSchema } from "@/lib/theme/schema";
 import { FONT_NAMES } from "@/lib/theme/font-names";
-import { checkThemeContrast, TEXT_PAIRS, type ContrastIssue } from "@/lib/theme/contrast";
 
 /** Im Admin pflegbare Farben; paint = Farbe ODER linear-gradient */
 export const BRANDING_COLORS = [
@@ -40,17 +39,11 @@ export const brandingInputSchema = z.object({
 });
 export type BrandingInput = z.infer<typeof brandingInputSchema>;
 
-/** Paare (Text/Hintergrund), die das Admin-Formular beeinflusst */
-const EDITABLE = new Set<string>([...BRANDING_COLORS.map((c) => c.key), ...DERIVED]);
-const RELEVANT_PAIRS = TEXT_PAIRS.filter(([fg, bg]) => EDITABLE.has(fg) || EDITABLE.has(bg));
-
-/** Kontrastprobleme der pflegbaren Farben (für Formular und Speichern) */
-export function brandingContrastIssues(theme: Theme): ContrastIssue[] {
-  const relevant = new Set(RELEVANT_PAIRS.map(([fg, bg]) => `${fg}|${bg}`));
-  return checkThemeContrast(theme as unknown as Record<string, string>).filter((i) => relevant.has(`${i.fg}|${i.bg.split(" ")[0]}`));
-}
-
-export type MergeResult = { ok: true; theme: Record<string, string> } | { ok: false; error: "invalid_input" | "contrast_too_low" };
+/**
+ * Farbwahl liegt beim Kunden: kein Kontrast-Check, keine Warnung (entschieden).
+ * Geprüft wird nur das Format (Schutz gegen CSS-Injection, themeInputSchema).
+ */
+export type MergeResult = { ok: true; theme: Record<string, string> } | { ok: false; error: "invalid_input" };
 
 /**
  * Bestehendes Theme + Eingaben -> zu speicherndes Theme. Ungültige Altwerte
@@ -70,7 +63,6 @@ export function mergeBrandingTheme(current: unknown, input: BrandingInput): Merg
     if (v) next[c.key] = normalizeColor(v);
   }
   if (!themeInputSchema.safeParse(next).success) return { ok: false, error: "invalid_input" };
-  if (brandingContrastIssues(parseTheme(next)).length) return { ok: false, error: "contrast_too_low" };
   return { ok: true, theme: next };
 }
 
