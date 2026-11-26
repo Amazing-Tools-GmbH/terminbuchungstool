@@ -66,8 +66,10 @@ export async function dealContact(s: PanelSession) {
 
 export async function loadPanelContext(s: PanelSession, actor: DbActor, tenant: PublicTenant): Promise<PanelContext> {
   const tz = tenant.timezone;
-  const [{ deal, person, organization }, data] = await Promise.all([
-    dealContact(s).catch(() => ({ deal: null, person: null, organization: null })),
+  // Kontakt zuerst: Einladung/Buchung gehören zum aktuellen Kontakt des Deals
+  // (wird der Kontakt im Deal geändert, zeigt das Panel die alte Buchung nicht mehr)
+  const { deal, person, organization } = await dealContact(s).catch(() => ({ deal: null, person: null, organization: null }));
+  const [data] = await Promise.all([
     withActor(actor, async (db) => {
       const { rows: slots } = await db.query<{
         event_id: string; title: string; id: string; starts_at: Date; ends_at: Date; location: string | null; capacity: number; booked: number;
@@ -84,8 +86,10 @@ export async function loadPanelContext(s: PanelSession, actor: DbActor, tenant: 
         id: string; created_at: Date; allowed_slot_ids: string[] | null; link_enc: string | null; status: PanelInvitation["status"]; expires_at: Date;
       }>(
         `select id, created_at, allowed_slot_ids, link_enc, status::text as status, expires_at from public.invitations
-          where tenant_id = $1 and pipedrive_deal_id = $2 order by created_at desc limit 1`,
-        [tenant.id, s.deal],
+          where tenant_id = $1 and pipedrive_deal_id = $2
+            and ((pipedrive_person_id is not null and pipedrive_person_id = $3) or lower(email) = lower($4))
+          order by created_at desc limit 1`,
+        [tenant.id, s.deal, person?.id ?? null, person?.email ?? ""],
       );
       const i = inv[0];
       let booking: PanelInvitation["booking"] = null;

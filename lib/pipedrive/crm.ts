@@ -13,10 +13,16 @@ export type PipedriveApiAccess = { apiDomain: string; accessToken: string };
 
 export type CrmDeal = { id: number; title: string; personId: number | null; orgId: number | null; ownerId: number | null };
 export type CrmPerson = { id: number; name: string; email: string | null };
+export type ActivityAttendee = { email: string; name: string | null; personId: number | null };
 export type ActivityInput = {
   subject: string;
+  /** Aktivitätstyp (key_string aus Pipedrive, Einstellung je Firma) */
+  type: string;
+  /** Gäste der Aktivität (Kunde + weitere Teilnehmer mit E-Mail) */
+  attendees: ActivityAttendee[];
   ownerId: number | null;
-  dealId: number;
+  /** null = ohne Deal (nur am Kontakt) */
+  dealId: number | null;
   personId: number | null;
   /** UTC */
   start: Date;
@@ -24,7 +30,14 @@ export type ActivityInput = {
   note: string;
 };
 
+export type CrmActivityType = { key: string; name: string };
+export type CrmPipeline = { id: number; name: string; stages: { id: number; name: string }[] };
+
 export interface PipedriveCrm {
+  /** aktive Aktivitätstypen der Firma */
+  listActivityTypes(a: PipedriveApiAccess): Promise<CrmActivityType[]>;
+  /** Pipelines mit ihren Phasen (Reihenfolge wie in Pipedrive) */
+  listPipelines(a: PipedriveApiAccess): Promise<CrmPipeline[]>;
   getDeal(a: PipedriveApiAccess, id: number): Promise<CrmDeal | null>;
   getPerson(a: PipedriveApiAccess, id: number): Promise<CrmPerson | null>;
   getOrganizationName(a: PipedriveApiAccess, id: number): Promise<string | null>;
@@ -42,10 +55,13 @@ export function activityBody(i: ActivityInput) {
   const d = i.start;
   return {
     subject: i.subject.slice(0, 255),
-    type: "meeting",
-    deal_id: i.dealId,
+    type: i.type || "meeting",
+    ...(i.dealId ? { deal_id: i.dealId } : {}),
     ...(i.ownerId ? { owner_id: i.ownerId } : {}),
     ...(i.personId ? { participants: [{ person_id: i.personId, primary: true }] } : {}),
+    ...(i.attendees.length
+      ? { attendees: i.attendees.map((g) => ({ email: g.email, ...(g.name ? { name: g.name } : {}), ...(g.personId ? { person_id: g.personId } : {}) })) }
+      : {}),
     due_date: `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`,
     due_time: `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`,
     duration: `${pad(Math.floor(i.durationMinutes / 60))}:${pad(i.durationMinutes % 60)}`,
@@ -91,6 +107,38 @@ export class ApiPipedriveCrm implements PipedriveCrm {
     if (!res.ok) throw new PipedriveError("api", `Pipedrive-API-Fehler (${res.status})`, res.status);
     const json = (await res.json().catch(() => ({}))) as { data?: unknown };
     return { status: res.status, data: json?.data ?? null };
+  }
+
+  async listActivityTypes(a: PipedriveApiAccess) {
+    // Aktivitätstypen gibt es nur in v1
+    const { data } = await this.call(a, "GET", "/api/v1/activityTypes");
+    const r = z
+      .array(z.object({ key_string: z.string(), name: z.string(), active_flag: z.union([z.boolean(), z.number()]).optional() }))
+      .safeParse(data ?? []);
+    return r.success ? r.data.filter((t) => t.active_flag !== false && t.active_flag !== 0).map((t) => ({ key: t.key_string, name: t.name })) : [];
+  }
+
+  async listPipelines(a: PipedriveApiAccess) {
+    const [{ data: p }, { data: s }] = await Promise.all([
+      this.call(a, "GET", "/api/v2/pipelines?limit=500"),
+      this.call(a, "GET", "/api/v2/stages?limit=500"),
+    ]);
+    const pipes = z.array(z.object({ id: z.number().int(), name: z.string(), order_nr: z.number().optional() })).safeParse(p ?? []);
+    const stages = z
+      .array(z.object({ id: z.number().int(), name: z.string(), pipeline_id: z.number().int(), order_nr: z.number().optional() }))
+      .safeParse(s ?? []);
+    if (!pipes.success) return [];
+    const st = stages.success ? stages.data : [];
+    return [...pipes.data]
+      .sort((x, y) => (x.order_nr ?? 0) - (y.order_nr ?? 0))
+      .map((pl) => ({
+        id: pl.id,
+        name: pl.name,
+        stages: st
+          .filter((x) => x.pipeline_id === pl.id)
+          .sort((x, y) => (x.order_nr ?? 0) - (y.order_nr ?? 0))
+          .map((x) => ({ id: x.id, name: x.name })),
+      }));
   }
 
   async getDeal(a: PipedriveApiAccess, id: number) {
@@ -154,6 +202,16 @@ export class FakePipedriveCrm implements PipedriveCrm {
   readonly log: { op: string; detail: unknown }[] = [];
   constructor(private readonly deals: Record<number, { title: string; person: CrmPerson | null; org: string | null }>) {}
 
+  async listActivityTypes() {
+    return [
+      { key: "meeting", name: "Meeting" },
+      { key: "call", name: "Anruf" },
+      { key: "task", name: "Aufgabe" },
+    ];
+  }
+  async listPipelines() {
+    return [{ id: 1, name: "Vertrieb", stages: [{ id: 11, name: "Lead" }, { id: 12, name: "Termin gebucht" }] }];
+  }
   async getDeal(_a: PipedriveApiAccess, id: number) {
     const d = this.deals[id];
     return d ? { id, title: d.title, personId: d.person?.id ?? null, orgId: d.org ? id : null, ownerId: null } : null;

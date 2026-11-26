@@ -95,6 +95,8 @@ type BookingInfo = {
   owner_pd_id: string | null;
   timezone: string;
   prev_activity_id: string | null;
+  activity_type: string;
+  guests: { name: string; email: string }[] | null;
 };
 
 async function loadBooking(pool: pg.Pool, tenantId: string, bookingId: string): Promise<BookingInfo | null> {
@@ -103,7 +105,9 @@ async function loadBooking(pool: pg.Pool, tenantId: string, bookingId: string): 
       `select b.id, b.name, b.email, b.seats, b.extra_attendees, b.pipedrive_activity_id::text,
               s.starts_at, s.ends_at, coalesce(s.location, e.location) as location, e.title as event_title,
               i.pipedrive_deal_id::text as deal_id, i.pipedrive_person_id::text as person_id, i.created_by,
-              m.pipedrive_user_id::text as owner_pd_id, t.timezone,
+              m.pipedrive_user_id::text as owner_pd_id, t.timezone, t.pd_activity_type as activity_type,
+              (select jsonb_agg(jsonb_build_object('name', g.name, 'email', g.email) order by g.created_at)
+                 from public.booking_guests g where g.booking_id = b.id and g.status = 'confirmed') as guests,
               (select p.pipedrive_activity_id::text from public.bookings p
                 where p.replaced_by = b.id and p.pipedrive_activity_id is not null limit 1) as prev_activity_id
          from public.bookings b
@@ -166,11 +170,18 @@ async function runJob(pool: pg.Pool, deps: PdJobDeps, job: JobRow): Promise<void
       ...(b.extra_attendees?.length ? [at("pd.activity.extra", { names: b.extra_attendees.join(", ") })] : []),
       ...(b.location ? [at("pd.activity.location", { location: b.location })] : []),
     ];
+    const personId = b.person_id ? Number(b.person_id) : null;
     const input = {
       subject: at("pd.activity.subject", { event: b.event_title, seats: b.seats }),
+      type: b.activity_type,
+      // Kunde (mit Kontakt verknüpft) und weitere Teilnehmer mit E-Mail als Gäste
+      attendees: [
+        { email: b.email, name: b.name, personId },
+        ...(b.guests ?? []).map((g) => ({ email: g.email, name: g.name, personId: null })),
+      ],
       ownerId: b.owner_pd_id ? Number(b.owner_pd_id) : null,
       dealId: Number(b.deal_id),
-      personId: b.person_id ? Number(b.person_id) : null,
+      personId,
       start: new Date(b.starts_at),
       durationMinutes: minutes,
       note: lines.map((l) => `<p>${escapeHtml(l)}</p>`).join(""),

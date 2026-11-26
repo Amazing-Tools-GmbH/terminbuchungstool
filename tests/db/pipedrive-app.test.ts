@@ -140,6 +140,8 @@ describe("Aufträge an Pipedrive", () => {
     expect(created.op).toBe("createActivity");
     expect(created.detail).toMatchObject({ subject: "Kunden-Workshop Radiowerbung (2 Pers.)", type: "meeting", deal_id: 1001, owner_id: 7200002, participants: [{ person_id: 5001, primary: true }], duration: "02:00", done: false });
     expect(String((created.detail as { note: string }).note)).toContain("Weitere Teilnehmer: Max Muster");
+    // Kunde als Gast (mit Kontakt verknüpft)
+    expect((created.detail as { attendees: unknown[] }).attendees).toEqual([{ email: "maria.muster@kunde.example", name: "Maria Muster", person_id: 5001 }]);
     const [b1] = await db.admin<{ pipedrive_activity_id: string }>("select pipedrive_activity_id from bookings where status = 'confirmed' and email = 'maria.muster@kunde.example' order by created_at desc limit 1");
     expect(b1!.pipedrive_activity_id).toBeTruthy();
 

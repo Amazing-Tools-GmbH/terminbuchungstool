@@ -76,6 +76,8 @@ describe("Pipedrive-CRM", () => {
   const access = { apiDomain: "https://firma.pipedrive.com", accessToken: "tok" };
   const input = {
     subject: "Workshop (2 Pers.)",
+    type: "call",
+    attendees: [{ email: "eva@kunde.example", name: "Eva", personId: 5001 }, { email: "max@gast.example", name: null, personId: null }],
     ownerId: 7,
     dealId: 1001,
     personId: 5001,
@@ -84,13 +86,14 @@ describe("Pipedrive-CRM", () => {
     note: "n",
   };
 
-  it("Aktivität: UTC-Datum, Dauer HH:MM, Teilnehmer, Besitzer", () => {
+  it("Aktivität: Typ, UTC-Datum, Dauer HH:MM, Teilnehmer, Gäste, Besitzer", () => {
     expect(activityBody(input)).toEqual({
       subject: "Workshop (2 Pers.)",
-      type: "meeting",
+      type: "call",
       deal_id: 1001,
       owner_id: 7,
       participants: [{ person_id: 5001, primary: true }],
+      attendees: [{ email: "eva@kunde.example", name: "Eva", person_id: 5001 }, { email: "max@gast.example" }],
       due_date: "2026-12-01",
       due_time: "08:05",
       duration: "02:05",
@@ -98,6 +101,11 @@ describe("Pipedrive-CRM", () => {
       done: false,
     });
     expect(activityBody({ ...input, ownerId: null, personId: null })).not.toHaveProperty("participants");
+    // ohne Deal (nur Kontakt) kein deal_id; ohne Typ Standard meeting
+    const noDeal = activityBody({ ...input, dealId: null, type: "", attendees: [] });
+    expect(noDeal).not.toHaveProperty("deal_id");
+    expect(noDeal).not.toHaveProperty("attendees");
+    expect(noDeal.type).toBe("meeting");
   });
 
   function fakeFetch(responses: Record<string, { status: number; body?: unknown }>) {
