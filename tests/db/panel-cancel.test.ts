@@ -6,11 +6,12 @@
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { ANON, type DbActor } from "@/lib/db/actor";
-import { generateToken } from "@/lib/booking/tokens";
+import { generateToken, hashToken } from "@/lib/booking/tokens";
 import { encryptSecret } from "@/lib/crypto/secretbox";
 import { processPipedriveJobs } from "@/lib/pipedrive/jobs";
 import { FakePipedriveCrm } from "@/lib/pipedrive/crm";
 import { setupTestDb, tbCode, type TestDb } from "./helpers";
+import { currentInvitation } from "@/lib/panel/context";
 
 let db: TestDb;
 let tenantId: string;
@@ -40,15 +41,19 @@ beforeEach(async () => {
 });
 
 /** Direktbuchung aus dem Panel; Ergebnis: Einladung + Buchung */
-async function bookInDeal(dealId: number | null = ++deal) {
+async function bookInDeal(dealId: number | null = ++deal, email = "bernd@kunde.example") {
+  // je E-Mail nur eine aktive Buchung: vorherige Testbuchungen beenden
+  await db.admin("update bookings set status = 'cancelled', cancelled_at = now() where status = 'confirmed'");
+  await db.admin("update invitations set status = 'cancelled' where status = 'booked'");
   const token = generateToken();
   await db.as(sales, (c) =>
-    c.query("select public.book_for_deal($1, $2, $3, $4, 'Bernd Test', 'bernd@kunde.example', 'Kunde GmbH', $5, 77, 2)", [
+    c.query("select public.book_for_deal($1, $2, $3, $4, 'Bernd Test', $6, 'Kunde GmbH', $5, 77, 2)", [
       tenantId,
       slotId,
       token,
       encryptSecret(`https://x.example/b/${token}`),
       dealId,
+      email,
     ]),
   );
   const [r] = await db.admin<{ invitation_id: string; booking_id: string }>(
@@ -125,5 +130,68 @@ describe("Absage im Panel", () => {
     } finally {
       await db.admin("update tenant_members set status = 'active' where user_id = $1 and tenant_id = $2", [sales.userId, tenantId]);
     }
+  });
+});
+
+const sessionFor = (deal: number | null) => ({ uid: sales.userId, tid: tenantId, pd: 1, deal, person: deal ? null : 77 }) as never;
+const shown = (deal: number | null, person: { id: number; email: string | null }) =>
+  db.as(sales, (c) => currentInvitation(c as never, tenantId, sessionFor(deal), person));
+
+describe("Panel: Abgleich über die E-Mail-Adresse des Kontakts", () => {
+  it("Kontakt-Panel: aktive Buchung zur E-Mail, auch bei neuerer Einladung und anderer Person-ID", async () => {
+    const r = await bookInDeal(4800);
+    await db.admin(
+      `insert into invitations (tenant_id, event_id, token_hash, name, email, pipedrive_deal_id, pipedrive_person_id, expires_at)
+       values ($1, $2, $3, 'Bernd Test', 'bernd@kunde.example', 4801, 77, now() + interval '30 days')`,
+      [tenantId, eventId, hashToken(generateToken())],
+    );
+    expect((await shown(null, { id: 9999, email: "Bernd@Kunde.example" }))?.id).toBe(r.invitation_id);
+    // auch im anderen Deal desselben Kontakts: die aktive Buchung zählt
+    expect((await shown(4801, { id: 77, email: "bernd@kunde.example" }))?.id).toBe(r.invitation_id);
+  });
+
+  it("Kontakt im Deal gewechselt: Buchung des alten Kontakts erscheint nicht mehr", async () => {
+    await bookInDeal(4850, "kontakt.a@kunde.example");
+    // gleicher Deal, gleiche Person-ID (z. B. Person umbenannt) – aber andere E-Mail = anderer Kontakt
+    expect(await shown(4850, { id: 77, email: "kontakt.b@kunde.example" })).toBeNull();
+    // ohne E-Mail kein Abgleich
+    expect(await shown(4850, { id: 77, email: null })).toBeNull();
+  });
+
+  it("bereits gebucht gilt je E-Mail – egal in welchem Deal", async () => {
+    await bookInDeal(4860);
+    const token = generateToken();
+    const err = await db
+      .as(sales, (c) =>
+        c.query("select public.book_for_deal($1, $2, $3, $4, 'Bernd Test', 'BERND@kunde.example', null, 4861, 78, 1)", [
+          tenantId,
+          slotId,
+          token,
+          encryptSecret(`https://x.example/b/${token}`),
+        ]),
+      )
+      .then(() => null, tbCode);
+    expect(err).toBe("already_booked");
+  });
+});
+
+describe("Deal-Panel: Buchung aus dem Kontakt-Panel bzw. einem anderen Deal", () => {
+  it("wird im Deal des Kontakts angezeigt; „Deal verloren“ setzt den Deal des Panels", async () => {
+    const r = await bookInDeal(null); // im Kontakt-Panel gebucht
+    expect((await shown(4900, { id: 77, email: "bernd@kunde.example" }))?.id).toBe(r.invitation_id);
+    await db.as(sales, (c) => c.query("select public.panel_cancel_booking($1, $2, 'lost', false, null, 4900::bigint)", [tenantId, r.invitation_id]));
+    const [i] = await db.admin<{ deal: string; status: string }>("select pipedrive_deal_id::text as deal, status::text from invitations where id = $1", [r.invitation_id]);
+    expect(i).toEqual({ deal: "4900", status: "revoked" });
+    const crm = new FakePipedriveCrm({});
+    await processPipedriveJobs(db.pool, { crm, access });
+    expect(crm.log.find((l) => l.op === "markDealLost")?.detail).toEqual({ id: 4900, reason: "Termin abgesagt" });
+  });
+
+  it("Buchung aus Deal 4910, abgesagt in Deal 4911: verloren wird 4911", async () => {
+    const r = await bookInDeal(4910);
+    await db.as(sales, (c) => c.query("select public.panel_cancel_booking($1, $2, 'lost', false, null, 4911::bigint)", [tenantId, r.invitation_id]));
+    const crm = new FakePipedriveCrm({});
+    await processPipedriveJobs(db.pool, { crm, access });
+    expect(crm.log.filter((l) => l.op === "markDealLost").map((l) => l.detail)).toEqual([{ id: 4911, reason: "Termin abgesagt" }]);
   });
 });

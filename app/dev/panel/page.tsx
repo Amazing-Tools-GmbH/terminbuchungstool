@@ -42,14 +42,17 @@ export default async function DevPanelPage({ searchParams }: { searchParams: Sea
   const sel = options.find((o) => `${o.slug}:${o.pd}` === one(sp.user)) ?? options[0];
   const dealId = Number(one(sp.deal) ?? sel?.deals[0]?.id ?? 0);
   const theme = one(sp.theme) === "dark" ? "dark" : "light";
+  // Panel im Kontakt: Person des gewählten Seed-Deals
+  const asPerson = one(sp.view) === "person";
+  const personId = sel?.deals.find((d) => d.id === dealId)?.person?.id ?? 0;
   const src =
     secret && sel && dealId
       ? `/panel?${new URLSearchParams({
-            resource: "deal",
+            resource: asPerson ? "person" : "deal",
             view: "details",
             userId: sel.pd,
             companyId: String(sel.companyId),
-            selectedIds: String(dealId),
+            selectedIds: String(asPerson ? personId : dealId),
             theme,
             token: signedToken(secret, Number(sel.pd), sel.companyId),
           })}`
@@ -58,7 +61,7 @@ export default async function DevPanelPage({ searchParams }: { searchParams: Sea
   return (
     <main style={{ fontFamily: "system-ui, sans-serif", padding: 16, display: "grid", gap: 16, gridTemplateColumns: "minmax(0, 360px) minmax(0, 1fr)" }}>
       <form method="get" style={{ display: "grid", gap: 8, alignContent: "start" }}>
-        <h1 style={{ fontSize: 18, margin: 0 }}>Entwicklung: Panel im Deal</h1>
+        <h1 style={{ fontSize: 18, margin: 0 }}>Entwicklung: Panel im Deal bzw. Kontakt</h1>
         {!secret && <p role="alert">PIPEDRIVE_JWT_SECRET bzw. PIPEDRIVE_CLIENT_SECRET fehlt – ohne Geheimnis kein Token.</p>}
         <label htmlFor="u">Benutzer (Pipedrive)</label>
         <select id="u" name="user" defaultValue={sel ? `${sel.slug}:${sel.pd}` : undefined}>
@@ -76,6 +79,9 @@ export default async function DevPanelPage({ searchParams }: { searchParams: Sea
             </option>
           ))}
         </select>
+        <label>
+          <input type="checkbox" name="view" value="person" defaultChecked={asPerson} /> Panel im Kontakt (Person des Deals)
+        </label>
         <label>
           <input type="checkbox" name="theme" value="dark" defaultChecked={theme === "dark"} /> dunkles Pipedrive-Theme
         </label>

@@ -13,8 +13,10 @@ import { verifySettingsToken, type SettingsIdentity, type SettingsTokenError } f
 export type PanelEntry = SettingsIdentity & { dealId: number | null; personId: number | null };
 export type PanelEntryError = SettingsTokenError | "no_deal";
 
+const PERSON_RESOURCES = new Set(["person", "persons", "contact", "contacts", "people"]);
+
 export function dealIdFrom(resource: string | null, selectedIds: string | null): number | null {
-  if (resource !== null && resource !== "deal") return null;
+  if (resource !== null && resource !== "deal" && resource !== "deals") return null;
   return firstId(selectedIds);
 }
 
@@ -32,8 +34,9 @@ export function verifyPanelEntry(
 ): { ok: true; entry: PanelEntry } | { ok: false; error: PanelEntryError } {
   const v = verifySettingsToken({ token: q.get("token"), userId: q.get("userId"), companyId: q.get("companyId") }, secret, now);
   if (!v.ok) return v;
-  const resource = q.get("resource");
-  if (resource === "person") {
+  const resource = q.get("resource")?.trim().toLowerCase() ?? null;
+  // Kontakt-Panel: Pipedrive nennt die Ressource „person“; Varianten sicherheitshalber mit
+  if (resource !== null && PERSON_RESOURCES.has(resource)) {
     const personId = firstId(q.get("selectedIds"));
     if (!personId) return { ok: false, error: "no_deal" };
     return { ok: true, entry: { ...v.identity, dealId: null, personId } };
