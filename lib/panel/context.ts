@@ -25,6 +25,8 @@ export type PanelInvitation = {
   mail: { status: "queued" | "sending" | "sent" | "failed"; code: string | null; channel: string | null } | null;
   booking: { date: string; time: string; seats: number } | null;
   status: "open" | "booked" | "cancelled" | "revoked";
+  /** es gibt eine vom Team stornierte Buchung zu diesem Link */
+  cancelledBooking: boolean;
   expired: boolean;
 };
 export type PanelContext = {
@@ -71,6 +73,27 @@ export async function dealContact(s: PanelSession) {
   return { deal, person, organization };
 }
 
+type InvitationRow = {
+  id: string; created_at: Date; allowed_slot_ids: string[] | null; link_enc: string | null; status: PanelInvitation["status"]; expires_at: Date;
+};
+
+/** Jüngste Einladung zum aktuellen Kontakt des Deals (bzw. zur Person im Kontakt-Panel) – Grundlage für Anzeige und Absage */
+export async function currentInvitation(
+  db: { query: <R extends object>(sql: string, params?: unknown[]) => Promise<{ rows: R[] }> },
+  tenantId: string,
+  s: PanelSession,
+  person: { id: number; email: string | null } | null,
+): Promise<InvitationRow | null> {
+  const { rows } = await db.query<InvitationRow>(
+    `select id, created_at, allowed_slot_ids, link_enc, status::text as status, expires_at from public.invitations
+      where tenant_id = $1 and ($2::bigint is null or pipedrive_deal_id = $2)
+        and ((pipedrive_person_id is not null and pipedrive_person_id = $3) or lower(email) = lower($4))
+      order by created_at desc limit 1`,
+    [tenantId, s.deal, person?.id ?? null, person?.email ?? ""],
+  );
+  return rows[0] ?? null;
+}
+
 export async function loadPanelContext(s: PanelSession, actor: DbActor, tenant: PublicTenant): Promise<PanelContext> {
   const tz = tenant.timezone;
   // Kontakt zuerst: Einladung/Buchung gehören zum aktuellen Kontakt des Deals
@@ -89,18 +112,12 @@ export async function loadPanelContext(s: PanelSession, actor: DbActor, tenant: 
           order by e.created_at, s.starts_at`,
         [tenant.id],
       );
-      const { rows: inv } = await db.query<{
-        id: string; created_at: Date; allowed_slot_ids: string[] | null; link_enc: string | null; status: PanelInvitation["status"]; expires_at: Date;
-      }>(
-        `select id, created_at, allowed_slot_ids, link_enc, status::text as status, expires_at from public.invitations
-          where tenant_id = $1 and ($2::bigint is null or pipedrive_deal_id = $2)
-            and ((pipedrive_person_id is not null and pipedrive_person_id = $3) or lower(email) = lower($4))
-          order by created_at desc limit 1`,
-        [tenant.id, s.deal, person?.id ?? null, person?.email ?? ""],
-      );
-      const i = inv[0];
+      const i = await currentInvitation(db, tenant.id, s, person);
       let booking: PanelInvitation["booking"] = null;
+      let cancelledBooking = false;
       if (i) {
+        const { rows: c } = await db.query("select 1 from public.bookings where invitation_id = $1 and status = 'cancelled' limit 1", [i.id]);
+        cancelledBooking = c.length > 0;
         const { rows: b } = await db.query<{ starts_at: Date; ends_at: Date; seats: number }>(
           `select s.starts_at, s.ends_at, b.seats from public.bookings b join public.slots s on s.id = b.slot_id
             where b.invitation_id = $1 and b.status = 'confirmed' order by b.created_at desc limit 1`,
@@ -118,7 +135,7 @@ export async function loadPanelContext(s: PanelSession, actor: DbActor, tenant: 
            from public.tenants t where t.id = $1`,
         [tenant.id, s.uid],
       );
-      return { slots, i, booking, mailboxMissing: mb[0]?.missing === true };
+      return { slots, i, booking, cancelledBooking, mailboxMissing: mb[0]?.missing === true };
     }),
   ]);
   // Versandstatus der Einladungsmail (Outbox ist für sales nicht lesbar -> Server, nur für die eigene sichtbare Einladung)
@@ -175,6 +192,7 @@ export async function loadPanelContext(s: PanelSession, actor: DbActor, tenant: 
           mail,
           booking: data.booking,
           status: data.i.status,
+          cancelledBooking: data.cancelledBooking,
           expired: data.i.expires_at.getTime() < Date.now(),
         }
       : null,

@@ -7,6 +7,8 @@
  *                     (Eigentümer = einladender Mitarbeiter)
  *   cancel_activity   Aktivität löschen + Notiz "storniert"
  *   invitation_note   Notiz "Link gesendet" (wenn die Mail nicht über Pipedrive ging)
+ *   link_contact      öffentlicher Link: Kontakt/Deal zuordnen bzw. anlegen
+ *   deal_lost         Absage im Panel mit „Deal verloren“: Deal-Status lost
  *
  * Zugang: bevorzugt der des einladenden Mitarbeiters, sonst der aus der Installation.
  */
@@ -28,7 +30,7 @@ export type PdJobDeps = {
   access: (tenantId: string, userId: string | null) => Promise<PipedriveApiAccess | null>;
 };
 
-type JobRow = { id: string; tenant_id: string; type: "booking_activity" | "cancel_activity" | "invitation_note" | "link_contact"; payload: Record<string, unknown>; attempts: number };
+type JobRow = { id: string; tenant_id: string; type: "booking_activity" | "cancel_activity" | "invitation_note" | "link_contact" | "deal_lost"; payload: Record<string, unknown>; attempts: number };
 export type PdJobResult = { done: number; requeued: number; failed: number };
 
 const asService = <T>(pool: pg.Pool, fn: (c: pg.PoolClient) => Promise<T>) => withActorOn(pool, { role: "service_role" }, fn);
@@ -130,6 +132,15 @@ async function accessFor(deps: PdJobDeps, tenantId: string, userId: string | nul
 }
 
 async function runJob(pool: pg.Pool, deps: PdJobDeps, job: JobRow): Promise<void> {
+  if (job.type === "deal_lost") {
+    // Absage im Panel mit „Deal verloren“ (public.panel_cancel_booking)
+    const dealId = Number(job.payload.deal_id);
+    if (!dealId) return;
+    const access = await accessFor(deps, job.tenant_id, typeof job.payload.user_id === "string" ? job.payload.user_id : null);
+    const reason = typeof job.payload.reason === "string" && job.payload.reason ? job.payload.reason : at("pd.lostReason");
+    await deps.crm.markDealLost(access, dealId, reason);
+    return;
+  }
   if (job.type === "invitation_note") {
     const inv = await asService(pool, async (c) => {
       const { rows } = await c.query<{ name: string; deal_id: string | null; person_id: string | null; created_by: string | null; slot_ids: string[] | null; timezone: string }>(

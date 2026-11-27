@@ -9,6 +9,7 @@ const STATUS: Partial<Record<PanelErrorCode, number>> = {
   invalid_input: 400,
   no_contact: 409,
   not_enough_seats: 409,
+  not_booked: 409,
   already_booked: 409,
   invalid_attendees: 400,
   invalid_guest_email: 400,
