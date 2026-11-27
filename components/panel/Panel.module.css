@@ -494,3 +494,45 @@
 .time[aria-pressed="true"] .free {
   color: inherit;
 }
+
+/* Termin absagen (bei bestehender Buchung) */
+.cancelBtn {
+  width: 100%;
+  min-height: 36px;
+  margin-top: 12px;
+  padding: 0 12px;
+  border: 1px solid var(--p-bad);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--p-bad);
+  font-weight: 600;
+  cursor: pointer;
+}
+.cancelBox {
+  margin-top: 12px;
+  padding: 10px;
+  border: 1px solid var(--p-border);
+  border-radius: 4px;
+}
+.cancelBox .guests {
+  margin-top: 0;
+}
+.cancelActions {
+  display: grid;
+  gap: 6px;
+  margin-top: 12px;
+}
+.cancelConfirm {
+  min-height: 40px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 4px;
+  background: var(--p-bad);
+  color: var(--p-card);
+  font-weight: 600;
+  cursor: pointer;
+}
+.cancelConfirm:disabled {
+  background: var(--p-off);
+  cursor: not-allowed;
+}

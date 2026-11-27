@@ -54,6 +54,8 @@ export interface PipedriveCrm {
   /** false = gab es nicht (mehr) */
   deleteActivity(a: PipedriveApiAccess, id: number): Promise<boolean>;
   addNote(a: PipedriveApiAccess, note: { dealId: number | null; personId: number | null; html: string }): Promise<number>;
+  /** Deal auf „verloren“ setzen (optional mit Grund) */
+  markDealLost(a: PipedriveApiAccess, id: number, reason: string | null): Promise<void>;
 }
 
 const pad = (n: number) => String(n).padStart(2, "0");
@@ -244,6 +246,10 @@ export class ApiPipedriveCrm implements PipedriveCrm {
     return status !== 404;
   }
 
+  async markDealLost(a: PipedriveApiAccess, id: number, reason: string | null) {
+    await this.call(a, "PATCH", `/api/v2/deals/${id}`, { status: "lost", ...(reason ? { lost_reason: reason.slice(0, 255) } : {}) });
+  }
+
   async addNote(a: PipedriveApiAccess, note: { dealId: number | null; personId: number | null; html: string }) {
     const { data } = await this.call(a, "POST", "/api/v1/notes", {
       content: note.html,
@@ -333,5 +339,8 @@ export class FakePipedriveCrm implements PipedriveCrm {
   async addNote(_a: PipedriveApiAccess, note: { dealId: number | null; personId: number | null; html: string }) {
     this.log.push({ op: "addNote", detail: note });
     return ++this.next;
+  }
+  async markDealLost(_a: PipedriveApiAccess, id: number, reason: string | null) {
+    this.log.push({ op: "markDealLost", detail: { id, reason } });
   }
 }
