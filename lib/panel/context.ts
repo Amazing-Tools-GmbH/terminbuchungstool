@@ -84,11 +84,19 @@ export async function currentInvitation(
   s: PanelSession,
   person: { id: number; email: string | null } | null,
 ): Promise<InvitationRow | null> {
+  // Kontakt-Panel (ohne Deal): vorrangig die aktive Buchung zur E-Mail-Adresse des
+  // Kontakts (über alle Deals und den öffentlichen Link), sonst die jüngste Einladung.
   const { rows } = await db.query<InvitationRow>(
-    `select id, created_at, allowed_slot_ids, link_enc, status::text as status, expires_at from public.invitations
-      where tenant_id = $1 and ($2::bigint is null or pipedrive_deal_id = $2)
-        and ((pipedrive_person_id is not null and pipedrive_person_id = $3) or lower(email) = lower($4))
-      order by created_at desc limit 1`,
+    `select i.id, i.created_at, i.allowed_slot_ids, i.link_enc, i.status::text as status, i.expires_at from public.invitations i
+      where i.tenant_id = $1 and ($2::bigint is null or i.pipedrive_deal_id = $2)
+        and ((i.pipedrive_person_id is not null and i.pipedrive_person_id = $3) or lower(i.email) = lower($4))
+      order by case when $2::bigint is null then
+                 (exists (select 1 from public.bookings b where b.invitation_id = i.id and b.status = 'confirmed')
+                  and lower(i.email) = lower($4))::int * 2
+                 + exists (select 1 from public.bookings b where b.invitation_id = i.id and b.status = 'confirmed')::int
+               else 0 end desc,
+               i.created_at desc
+      limit 1`,
     [tenantId, s.deal, person?.id ?? null, person?.email ?? ""],
   );
   return rows[0] ?? null;

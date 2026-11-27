@@ -40,6 +40,8 @@ describe("Panel-Einstieg", () => {
       ok: true,
       entry: { userId: 11, companyId: 22, dealId: null, personId: 5001 },
     });
+    expect(verifyPanelEntry(params({ resource: "contact", selectedIds: "5001" }), SECRET, now)).toMatchObject({ ok: true, entry: { personId: 5001 } });
+    expect(verifyPanelEntry(params({ resource: "Persons", selectedIds: "5001" }), SECRET, now)).toMatchObject({ ok: true, entry: { personId: 5001 } });
     expect(verifyPanelEntry(params({ resource: "person" }), SECRET, now)).toEqual({ ok: false, error: "no_deal" });
     expect(verifyPanelEntry(params({ resource: "organization", selectedIds: "3" }), SECRET, now)).toEqual({ ok: false, error: "no_deal" });
   });

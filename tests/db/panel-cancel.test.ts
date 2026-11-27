@@ -6,11 +6,12 @@
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { ANON, type DbActor } from "@/lib/db/actor";
-import { generateToken } from "@/lib/booking/tokens";
+import { generateToken, hashToken } from "@/lib/booking/tokens";
 import { encryptSecret } from "@/lib/crypto/secretbox";
 import { processPipedriveJobs } from "@/lib/pipedrive/jobs";
 import { FakePipedriveCrm } from "@/lib/pipedrive/crm";
 import { setupTestDb, tbCode, type TestDb } from "./helpers";
+import { currentInvitation } from "@/lib/panel/context";
 
 let db: TestDb;
 let tenantId: string;
@@ -125,5 +126,25 @@ describe("Absage im Panel", () => {
     } finally {
       await db.admin("update tenant_members set status = 'active' where user_id = $1 and tenant_id = $2", [sales.userId, tenantId]);
     }
+  });
+});
+
+describe("Kontakt-Panel: Buchung zur E-Mail-Adresse", () => {
+  it("zeigt vorrangig die aktive Buchung des Kontakts (E-Mail), auch wenn es eine neuere Einladung gibt", async () => {
+    const r = await bookInDeal(4800);
+    // neuere, nicht gebuchte Einladung derselben Person (anderer Deal)
+    await db.admin(
+      `insert into invitations (tenant_id, event_id, token_hash, name, email, pipedrive_deal_id, pipedrive_person_id, expires_at)
+       values ($1, $2, $3, 'Bernd Test', 'bernd@kunde.example', 4801, 77, now() + interval '30 days')`,
+      [tenantId, eventId, hashToken(generateToken())],
+    );
+    const personSession = { uid: sales.userId, tid: tenantId, pd: 1, deal: null, person: 9999 } as never;
+    // Person-ID passt nicht (z. B. Kontakt zusammengeführt) – die E-Mail reicht
+    const inv = await db.as(sales, (c) => currentInvitation(c as never, tenantId, personSession, { id: 9999, email: "Bernd@Kunde.example" }));
+    expect(inv?.id).toBe(r.invitation_id);
+    // im Deal 4801 dagegen die Einladung dieses Deals
+    const dealSession = { uid: sales.userId, tid: tenantId, pd: 1, deal: 4801, person: null } as never;
+    const inDeal = await db.as(sales, (c) => currentInvitation(c as never, tenantId, dealSession, { id: 77, email: "bernd@kunde.example" }));
+    expect(inDeal?.id).not.toBe(r.invitation_id);
   });
 });
