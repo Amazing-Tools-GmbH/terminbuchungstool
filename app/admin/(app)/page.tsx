@@ -122,6 +122,8 @@ export default async function EventsPage({ searchParams }: { searchParams: Searc
               open={open && slots.some((s) => s.id === open.id) ? open : null}
               bookings={bookings}
               edit={editSlot && slots.some((s) => s.id === editSlot.id) ? editSlot : null}
+              // aufgeklappt: alle, bzw. nach einer Aktion nur das betroffene Event
+              expanded={!focus || focus === event.id}
               addOpen={manage && focus === event.id && (ok === "slot" || error === "invalid_input" || error === "slot_in_past")}
             />
           ))}
@@ -143,20 +145,24 @@ function EventPanel(props: {
   bookings: AdminBooking[];
   edit: AdminSlot | null;
   addOpen: boolean;
+  /** Event aufgeklappt (zuklappbar, damit viele Events übersichtlich bleiben) */
+  expanded: boolean;
 }) {
   const { event, slots, manage, open, edit } = props;
   const k = kpis(slots);
   return (
-    <section className={styles.card} id={`event-${event.id}`} aria-labelledby={`event-title-${event.id}`}>
-      <div className={styles.headRow}>
-        <div>
+    <details className={`${styles.card} ${styles.eventPanel}`} id={`event-${event.id}`} open={props.expanded}>
+      <summary className={styles.eventHead}>
+        <span>
           <h2 className={styles.h2} id={`event-title-${event.id}`} style={{ margin: 0 }}>
             {event.title}
           </h2>
-          <p className={styles.muted} style={{ margin: "2px 0 0" }}>
+          <span className={styles.muted} style={{ display: "block", margin: "2px 0 0" }}>
             {[event.location, at("slots.summary", { slots: k.slots, booked: k.booked, capacity: k.capacity, pct: k.pct })].filter(Boolean).join(" · ")}
-          </p>
-        </div>
+          </span>
+        </span>
+      </summary>
+      <div className={styles.headRow} style={{ marginTop: 12 }}>
         {manage && (
           <div className={styles.actions}>
             <details className={styles.inlineEdit}>
@@ -394,7 +400,7 @@ function EventPanel(props: {
           </form>
         </details>
       )}
-    </section>
+    </details>
   );
 }
 

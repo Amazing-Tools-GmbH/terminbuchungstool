@@ -244,3 +244,32 @@
 .publicLink { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; margin-top: 12px; padding: 10px 12px; border: 1px dashed var(--adm-line); border-radius: 10px; }
 .publicLink .hint { flex-basis: 100%; }
 .linkInput { flex: 1 1 280px; min-width: 0; padding: 6px 10px; border: 1px solid #8a929c; border-radius: 8px; font: inherit; font-size: 13px; }
+
+/* ---------- Auf-/Zuklappen: einheitlicher Pfeil an jedem <summary> ---------- */
+.root summary { list-style: none; cursor: pointer; }
+.root summary::-webkit-details-marker { display: none; }
+.root summary::after {
+  content: "";
+  flex: none;
+  width: 7px;
+  height: 7px;
+  margin-left: 10px;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: translateY(-2px) rotate(45deg);
+  transition: transform 0.15s ease;
+}
+.root details[open] > summary::after { transform: translateY(2px) rotate(-135deg); }
+.root summary:focus-visible { outline: 2px solid var(--adm-accent); outline-offset: 2px; border-radius: 6px; }
+/* Buttons mit Pfeil (Bearbeiten, Löschen, Storno …) */
+.inlineEdit > summary { align-items: center; }
+/* Verlauf: Pfeil als eigene Spalte rechts */
+.runHead { grid-template-columns: auto minmax(0, 1fr) auto auto; }
+@media (max-width: 640px) {
+  .runHead { grid-template-columns: auto minmax(0, 1fr) auto; }
+  .runHead::after { grid-column: 3; grid-row: 1; }
+}
+/* Events & Termine: jedes Event zuklappbar */
+.eventPanel > .eventHead { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.eventPanel > .eventHead::after { width: 9px; height: 9px; }
+@media (prefers-reduced-motion: reduce) { .root summary::after { transition: none; } }
