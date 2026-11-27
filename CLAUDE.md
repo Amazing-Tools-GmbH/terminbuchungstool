@@ -77,9 +77,10 @@ Mandantenfähiges Terminbuchungstool mit Pipedrive-Integration. Auftrag und Phas
   `panel`; `lib/panel`, `components/panel`), Einladungen nur über `public.create_invitation`.
   Einträge in Pipedrive (Aktivität, Notizen) nur über die Warteschlange `pipedrive_jobs`
   (`lib/pipedrive/jobs.ts`, `crm.ts`), nie im Request. Aktivitätstyp `tenants.pd_activity_type`,
-  Kunde + weitere Teilnehmer als Gäste (`attendees`). Panel zeigt Einladung/Buchung nur zum
-  aktuellen Kontakt des Deals (Deal-Panel: Einladungen dieses Deals + des Kontakts ohne Deal, aktive
-  Buchung zuerst; Kontakt-Panel: aktive Buchung zur E-Mail zuerst, `currentInvitation`). Absage im Panel („Termin absagen“, alle Rollen, `public.panel_cancel_booking`,
+  Kunde + weitere Teilnehmer als Gäste (`attendees`). Panel gleicht Einladung/Buchung über die
+  E-Mail-Adresse des aktuellen Kontakts ab (nicht über den Deal; `currentInvitation`): aktive Buchung
+  zuerst (die dieses Deals vorn), Kontaktwechsel im Deal ⇒ alte Buchung nicht mehr sichtbar;
+  „bereits gebucht“ (`book_for_deal`) je E-Mail; „Deal verloren“ trifft den Deal des Panels. Absage im Panel („Termin absagen“, alle Rollen, `public.panel_cancel_booking`,
   `lib/panel/cancel.ts`): „Kunden neu einladen“ (Link bleibt, Absage mit Link) oder „Deal verloren“
   (Link gesperrt, Absage-Mail optional ohne Link, Auftrag `deal_lost` → Deal-Status lost). Panel im Kontakt (`resource=person`, Sitzung ohne Deal) nur mit
   `tenants.panel_person_enabled`; Einträge dann am Kontakt. Einstellungen unter

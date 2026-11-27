@@ -697,7 +697,7 @@ export const ADMIN_TEXTS = {
   "panel.error.forbidden": "Dafür fehlt dir die Berechtigung.",
   "panel.error.invalid_input": "Die Eingabe ist ungültig.",
   "panel.error.not_enough_seats": "Für diesen Termin sind nicht mehr genug Plätze frei. Bitte aktualisieren und neu wählen.",
-  "panel.error.already_booked": "Für diesen Kontakt gibt es in diesem Deal bereits eine Buchung. Absagen könnt ihr oben über „Termin absagen“, ändern im Admin unter Buchungen.",
+  "panel.error.already_booked": "Für diesen Kontakt (E-Mail-Adresse) gibt es bereits eine aktive Buchung. Absagen könnt ihr oben über „Termin absagen“, ändern im Admin unter Buchungen.",
   "panel.error.invalid_attendees": "Es sind mehr weitere Teilnehmer eingetragen als Personen gewählt.",
   "panel.error.invalid_guest_email": "Bitte gültige, unterschiedliche E-Mail-Adressen angeben (nicht die des Kontakts).",
   "panel.error.missing_guest_name": "Bitte zu jeder E-Mail-Adresse auch den Namen angeben.",

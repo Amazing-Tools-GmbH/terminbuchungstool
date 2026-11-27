@@ -84,21 +84,21 @@ export async function currentInvitation(
   s: PanelSession,
   person: { id: number; email: string | null } | null,
 ): Promise<InvitationRow | null> {
-  // Kontakt-Panel (ohne Deal): vorrangig die aktive Buchung zur E-Mail-Adresse des
-  // Kontakts (über alle Deals und den öffentlichen Link), sonst die jüngste Einladung.
-  // Deal-Panel: Einladungen dieses Deals und des Kontakts ohne Deal (z. B. im
-  // Kontakt-Panel gebucht); vorrangig eine aktive Buchung, dann dieser Deal.
+  // Abgleich über die E-Mail-Adresse des aktuellen Kontakts (Deal: Kontakt des Deals,
+  // Kontakt-Panel: die Person) – egal, in welchem Deal gebucht wurde. Wechselt der
+  // Kontakt im Deal, erscheint die Buchung des alten Kontakts nicht mehr.
+  // Reihenfolge: aktive Buchung (zuerst die dieses Deals), dann Einladungen dieses Deals,
+  // dann die jüngste.
+  const email = person?.email?.trim().toLowerCase() ?? "";
+  if (!email) return null;
   const { rows } = await db.query<InvitationRow>(
     `select i.id, i.created_at, i.allowed_slot_ids, i.link_enc, i.status::text as status, i.expires_at from public.invitations i
-      where i.tenant_id = $1 and ($2::bigint is null or i.pipedrive_deal_id = $2 or i.pipedrive_deal_id is null)
-        and ((i.pipedrive_person_id is not null and i.pipedrive_person_id = $3) or lower(i.email) = lower($4))
-      order by (exists (select 1 from public.bookings b where b.invitation_id = i.id and b.status = 'confirmed')
-                and ($2::bigint is not null or lower(i.email) = lower($4)))::int * 4
-             + exists (select 1 from public.bookings b where b.invitation_id = i.id and b.status = 'confirmed')::int * 2
-             + coalesce($2::bigint is not null and i.pipedrive_deal_id = $2, false)::int desc,
+      where i.tenant_id = $1 and lower(i.email) = $3
+      order by exists (select 1 from public.bookings b where b.invitation_id = i.id and b.status = 'confirmed') desc,
+               coalesce($2::bigint is not null and i.pipedrive_deal_id = $2, false) desc,
                i.created_at desc
       limit 1`,
-    [tenantId, s.deal, person?.id ?? null, person?.email ?? ""],
+    [tenantId, s.deal, email],
   );
   return rows[0] ?? null;
 }
