@@ -483,3 +483,14 @@
   color: var(--p-off);
   cursor: not-allowed;
 }
+
+/* gewählter Zeitslot: deutlich markiert (wie der gewählte Tag) */
+.time[aria-pressed="true"] {
+  border-color: var(--p-accent);
+  background: var(--p-accent);
+  color: var(--p-accent-text);
+}
+.time[aria-pressed="true"] .loc,
+.time[aria-pressed="true"] .free {
+  color: inherit;
+}
