@@ -175,7 +175,8 @@ Mandantenfähiges Terminbuchungstool mit Pipedrive-Integration. Auftrag und Phas
 - Mails: `lib/mail` – `MailSender`-Interface (`dev`, `smtp`, `google` = Gmail API,
   `microsoft` = Graph; OAuth nur mit Sende-Recht, `lib/mail/oauth.ts`),
   Vorlagen in `templates.ts` (Inline-Styles, kein SVG/Verlauf), Verarbeitung in `outbox.ts`
-  (SKIP LOCKED, Backoff, Postfach-Fehler ⇒ Mail bleibt queued). Links in Mails nur über
+  (SKIP LOCKED; keine automatische Wiederholung: jeder Fehler ⇒ `failed` + `error_code`,
+  neu anstoßen nur von Hand über „Erneut versuchen“ im Verlauf). Links in Mails nur über
   `lib/links.ts`; der Buchungslink steht verschlüsselt im Outbox-Payload (`link_enc`).
 - **Kein Mailversand über die Pipedrive-App (entschieden, nicht erneut vorschlagen):** Pipedrive
   bietet Apps nur die Scopes `mail:read`/`mail:full` (lesen/ändern), KEINEN Scope zum Senden
@@ -185,7 +186,7 @@ Mandantenfähiges Terminbuchungstool mit Pipedrive-Integration. Auftrag und Phas
   `system` (Standard; System-SMTP `SYSTEM_MAIL_*`, Einladung mit Anzeigename + Reply-To =
   Mitarbeiter, Bestätigung/Stornierung Reply-To = Einladender) | `employee` (Einladung,
   Bestätigung und Stornierung über das eigene Postfach des einladenden Mitarbeiters unter
-  „Mein Postfach“: Google/Microsoft/SMTP). Interne Mails (Zugriffsanfragen) immer System.
+  „Mein Postfach“ in den E-Mail-Einstellungen `/admin/email`: Google/Microsoft/SMTP). Interne Mails (Zugriffsanfragen) immer System.
   Fällt der Weg aus: `email_outbox.error_code` + Meldung (Verlauf, Panel-Hinweis), NIE ein
   stiller Wechsel des Weges. Smart BCC (`tenants.smart_bcc_email`, nur
   `@pipedrivemail.com`) bringt Kundenmails in den Deal. Signatur je Mitarbeiter
@@ -194,7 +195,8 @@ Mandantenfähiges Terminbuchungstool mit Pipedrive-Integration. Auftrag und Phas
   (öffentlicher Event-Link legt Kontakte/Firmen an), mail:full, **users:read** (Nutzerverwaltung;
   fehlt er ⇒ Hinweis `users.dir.missing_scope`).
   Neue Scopes gelten erst nach erneuter Autorisierung.
-- Postfach verbinden (`/admin/postfach`, genutzt beim Weg `employee`): Speichern über
+- Postfach verbinden (E-Mail-Einstellungen `/admin/email`, ein Menüpunkt für alle Rollen; Abschnitte
+  Versandweg/Smart BCC/Team nur owner/admin; `/admin/postfach` leitet um; genutzt beim Weg `employee`): Speichern über
   `public.save_mail_connection` (Status `pending`), aktiv erst nach zugestellter Testmail.
   OAuth wie der Login: Start auf Mandanten-Host (Nonce), zentraler Callback →
   `mail_oauth_pending` (nur service_role) → Abschluss mit Sitzung + Nonce.

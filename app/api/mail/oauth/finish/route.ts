@@ -17,12 +17,12 @@ export async function GET(req: NextRequest) {
   let target: string;
   try {
     if (!pending.success) throw new AdminError("mail_expired");
-    const { scope } = await finishPendingMailbox(ctx, pending.data, req.cookies.get(MAIL_NONCE_COOKIE)?.value);
+    await finishPendingMailbox(ctx, pending.data, req.cookies.get(MAIL_NONCE_COOKIE)?.value);
     sendMailsSoon(ctx.tenant.id);
-    target = appUrl(scope === "tenant" ? "/admin/email" : "/admin/postfach", { ok: "connected" });
+    target = appUrl("/admin/email", { ok: "connected" });
   } catch (err) {
     const code = err instanceof AdminError ? err.code : "generic";
-    target = appUrl("/admin/postfach", { error: code });
+    target = appUrl("/admin/email", { error: code });
   }
   const res = NextResponse.redirect(target);
   res.cookies.set(MAIL_NONCE_COOKIE, "", { path: "/api/mail", maxAge: 0 });

@@ -21,7 +21,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ prov
       headers: { "content-type": "text/plain; charset=utf-8" },
     });
   }
-  const back = state.scope === "tenant" ? "/admin/email" : "/admin/postfach";
+  const back = "/admin/email";
   const fail = (error: string) => NextResponse.redirect(appUrl(back, { error }));
   const cfg = mailOAuthConfig(state.provider);
   const code = q.get("code");

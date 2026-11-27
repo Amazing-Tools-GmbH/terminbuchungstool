@@ -148,7 +148,7 @@ dem Origin von `APP_BASE_URL` auf (`lib/links.ts`, `lib/auth/urls.ts`).
 | Pipedrive-Callback (Login, Installation, Deinstallation) | `https://meetings.atools.de/api/auth/pipedrive/callback` |
 | Pipedrive „App settings“ | `https://meetings.atools.de/settings` |
 | **Pipedrive-Panel (Custom Panel im Deal)** | **`https://meetings.atools.de/panel`** |
-| Google/Microsoft („Mein Postfach“) | `https://meetings.atools.de/api/mail/oauth/google/callback` bzw. `…/microsoft/callback` |
+| Google/Microsoft (E-Mail-Einstellungen → „Mein Postfach“) | `https://meetings.atools.de/api/mail/oauth/google/callback` bzw. `…/microsoft/callback` |
 | Health-Check (auf dem Server) | `http://127.0.0.1:3003/api/health` |
 
 ### Hosting: Hetzner, Node unter systemd, Caddy davor (kein Docker)
@@ -278,17 +278,19 @@ Den Weg wählt jede Firma unter **Admin → E-Mail** (`tenants.mail_route`):
 
 | Weg | Einladung | Bestätigung/Stornierung (.ics) | Bei Problemen |
 |---|---|---|---|
-| System-Adresse (Standard) | System-SMTP (`SYSTEM_MAIL_*`), Anzeigename + Reply-To = Mitarbeiter | System-SMTP, Reply-To = einladender Mitarbeiter | wartet, bis der System-Absender funktioniert |
-| Eigenes Postfach | Postfach des einladenden Mitarbeiters („Mein Postfach“: Google, Microsoft oder SMTP) | ebenfalls über sein Postfach | Meldung im Verlauf/Panel, kein anderer Weg; nach der Behebung „Erneut versuchen“ |
+| System-Adresse (Standard) | System-SMTP (`SYSTEM_MAIL_*`), Anzeigename + Reply-To = Mitarbeiter | System-SMTP, Reply-To = einladender Mitarbeiter | fehlgeschlagen (Verlauf); nach der Behebung „Erneut versuchen“ |
+| Eigenes Postfach | Postfach des einladenden Mitarbeiters (E-Mail-Einstellungen → „Mein Postfach“: Google, Microsoft oder SMTP) | ebenfalls über sein Postfach | Meldung im Verlauf/Panel, kein anderer Weg; nach der Behebung „Erneut versuchen“ |
 
 - Smart BCC (eine `@pipedrivemail.com`-Adresse je Firma) legt Kundenmails im Deal ab – auf beiden Wegen.
 - Kein Versand über Pipedrive: Pipedrive bietet Apps keinen Scope zum Senden
   ([`docs/research/pipedrive-mailversand.md`](docs/research/pipedrive-mailversand.md)).
 - Zugriffsanfragen und Freischaltungen gehen immer über die System-Adresse.
-- **Mein Postfach** (`/admin/postfach`): eigenes Postfach verbinden (Google/Microsoft nur mit
-  eingetragenen Zugangsdaten, SMTP immer), Testmail, Signatur (unter Einladungen).
-- **E-Mail-Einstellungen** (`/admin/email`, Owner/Admin): Versandweg, Smart BCC,
-  Postfächer im Team, nicht versendete Kundenmails.
+- **E-Mail-Einstellungen** (`/admin/email`, ein Menüpunkt für alle; `/admin/postfach` leitet dorthin):
+  - alle: „Mein Postfach“ – eigenes Postfach verbinden (Google/Microsoft nur mit eingetragenen
+    Zugangsdaten, SMTP immer), Testmail, Signatur (unter Einladungen);
+  - Owner/Admin zusätzlich: Versandweg, Smart BCC, Postfächer im Team, nicht versendete Kundenmails.
+- Keine automatischen Wiederholungen: Jeder Versandfehler markiert die Mail sofort als
+  fehlgeschlagen; neu angestoßen wird sie von Hand im Verlauf („Erneut versuchen“).
 - Lokal: `SYSTEM_MAIL_TRANSPORT=dev` – Mails landen unter `/dev/mails`.
 
 ## Pipedrive-App (Phase 4)

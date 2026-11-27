@@ -1,7 +1,7 @@
 import { at } from "@/lib/texts/admin";
 import { formatDateTime } from "@/lib/datetime";
 import type { MailboxView, MailScope } from "@/lib/mail/connect";
-import { devConnectAction, disconnectAction, saveSmtpAction, sendTestAction } from "@/app/admin/(app)/postfach/actions";
+import { devConnectAction, disconnectAction, saveSmtpAction, sendTestAction } from "@/app/admin/(app)/email/actions";
 import styles from "./Admin.module.css";
 
 type Props = {

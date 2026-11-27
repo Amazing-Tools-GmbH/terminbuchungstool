@@ -5,7 +5,7 @@
  *   system    Einladung: System-Adresse, Anzeigename + Reply-To = Einladender.
  *             Bestätigung/Stornierung: System-Adresse, Reply-To = Einladender.
  *   employee  Einladung, Bestätigung und Stornierung über das eigene Postfach
- *             des einladenden Mitarbeiters ("Mein Postfach": Google, Microsoft
+ *             des einladenden Mitarbeiters (E-Mail-Einstellungen → "Mein Postfach": Google, Microsoft
  *             oder SMTP). Fehlt es oder ist es gestört, gibt es einen
  *             Fehlercode für eine verständliche Meldung – nie einen stillen
  *             Wechsel auf die System-Adresse.

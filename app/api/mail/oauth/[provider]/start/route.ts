@@ -18,7 +18,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ prov
   const ctx = await getAdminContext();
   if (!ctx) return NextResponse.redirect(appUrl("/admin/login"));
   const scope = req.nextUrl.searchParams.get("scope") === "tenant" ? "tenant" : "user";
-  const back = scope === "tenant" ? "/admin/email" : "/admin/postfach";
+  const back = "/admin/email";
 
   if (!(MAIL_OAUTH_PROVIDERS as readonly string[]).includes(provider)) return new NextResponse("Unbekannter Anbieter", { status: 404 });
   if (scope === "tenant" && ctx.role === "sales") return NextResponse.redirect(appUrl(back, { error: "forbidden" }));
