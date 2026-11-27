@@ -194,7 +194,7 @@ describe("Mails an Teilnehmer", () => {
     expect(guest.html).toContain("Eva Probe hat euch für diesen Termin angemeldet.");
     expect(guest.html).not.toContain(`/b/${gt}`);
     expect(guest.html).not.toContain(`/b/${token}`);
-    expect(guest.text).toContain("Ihr könnt nicht kommen");
+    expect(guest.text).not.toContain("nicht kommen"); // Hinweis optional, Standard leer
     const uid = (m: MailMessage) => /UID:(.*)/.exec(String(m.attachments?.[0]?.content))?.[1];
     expect(uid(guest)).toBeTruthy();
     expect(uid(guest)).not.toBe(uid(booker));

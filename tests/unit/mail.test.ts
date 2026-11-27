@@ -43,7 +43,13 @@ describe("Mail-Vorlagen", () => {
     // kein Umbuchen/Stornieren über einen Link
     expect(m.html).not.toContain("https://example.at/b/tok");
     expect(m.text).not.toContain("https://example.at/b/tok");
-    expect(m.html).toContain("Sie können nicht kommen oder müssen etwas ändern? Bitte wenden Sie sich an Markus Fink");
+    // Hinweis unter der Bestätigung ist optional: Standard = kein Absatz
+    expect(m.html).not.toContain("nicht kommen");
+    expect(m.text).not.toContain("nicht kommen");
+    // eigener Text aus den E-Mail-Vorlagen, {name} = Ansprechpartner
+    const own = renderConfirmation({ ...tenant("demo"), textOverrides: { "mail.contact": "Fragen? Bitte an {name} wenden." } }, { ...data, contactName: "Markus Fink" });
+    expect(own.html).toContain("Fragen? Bitte an Markus Fink wenden.");
+    expect(own.text).toContain("Fragen? Bitte an Markus Fink wenden.");
     expect(m.html).toContain("#1F4FB4");
   });
 
@@ -51,8 +57,7 @@ describe("Mail-Vorlagen", () => {
     const m = renderConfirmation(tenant("antennevorarlberg"), { ...data, seats: 1, changed: true });
     expect(m.subject).toMatch(/^Geänderte Buchung/);
     expect(m.html).toContain("Eure Buchung wurde geändert");
-    // ohne bekannten Ansprechpartner: Antwort auf die Mail
-    expect(m.html).toContain("Ihr könnt nicht kommen oder müsst etwas ändern? Bitte meldet euch per Antwort auf diese E-Mail.");
+    expect(m.html).not.toContain("nicht kommen");
     expect(m.html).toContain("1 Person");
     expect(m.html).toContain("#FFE500");
     expect(m.html).toContain("Fragen? Ruft uns an");

@@ -152,7 +152,7 @@ Mandantenfähiges Terminbuchungstool mit Pipedrive-Integration. Auftrag und Phas
   Über den Link wird genau einmal gebucht (`public.book_slot_once` → `book_slot`; `book_slot`,
   `cancel_booking`, `cancel_guest` sind für anon/authenticated entzogen). Danach zeigt die Seite
   nur Bestätigung + Ansprechpartner (`get_booking_contact` = einladender Mitarbeiter); Mails
-  haben statt Änderungslink den Hinweis `mail.contact`. Änderungen/Storno nur durch das Team
+  haben keinen Änderungslink; optionaler Hinweis `mail.contact` (Standard leer, unter E-Mail-Vorlagen, `{name}` = Ansprechpartner). Änderungen/Storno nur durch das Team
   (Admin). Nach Storno durch das Team kann über den Link neu gewählt werden.
 - Öffentlicher Event-Link (Admin → Event, `events.public_token_hash`/`public_link_enc`, auch `/b/<token>`):
   `get_public_event_context`, Buchen über `public.book_public` (legt Einladung `source = 'public'`

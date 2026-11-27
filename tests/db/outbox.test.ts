@@ -84,7 +84,7 @@ describe("Versand", () => {
     expect(m.html).toContain("2 Personen");
     // kein Umbuchen/Stornieren über einen Link
     expect(m.html).not.toContain(`/b/${token}`);
-    expect(m.text).toContain("Ihr könnt nicht kommen");
+    expect(m.text).not.toContain("nicht kommen"); // Hinweis optional, Standard leer
     expect(m.attachments?.[0]?.filename).toBe("termin-antennevorarlberg.ics");
     expect(m.attachments?.[0]?.content).toContain("BEGIN:VEVENT");
     const [row] = await outbox();

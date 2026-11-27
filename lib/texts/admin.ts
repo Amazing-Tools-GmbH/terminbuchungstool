@@ -210,7 +210,7 @@ export const ADMIN_TEXTS = {
   "templates.key.mail.confirmation.subject": "Betreff",
   "templates.key.mail.confirmation.title": "Überschrift",
   "templates.key.mail.ics.hint": "Hinweis zur Kalenderdatei",
-  "templates.key.mail.change": "Hinweis Ändern/Stornieren",
+  "templates.key.mail.contact": "Hinweis unter der Bestätigung (optional, leer = kein Hinweis; {name} = Ansprechpartner)",
   "templates.key.mail.changeLink": "Linktext",
   "templates.key.mail.person": "1 Person",
   "templates.key.mail.persons": "Mehrere Personen",
