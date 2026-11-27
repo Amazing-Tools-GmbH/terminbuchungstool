@@ -81,8 +81,9 @@ Mandantenfähiges Terminbuchungstool mit Pipedrive-Integration. Auftrag und Phas
   E-Mail-Adresse des aktuellen Kontakts ab (nicht über den Deal; `currentInvitation`): aktive Buchung
   zuerst (die dieses Deals vorn), Kontaktwechsel im Deal ⇒ alte Buchung nicht mehr sichtbar;
   „bereits gebucht“ (`book_for_deal`) je E-Mail; „Deal verloren“ trifft den Deal des Panels. Absage im Panel („Termin absagen“, alle Rollen, `public.panel_cancel_booking`,
-  `lib/panel/cancel.ts`): „Kunden neu einladen“ (Link bleibt, Absage mit Link) oder „Deal verloren“
-  (Link gesperrt, Absage-Mail optional ohne Link, Auftrag `deal_lost` → Deal-Status lost). Panel im Kontakt (`resource=person`, Sitzung ohne Deal) nur mit
+  `lib/panel/cancel.ts`): „Kunden neu einladen“ (Deal unberührt, alter Link gesperrt,
+  Vertrieb lädt neu ein oder bucht) oder „Deal verloren“ (Auftrag `deal_lost` → Deal-Status lost); beide:
+  Aktivität gelöscht, Absage-Mail optional (Haken) und immer ohne Link. Panel im Kontakt (`resource=person`, Sitzung ohne Deal) nur mit
   `tenants.panel_person_enabled`; Einträge dann am Kontakt. Einstellungen unter
   Admin → Pipedrive-Verbindung (`lib/admin/pipedrive-settings.ts`). Übersicht/Dashboard
   `/admin/uebersicht` (`lib/admin/dashboard.ts`).

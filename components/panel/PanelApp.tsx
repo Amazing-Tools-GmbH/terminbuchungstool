@@ -169,7 +169,8 @@ export function PanelApp(props: {
     if (!inv) return { kind: "none", text: t("panel.status.none") };
     if (inv.status === "booked" && inv.booking) return { kind: "booked", text: t("panel.status.booked", inv.booking) };
     if (inv.status === "cancelled") return { kind: "warn", text: t("panel.status.cancelled") };
-    if (inv.status === "revoked" && inv.cancelledBooking) return { kind: "error", text: t("panel.status.lost") };
+    if (inv.status === "revoked" && inv.cancelledBooking)
+      return inv.dealLost ? { kind: "error", text: t("panel.status.lost") } : { kind: "warn", text: t("panel.status.cancelledNew") };
     if (inv.mail?.status === "failed") return { kind: "error", text: t("panel.status.failed") };
     if (inv.mail && inv.mail.status !== "sent") return { kind: "pending", text: t("panel.status.queued") };
     if (inv.expired) return { kind: "warn", text: t("panel.status.expired") };
@@ -236,13 +237,13 @@ export function PanelApp(props: {
     const mode = ctx.deal ? cancelMode : "reinvite";
     const r = await api<{ email: string }>("/cancel", {
       method: "POST",
-      body: JSON.stringify({ invitationId: inv.id, mode, notify: mode === "reinvite" ? true : cancelNotify, lostReason: lostReason.trim() || null }),
+      body: JSON.stringify({ invitationId: inv.id, mode, notify: cancelNotify, lostReason: lostReason.trim() || null }),
     });
     setCancelBusy(false);
     if (!r.ok) return setCancelError(r.message);
     setCancelOpen(false);
     setLostReason("");
-    done(mode === "lost" ? t("panel.cancel.okLost") : t("panel.cancel.okReinvite", { email: r.data.email }));
+    done(mode === "lost" ? t("panel.cancel.okLost") : t("panel.cancel.okReinvite"));
   };
 
   const copy = async () => {
@@ -318,15 +319,17 @@ export function PanelApp(props: {
                     <input type="radio" name="panel-cancel-mode" value={m} checked={cancelMode === m} onChange={() => setCancelMode(m)} />
                     <span>
                       <strong>{t(`panel.cancel.${m}`)}</strong>
-                      <span className={styles.hint} style={{ display: "block" }}>
-                        {t(`panel.cancel.${m}Hint`)}
-                      </span>
+                      {m === "reinvite" && (
+                        <span className={styles.hint} style={{ display: "block" }}>
+                          {t("panel.cancel.reinviteHint")}
+                        </span>
+                      )}
                     </span>
                   </label>
                 ))}
               </fieldset>
             ) : (
-              <p className={styles.hint}>{t("panel.cancel.reinviteHint")}</p>
+              <p className={styles.hint}>{t("panel.cancel.personHint")}</p>
             )}
             {ctx.deal && cancelMode === "lost" && (
               <>
@@ -341,12 +344,12 @@ export function PanelApp(props: {
                   placeholder={t("panel.cancel.lostReasonPlaceholder")}
                   onChange={(e) => setLostReason(e.target.value)}
                 />
-                <label className={styles.checkRow} style={{ marginTop: 10 }}>
-                  <input type="checkbox" checked={cancelNotify} onChange={(e) => setCancelNotify(e.target.checked)} />
-                  <span>{t("panel.cancel.notify")}</span>
-                </label>
               </>
             )}
+            <label className={styles.checkRow} style={{ marginTop: 10 }}>
+              <input type="checkbox" checked={cancelNotify} onChange={(e) => setCancelNotify(e.target.checked)} />
+              <span>{t("panel.cancel.notify")}</span>
+            </label>
             <div className={styles.cancelActions}>
               <button type="button" className={styles.cancelConfirm} onClick={() => void cancelBooking()} disabled={cancelBusy}>
                 {cancelBusy ? t("panel.cancel.submitting") : t("panel.cancel.submit")}
