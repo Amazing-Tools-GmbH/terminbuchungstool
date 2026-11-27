@@ -14,7 +14,11 @@
  *   Postfach gestört, …), wird die Mail mit error_code als fehlgeschlagen
  *   markiert – Meldung im Verlauf, "Erneut versuchen" nach der Behebung.
  * - Smart BCC: Kundenmails in Kopie an tenants.smart_bcc_email.
- * - Vorübergehende Fehler -> Retry mit Backoff, nach MAX_ATTEMPTS -> failed.
+ * - Keine automatischen Wiederholungen (entschieden): Jeder Fehler (auch
+ *   vorübergehend, System-SMTP nicht eingerichtet oder Anmeldung abgelehnt)
+ *   markiert die Mail sofort als fehlgeschlagen. Neu anstoßen nur von Hand
+ *   über „Erneut versuchen“ im Verlauf (public.activity_retry). Nur Einträge,
+ *   die nach einem Absturz in 'sending' hängen, werden erneut aufgenommen.
  */
 import { appBaseUrl } from "@/lib/links";
 import type pg from "pg";
@@ -41,11 +45,6 @@ import { MailSendError, type MailAddress, type MailAttachment, type MailConnecti
 import { systemMailConfig, type SystemMailConfig } from "./config";
 import { parseMailRoute, routeMail, type Inviter } from "./routing";
 
-export const MAX_ATTEMPTS = 8;
-/** Wartezeit nach dem n-ten Fehlversuch (Minuten) */
-const BACKOFF_MINUTES = [1, 5, 15, 30, 60, 120, 240, 480];
-/** Wartezeit, solange der Weg nicht verfügbar ist (z. B. System-SMTP nicht konfiguriert) */
-export const CONNECTION_RETRY_MINUTES = 15;
 /** "sending" länger als das -> Prozess vermutlich abgestürzt, erneut versuchen */
 const STALE_LOCK_MINUTES = 10;
 
@@ -60,7 +59,7 @@ export type OutboxRow = {
   created_at: Date;
 };
 
-export type ProcessResult = { sent: number; requeued: number; failed: number; blocked: number };
+export type ProcessResult = { sent: number; failed: number };
 
 type Options = {
   limit?: number;
@@ -79,7 +78,7 @@ export async function processOutbox(pool: pg.Pool, opts: Options = {}): Promise<
     senderFactory: opts.senderFactory ?? defaultSenderFactory,
     system: opts.systemConfig !== undefined ? opts.systemConfig : systemMailConfig(),
   };
-  const result: ProcessResult = { sent: 0, requeued: 0, failed: 0, blocked: 0 };
+  const result: ProcessResult = { sent: 0, failed: 0 };
 
   const rows = await asService(pool, async (c) => {
     const { rows } = await c.query<OutboxRow>(
@@ -119,7 +118,7 @@ type Plan = {
   storeRendered: boolean;
 };
 
-type Prepared = { kind: "send"; plan: Plan; ctx: MailContext } | { kind: "blocked"; reason: string } | { kind: "failed"; reason: string; code: string };
+type Prepared = { kind: "send"; plan: Plan; ctx: MailContext } | { kind: "failed"; reason: string; code: string };
 
 async function processOne(pool: pg.Pool, row: OutboxRow, env: Env): Promise<keyof ProcessResult> {
   let prepared: Prepared;
@@ -128,10 +127,6 @@ async function processOne(pool: pg.Pool, row: OutboxRow, env: Env): Promise<keyo
   } catch (err) {
     await markFailed(pool, row.id, `Vorbereitung fehlgeschlagen: ${(err as Error).message}`, "generic");
     return "failed";
-  }
-  if (prepared.kind === "blocked") {
-    await requeueBlocked(pool, row.id, prepared.reason);
-    return "blocked";
   }
   if (prepared.kind === "failed") {
     await markFailed(pool, row.id, prepared.reason, prepared.code);
@@ -197,39 +192,13 @@ async function handleSendError(pool: pg.Pool, row: OutboxRow, plan: Plan, e: Mai
     await markFailed(pool, row.id, e.message, row.type === "test" ? "mailbox_error" : "user_mailbox_error");
     return "failed";
   }
-  // System-SMTP: Anmeldung gescheitert -> warten, bis die Konfiguration stimmt
+  // System-SMTP: Anmeldung abgelehnt -> Konfiguration prüfen, dann von Hand erneut versuchen
   if (!plan.connection && e.kind === "auth") {
-    await requeueBlocked(pool, row.id, `System-Absender: ${e.message}`);
-    return "blocked";
-  }
-  if (e.kind !== "transient" || row.attempts >= MAX_ATTEMPTS) {
-    await markFailed(pool, row.id, e.message, e.code ?? (e.kind === "transient" ? "unavailable" : "rejected"));
+    await markFailed(pool, row.id, `System-Absender: ${e.message}`, "system_mail");
     return "failed";
   }
-  const wait = BACKOFF_MINUTES[Math.min(row.attempts - 1, BACKOFF_MINUTES.length - 1)]!;
-  await asService(pool, (c) =>
-    c.query(
-      `update public.email_outbox
-          set status = 'queued', locked_at = null, last_error = $2, error_code = $4,
-              next_attempt_at = now() + make_interval(mins => $3)
-        where id = $1`,
-      [row.id, e.message, wait, e.code ?? null],
-    ),
-  );
-  return "requeued";
-}
-
-/** Zurück in die Warteschlange, Versuch zählt nicht */
-async function requeueBlocked(pool: pg.Pool, id: string, reason: string, waitMinutes = CONNECTION_RETRY_MINUTES) {
-  await asService(pool, (c) =>
-    c.query(
-      `update public.email_outbox
-          set status = 'queued', locked_at = null, attempts = greatest(attempts - 1, 0), last_error = $2,
-              next_attempt_at = now() + make_interval(mins => $3)
-        where id = $1`,
-      [id, reason, waitMinutes],
-    ),
-  );
+  await markFailed(pool, row.id, e.message, e.code ?? (e.kind === "transient" ? "unavailable" : "rejected"));
+  return "failed";
 }
 
 async function markFailed(pool: pg.Pool, id: string, reason: string, code: string) {
@@ -412,7 +381,7 @@ async function prepare(pool: pg.Pool, row: OutboxRow, env: Env): Promise<Prepare
 
   // Interne Mails (Zugriffsanfrage/Freischaltung): System-Adresse, keine Kopie in Pipedrive
   if (row.type === "access_request" || row.type === "access_granted") {
-    if (!env.system) return { kind: "blocked", reason: "System-Absender nicht konfiguriert (SYSTEM_MAIL_FROM / SYSTEM_SMTP_*)" };
+    if (!env.system) return { kind: "failed", reason: "System-Absender nicht konfiguriert (SYSTEM_MAIL_FROM / SYSTEM_SMTP_*)", code: "system_mail" };
     return {
       kind: "send",
       ctx,
@@ -448,7 +417,7 @@ async function prepare(pool: pg.Pool, row: OutboxRow, env: Env): Promise<Prepare
     case "error":
       return { kind: "failed", reason: route.message, code: route.code };
     case "system": {
-      if (!env.system) return { kind: "blocked", reason: "System-Absender nicht konfiguriert (SYSTEM_MAIL_FROM / SYSTEM_SMTP_*)" };
+      if (!env.system) return { kind: "failed", reason: "System-Absender nicht konfiguriert (SYSTEM_MAIL_FROM / SYSTEM_SMTP_*)", code: "system_mail" };
       const tenantReply = ctx.tenantRow.reply_to_email ? { email: ctx.tenantRow.reply_to_email, name: ctx.tenantRow.name } : null;
       return {
         kind: "send",

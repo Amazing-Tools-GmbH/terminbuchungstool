@@ -1,5 +1,5 @@
 "use server";
-/** Postfach verbinden/testen/trennen und Smart BCC (Server Actions) */
+/** E-Mail-Einstellungen: eigenes Postfach verbinden/testen/trennen, Signatur, Versandweg und Smart BCC (Server Actions) */
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
@@ -15,7 +15,7 @@ const str = (f: FormData, k: string) => {
   const v = f.get(k);
   return typeof v === "string" ? v : undefined;
 };
-const pageFor = (scope: string | undefined) => (scope === "tenant" ? "/admin/email" : "/admin/postfach");
+const PAGE = "/admin/email";
 
 function done(path: string, result: { ok?: string; error?: string }): never {
   revalidatePath(path);
@@ -35,43 +35,40 @@ async function attempt(fn: () => Promise<unknown>): Promise<string | undefined> 
 export async function saveSmtpAction(form: FormData) {
   const ctx = await requireAdmin();
   const parsed = smtpFormSchema.safeParse(Object.fromEntries(form));
-  const path = pageFor(str(form, "scope"));
-  if (!parsed.success) done(path, { error: "invalid_input" });
+  if (!parsed.success) done(PAGE, { error: "invalid_input" });
   const { scope, ...rest } = parsed.data;
   const error = await attempt(() => saveSmtpMailbox(ctx, scope, rest));
   if (!error) sendMailsSoon(ctx.tenant.id);
-  done(path, error ? { error } : { ok: "connected" });
+  done(PAGE, error ? { error } : { ok: "connected" });
 }
 
 export async function sendTestAction(form: FormData) {
   const ctx = await requireAdmin();
   const id = z.string().uuid().safeParse(str(form, "id"));
-  const path = pageFor(str(form, "scope"));
   const error = id.success ? await attempt(() => requestTestMail(ctx, id.data)) : "invalid_input";
   if (!error) sendMailsSoon(ctx.tenant.id);
-  done(path, error ? { error } : { ok: "test" });
+  done(PAGE, error ? { error } : { ok: "test" });
 }
 
 export async function disconnectAction(form: FormData) {
   const ctx = await requireAdmin();
   const id = z.string().uuid().safeParse(str(form, "id"));
-  const path = pageFor(str(form, "scope"));
   const error = id.success ? await attempt(() => disconnectMailbox(ctx, id.data)) : "invalid_input";
-  done(path, error ? { error } : { ok: "disconnected" });
+  done(PAGE, error ? { error } : { ok: "disconnected" });
 }
 
 export async function saveMailRouteAction(form: FormData) {
   const ctx = await requireAdmin(["owner", "admin"]);
   const parsed = z.enum(MAIL_ROUTES as [string, ...string[]]).safeParse(str(form, "mailRoute"));
   const error = parsed.success ? await attempt(() => saveMailRoute(ctx, parsed.data as (typeof MAIL_ROUTES)[number])) : "invalid_input";
-  done("/admin/email", error ? { error } : { ok: "mailRoute" });
+  done(PAGE, error ? { error } : { ok: "mailRoute" });
 }
 
 export async function saveSmartBccAction(form: FormData) {
   const ctx = await requireAdmin(["owner", "admin"]);
   const parsed = smartBccSchema.safeParse(str(form, "smartBcc") ?? "");
   const error = parsed.success ? await attempt(() => saveSmartBcc(ctx, parsed.data)) : "invalid_input";
-  done("/admin/email", error ? { error } : { ok: "smartBcc" });
+  done(PAGE, error ? { error } : { ok: "smartBcc" });
 }
 
 export async function devConnectAction(form: FormData) {
@@ -80,12 +77,12 @@ export async function devConnectAction(form: FormData) {
   const scope = mailScopeSchema.catch("user").parse(str(form, "scope"));
   const error = await attempt(() => connectDevMailbox(ctx, scope));
   if (!error) sendMailsSoon(ctx.tenant.id);
-  done(pageFor(scope), error ? { error } : { ok: "connected" });
+  done(PAGE, error ? { error } : { ok: "connected" });
 }
 
 export async function saveSignatureAction(form: FormData) {
   const ctx = await requireAdmin();
   const parsed = signatureSchema.safeParse(str(form, "signature") ?? "");
   const error = parsed.success ? await attempt(() => saveMySignature(ctx, parsed.data)) : "invalid_input";
-  done("/admin/postfach", error ? { error } : { ok: "signature" });
+  done(PAGE, error ? { error } : { ok: "signature" });
 }

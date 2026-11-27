@@ -7,7 +7,7 @@
  *     System-Absender (Bestätigungen, Einladungen beim Weg "system",
  *     Zugriffsanfragen). dev = nur in der DB ablegen (/dev/mails).
  *   GOOGLE_CLIENT_* / MICROSOFT_CLIENT_*
- *     Zugangsdaten für "Mit Google/Microsoft verbinden" unter „Mein Postfach“.
+ *     Zugangsdaten für "Mit Google/Microsoft verbinden" unter E-Mail-Einstellungen → „Mein Postfach“.
  */
 import { isProduction } from "@/lib/env-mode";
 import { z } from "zod";

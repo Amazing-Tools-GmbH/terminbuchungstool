@@ -8,7 +8,7 @@ import { ANON } from "@/lib/db/actor";
 import { generateToken, hashToken } from "@/lib/booking/tokens";
 import { decryptSecret, encryptSecret } from "@/lib/crypto/secretbox";
 import { bookSlot } from "@/lib/booking/service";
-import { MAX_ATTEMPTS, processOutbox } from "@/lib/mail/outbox";
+import { processOutbox } from "@/lib/mail/outbox";
 import { MailSendError, type MailMessage, type MailSender } from "@/lib/mail/types";
 import type { SenderFactory } from "@/lib/mail/senders";
 import { setupTestDb, type TestDb } from "./helpers";
@@ -75,7 +75,7 @@ describe("Versand", () => {
     const { token } = await bookNew(2);
     const rec = new Recorder();
     const r = await processOutbox(db.pool, { senderFactory: factory(rec) });
-    expect(r).toEqual({ sent: 1, requeued: 0, failed: 0, blocked: 0 });
+    expect(r).toEqual({ sent: 1, failed: 0 });
     const m = rec.sent[0]!;
     // System-Absender, Anzeigename = Mandant
     expect(m.from).toEqual({ email: "termine@system.example", name: "ANTENNE VORARLBERG" });
@@ -107,70 +107,64 @@ describe("Versand", () => {
   });
 });
 
+const retry = (id: string) => db.admin("update email_outbox set status = 'queued', attempts = 0, next_attempt_at = now() where id = $1 and status = 'failed'", [id]);
+
 describe("System-Absender gestört", () => {
-  it("nicht konfiguriert: Mail bleibt in der Outbox, Versuch zählt nicht", async () => {
+  it("nicht konfiguriert: Mail fehlgeschlagen (system_mail), geht erst nach „Erneut versuchen“ raus", async () => {
     await bookNew();
     const rec = new Recorder();
     const r = await processOutbox(db.pool, { senderFactory: factory(rec), systemConfig: null });
-    expect(r.blocked).toBe(1);
+    expect(r.failed).toBe(1);
     expect(rec.sent).toHaveLength(0);
-    const [row] = await outbox();
-    expect(row).toMatchObject({ status: "queued", attempts: 0 });
+    const [row] = await db.admin<{ id: string; status: string; error_code: string; last_error: string }>("select * from email_outbox");
+    expect(row).toMatchObject({ status: "failed", error_code: "system_mail" });
     expect(row!.last_error).toMatch(/System-Absender nicht konfiguriert/);
-    expect(new Date(row!.next_attempt_at).getTime()).toBeGreaterThan(Date.now() + 10 * 60_000);
 
-    // konfiguriert + fällig -> geht raus
-    await db.admin("update email_outbox set next_attempt_at = now()");
+    // kein automatischer neuer Versuch
+    expect((await processOutbox(db.pool, { senderFactory: factory(rec) })).sent).toBe(0);
+    // von Hand erneut versuchen -> geht raus
+    await retry(row!.id);
     expect((await processOutbox(db.pool, { senderFactory: factory(rec) })).sent).toBe(1);
   });
 
-  it("Anmeldefehler am System-SMTP: Mail wartet (kein anderer Weg)", async () => {
+  it("Anmeldefehler am System-SMTP: fehlgeschlagen (kein anderer Weg)", async () => {
     await bookNew();
     const rec = new Recorder(() => {
       throw new MailSendError("auth", "535 Authentication failed");
     });
     const r = await processOutbox(db.pool, { senderFactory: factory(rec) });
-    expect(r.blocked).toBe(1);
-    const [row] = await outbox();
-    expect(row).toMatchObject({ status: "queued", attempts: 0 });
+    expect(r.failed).toBe(1);
+    const [row] = await db.admin<{ status: string; error_code: string; last_error: string }>("select * from email_outbox");
+    expect(row).toMatchObject({ status: "failed", error_code: "system_mail" });
     expect(row!.last_error).toMatch(/System-Absender: 535/);
   });
 });
 
-describe("Retry", () => {
-  it("vorübergehender Fehler: Backoff, danach Erfolg", async () => {
+describe("Kein automatischer neuer Versuch", () => {
+  it("vorübergehender Fehler: sofort fehlgeschlagen, nach „Erneut versuchen“ Erfolg", async () => {
     await bookNew();
     const flaky = new Recorder(() => {
       throw new MailSendError("transient", "421 try later");
     });
-    expect((await processOutbox(db.pool, { senderFactory: factory(flaky) })).requeued).toBe(1);
+    expect((await processOutbox(db.pool, { senderFactory: factory(flaky) })).failed).toBe(1);
     let [row] = await outbox();
-    expect(row).toMatchObject({ status: "queued", attempts: 1, last_error: "421 try later" });
-    expect(new Date(row!.next_attempt_at).getTime()).toBeGreaterThan(Date.now());
+    expect(row).toMatchObject({ status: "failed", last_error: "421 try later" });
 
-    // noch nicht fällig -> nichts passiert
     const ok = new Recorder();
     expect((await processOutbox(db.pool, { senderFactory: factory(ok) })).sent).toBe(0);
-    await db.admin("update email_outbox set next_attempt_at = now()");
+    await retry(row!.id);
     expect((await processOutbox(db.pool, { senderFactory: factory(ok) })).sent).toBe(1);
     [row] = await outbox();
-    expect(row).toMatchObject({ status: "sent", attempts: 2 });
+    expect(row).toMatchObject({ status: "sent", attempts: 1, last_error: null });
   });
 
-  it(`nach ${MAX_ATTEMPTS} Versuchen bzw. bei dauerhaftem Fehler: failed`, async () => {
-    await bookNew();
-    await db.admin("update email_outbox set attempts = $1", [MAX_ATTEMPTS - 1]);
-    const flaky = new Recorder(() => {
-      throw new MailSendError("transient", "timeout");
-    });
-    expect((await processOutbox(db.pool, { senderFactory: factory(flaky) })).failed).toBe(1);
-
+  it("dauerhafter Fehler: failed", async () => {
     await bookNew();
     const bounce = new Recorder(() => {
       throw new MailSendError("permanent", "550 no such user");
     });
     expect((await processOutbox(db.pool, { senderFactory: factory(bounce) })).failed).toBe(1);
-    expect((await outbox()).map((r) => r.status)).toEqual(["failed", "failed"]);
+    expect((await outbox()).map((r) => r.status)).toEqual(["failed"]);
   });
 
   it("hängengebliebene 'sending'-Einträge werden erneut versucht", async () => {
