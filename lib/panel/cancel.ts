@@ -28,12 +28,13 @@ export async function cancelPanelBooking(s: PanelSession, actor: DbActor, tenant
     return await withActor(actor, async (db) => {
       const inv = await currentInvitation(db, tenant.id, s, person);
       if (!inv || inv.id !== input.invitationId) throw new PanelError("not_booked");
-      const { rows } = await db.query<{ r: { email: string } }>("select public.panel_cancel_booking($1, $2, $3, $4, $5) as r", [
+      const { rows } = await db.query<{ r: { email: string } }>("select public.panel_cancel_booking($1, $2, $3, $4, $5, $6) as r", [
         tenant.id,
         inv.id,
         input.mode,
         input.notify,
         input.lostReason,
+        s.deal,
       ]);
       return { email: rows[0]!.r.email };
     });
