@@ -74,17 +74,29 @@ const state = (r: { invitation_id: string; booking_id: string }) =>
   );
 
 describe("Absage im Panel", () => {
-  it("neu einladen: Buchung storniert, Link bleibt, Absage mit Link; Kunde kann neu buchen", async () => {
+  it("neu einladen: Buchung storniert, Deal unberührt, alter Link gesperrt, Absage ohne Link", async () => {
     const r = await bookInDeal();
     await cancel(sales, r.invitation_id, "reinvite");
-    expect(await state(r)).toEqual([{ inv: "cancelled", booking: "cancelled", cancelled_by: sales.userId }]);
+    expect(await state(r)).toEqual([{ inv: "revoked", booking: "cancelled", cancelled_by: sales.userId }]);
     const mails = await db.admin<{ type: string; payload: { link_enc: string | null; by_organizer: boolean } }>("select type, payload from email_outbox");
     expect(mails).toHaveLength(1);
     expect(mails[0]!.payload.by_organizer).toBe(true);
-    expect(mails[0]!.payload.link_enc).toBeTruthy();
+    expect(mails[0]!.payload.link_enc).toBeNull();
+    // nur Aktivität löschen, kein „verloren“
     expect((await db.admin<{ type: string }>("select type from pipedrive_jobs")).map((j) => j.type)).toEqual(["cancel_activity"]);
-    // über denselben Link neu wählen
-    await db.as(ANON, (c) => c.query("select public.book_slot_once($1, $2, $3, 1, 'Bernd Test', 'bernd@kunde.example')", [tenantId, r.token, slotId]));
+    // alter Link bucht nicht mehr – der Vertrieb lädt neu ein oder bucht
+    const err = await db
+      .as(ANON, (c) => c.query("select public.book_slot_once($1, $2, $3, 1, 'Bernd Test', 'bernd@kunde.example')", [tenantId, r.token, slotId]))
+      .then(() => null, tbCode);
+    expect(err).toBeTruthy();
+    // danach direkt neu buchen geht
+    await bookInDeal();
+  });
+
+  it("neu einladen ohne Mail", async () => {
+    const r = await bookInDeal();
+    await cancel(sales, r.invitation_id, "reinvite", false);
+    expect(await db.admin("select 1 from email_outbox")).toHaveLength(0);
   });
 
   it("Deal verloren: Link gesperrt, Absage ohne Link, Deal in Pipedrive auf verloren", async () => {

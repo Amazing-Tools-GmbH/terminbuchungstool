@@ -27,6 +27,8 @@ export type PanelInvitation = {
   status: "open" | "booked" | "cancelled" | "revoked";
   /** es gibt eine vom Team stornierte Buchung zu diesem Link */
   cancelledBooking: boolean;
+  /** die stornierte Buchung wurde mit „Deal verloren“ abgesagt */
+  dealLost: boolean;
   expired: boolean;
 };
 export type PanelContext = {
@@ -147,6 +149,18 @@ export async function loadPanelContext(s: PanelSession, actor: DbActor, tenant: 
       return { slots, i, booking, cancelledBooking, mailboxMissing: mb[0]?.missing === true };
     }),
   ]);
+  // Absage mit „Deal verloren“? (Aufträge sind für sales nicht lesbar -> Server, nur für die sichtbare Einladung)
+  let dealLost = false;
+  if (data.i && data.cancelledBooking && data.i.status === "revoked") {
+    dealLost = await withActor({ role: "service_role" }, async (db) => {
+      const { rows } = await db.query(
+        `select 1 from public.pipedrive_jobs j join public.bookings b on b.id::text = j.payload->>'booking_id'
+          where j.tenant_id = $1 and j.type = 'deal_lost' and b.invitation_id = $2 limit 1`,
+        [tenant.id, data.i!.id],
+      );
+      return rows.length > 0;
+    });
+  }
   // Versandstatus der Einladungsmail (Outbox ist für sales nicht lesbar -> Server, nur für die eigene sichtbare Einladung)
   let mail: PanelInvitation["mail"] = null;
   if (data.i) {
@@ -202,6 +216,7 @@ export async function loadPanelContext(s: PanelSession, actor: DbActor, tenant: 
           booking: data.booking,
           status: data.i.status,
           cancelledBooking: data.cancelledBooking,
+          dealLost,
           expired: data.i.expires_at.getTime() < Date.now(),
         }
       : null,
