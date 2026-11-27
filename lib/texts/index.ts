@@ -152,14 +152,8 @@ export const TEXTS = {
   "mail.persons": same("{n} Personen"),
   "mail.person": same("1 Person"),
   "mail.ics.hint": same("Anhang · Outlook, Google, Apple Kalender"),
-  "mail.contact": {
-    ihr: "Ihr könnt nicht kommen oder müsst etwas ändern? Bitte meldet euch bei {name} – am einfachsten per Antwort auf diese E-Mail.",
-    sie: "Sie können nicht kommen oder müssen etwas ändern? Bitte wenden Sie sich an {name} – am einfachsten per Antwort auf diese E-Mail.",
-  },
-  "mail.contactFallback": {
-    ihr: "Ihr könnt nicht kommen oder müsst etwas ändern? Bitte meldet euch per Antwort auf diese E-Mail.",
-    sie: "Sie können nicht kommen oder müssen etwas ändern? Bitte antworten Sie einfach auf diese E-Mail.",
-  },
+  // optionaler Hinweis unter der Bestätigung (Standard leer = kein Absatz); {name} = Ansprechpartner
+  "mail.contact": same(""),
   "mail.changeLink": { ihr: "euren Buchungslink", sie: "Ihren Buchungslink" },
   "mail.cancellation.subject": same("Stornierung: {event} am {date}"),
   "mail.cancellation.title": { ihr: "Eure Buchung wurde storniert", sie: "Ihre Buchung wurde storniert" },

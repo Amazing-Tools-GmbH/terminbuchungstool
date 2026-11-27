@@ -130,7 +130,8 @@ export function renderConfirmation(tenant: MailTenant, d: BookingMailData): Rend
       ? tr("mail.guestCancelled", { name: d.guestCancelled, persons })
       : null;
   // kein Umbuchen/Stornieren über einen Link – Hinweis auf den Ansprechpartner
-  const contact = d.contactName ? tr("mail.contact", { name: d.contactName }) : tr("mail.contactFallback");
+  // optionaler Hinweis (E-Mail-Vorlagen); leer = kein Absatz
+  const contact = tr("mail.contact", { name: d.contactName ?? tenant.name }).trim();
   const html = layout(
     tenant,
     `<p style="margin:0 0 4px;font-size:14px;color:${t.muted}">${escapeHtml(d.eventTitle)}</p>
@@ -139,7 +140,7 @@ export function renderConfirmation(tenant: MailTenant, d: BookingMailData): Rend
 ${note ? `<p style="margin:0 0 8px">${escapeHtml(note)}</p>` : ""}
 ${summaryTable(t, rows)}
 <p style="margin:0 0 16px;font-size:14px;color:${t.muted}">📅 ${escapeHtml(d.icsFilename)} – ${escapeHtml(tr("mail.ics.hint"))}</p>
-<p style="margin:0 0 20px;font-size:14px">${escapeHtml(contact)}</p>`,
+${contact ? `<p style="margin:0 0 20px;font-size:14px">${escapeHtml(contact)}</p>` : ""}`,
     `${title}: ${when.weekdayShort}, ${when.date}, ${when.time}`,
   );
   const text = [
@@ -151,8 +152,7 @@ ${summaryTable(t, rows)}
     ...rows.map(([k, v]) => `${k}: ${v}`),
     "",
     `${tr("done.ics")}: ${d.icsFilename}`,
-    "",
-    contact,
+    ...(contact ? ["", contact] : []),
     "",
     tenant.contactLine ?? "",
   ].join("\n");
@@ -226,7 +226,7 @@ export function renderGuestConfirmation(tenant: MailTenant, d: GuestMailData): R
     [tr("done.time"), when.time],
     ...(d.location ? ([[tr("done.place"), d.location]] as [string, string][]) : []),
   ];
-  const contact = d.contactName ? tr("mail.contact", { name: d.contactName }) : tr("mail.contactFallback");
+  const contact = tr("mail.contact", { name: d.contactName ?? tenant.name }).trim();
   const html = layout(
     tenant,
     `<p style="margin:0 0 4px;font-size:14px;color:${t.muted}">${escapeHtml(d.eventTitle)}</p>
@@ -235,7 +235,7 @@ export function renderGuestConfirmation(tenant: MailTenant, d: GuestMailData): R
 <p style="margin:0 0 8px">${escapeHtml(intro)}</p>
 ${summaryTable(t, rows)}
 <p style="margin:0 0 16px;font-size:14px;color:${t.muted}">📅 ${escapeHtml(d.icsFilename)} – ${escapeHtml(tr("mail.ics.hint"))}</p>
-<p style="margin:0 0 20px;font-size:14px">${escapeHtml(contact)}</p>`,
+${contact ? `<p style="margin:0 0 20px;font-size:14px">${escapeHtml(contact)}</p>` : ""}`,
     `${title}: ${when.weekdayShort}, ${when.date}, ${when.time}`,
   );
   const text = [
@@ -247,8 +247,7 @@ ${summaryTable(t, rows)}
     ...rows.map(([k, v]) => `${k}: ${v}`),
     "",
     `${tr("done.ics")}: ${d.icsFilename}`,
-    "",
-    contact,
+    ...(contact ? ["", contact] : []),
     "",
     tenant.contactLine ?? "",
   ].join("\n");

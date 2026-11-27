@@ -15,7 +15,7 @@ export const MAIL_TEMPLATE_GROUPS: MailTemplateGroup[] = [
   },
   {
     id: "confirmation",
-    keys: ["mail.confirmation.subject", "mail.confirmation.title", "mail.ics.hint", "mail.contact", "mail.contactFallback", "mail.person", "mail.persons"],
+    keys: ["mail.confirmation.subject", "mail.confirmation.title", "mail.ics.hint", "mail.contact", "mail.person", "mail.persons"],
   },
   { id: "changed", keys: ["mail.confirmation.changedSubject", "mail.confirmation.changedTitle", "mail.rescheduled", "mail.guestCancelled"] },
   { id: "cancellation", keys: ["mail.cancellation.subject", "mail.cancellation.title", "mail.cancellation.byOrganizer", "mail.cancellation.text"] },
@@ -33,9 +33,12 @@ export function placeholdersOf(text: string): string[] {
   return [...new Set([...text.matchAll(/\{(\w+)\}/g)].map((m) => m[1]!))];
 }
 
+/** Platzhalter für Texte, deren Standard leer ist (optionale Absätze) */
+const EXTRA_PLACEHOLDERS: Partial<Record<TextKey, string[]>> = { "mail.contact": ["name"] };
+
 /** Erlaubte Platzhalter je Schlüssel = die des Standardtexts (beide Anreden) */
 export function allowedPlaceholders(key: TextKey): string[] {
-  return [...new Set([...placeholdersOf(TEXTS[key].sie), ...placeholdersOf(TEXTS[key].ihr)])];
+  return [...new Set([...placeholdersOf(TEXTS[key].sie), ...placeholdersOf(TEXTS[key].ihr), ...(EXTRA_PLACEHOLDERS[key] ?? [])])];
 }
 
 /** Ohne diese Platzhalter fehlt in der Mail etwas Wichtiges (z. B. der Link) */
